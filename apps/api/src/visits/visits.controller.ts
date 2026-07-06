@@ -41,4 +41,9 @@ export class VisitsController {
   completeIntake(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.visits.completeIntake(id, user.organizationId, user.id);
   }
+
+  @Post(':id/exam/start')
+  startExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.visits.startExam(id, user.organizationId, user.id);
+  }
 }

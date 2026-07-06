@@ -13,6 +13,8 @@ const STALE_AFTER_MS = 60_000;
  *  POST /visits/:id/start does anything (see apps/api/src/visits). */
 const STARTABLE_STATES = new Set(['Arrived', 'ReadyForIntake']);
 const CHECKOUT_STATES = new Set(['CheckoutReady', 'CheckoutInProgress']);
+const UPCOMING_APPOINTMENT_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
+const CHECK_IN_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
 
 interface DashboardPersonSummary {
   id: string;
@@ -57,6 +59,7 @@ interface DashboardVisitSummary {
   primaryVeterinarian: DashboardPersonSummary | null;
   assignedTechnician: DashboardPersonSummary | null;
   currentOwner: DashboardPersonSummary | null;
+  intakeSummaryAvailable: boolean;
 }
 
 interface OperationsDashboard {
@@ -77,6 +80,7 @@ interface OperationsDashboard {
 }
 
 const CHECKOUT_READY_STATE = 'CheckoutReady';
+const EXAM_READY_STATE = 'VeterinarianExamReady';
 const WAITING_STATES = new Set([
   'Arrived',
   'CheckInInProgress',
@@ -116,6 +120,7 @@ function ownerLabel(owner: DashboardPersonSummary | null): string {
 }
 
 function visitNextAction(visit: DashboardVisitSummary): string {
+  if (visit.state === EXAM_READY_STATE) return 'Ready for doctor';
   if (visit.state === CHECKOUT_READY_STATE) return 'Collect payment and close visit';
   if (WAITING_STATES.has(visit.state)) return 'Room, triage, or assign owner';
   return 'Continue visit workflow';
@@ -132,6 +137,7 @@ function personRoleLabel(person: DashboardPersonSummary): string {
 }
 
 function visitActionLabel(visit: DashboardVisitSummary): string {
+  if (visit.state === EXAM_READY_STATE) return 'Start Exam';
   if (STARTABLE_STATES.has(visit.state)) return 'Start Intake';
   if (CHECKOUT_STATES.has(visit.state)) return 'Open Checkout';
   return 'Open Visit';
@@ -141,8 +147,9 @@ function appointmentHref(appointment: DashboardAppointmentSummary): string | nul
   return appointment.patient ? `/patients/${appointment.patient.id}` : null;
 }
 
-function visitTone(visit: DashboardVisitSummary): 'waiting' | 'active' | 'checkout' {
+function visitTone(visit: DashboardVisitSummary): 'waiting' | 'exam' | 'active' | 'checkout' {
   if (visit.state === CHECKOUT_READY_STATE) return 'checkout';
+  if (visit.state === EXAM_READY_STATE) return 'exam';
   if (WAITING_STATES.has(visit.state)) return 'waiting';
   return 'active';
 }
@@ -155,7 +162,7 @@ function SectionShell({
 }: {
   title: string;
   count: number;
-  tone?: 'waiting' | 'active' | 'checkout' | 'completed' | 'upcoming' | 'rail';
+  tone?: 'waiting' | 'exam' | 'active' | 'checkout' | 'completed' | 'upcoming' | 'rail';
   children: ReactNode;
 }) {
   const headingId = `${title.replace(/\W+/g, '-').toLowerCase()}-heading`;
@@ -176,6 +183,77 @@ function SectionShell({
 
 function EmptyQueue({ label }: { label: string }) {
   return <p className="ops-empty-state">{label}</p>;
+}
+
+function ExamReadyVisitCard({
+  visit,
+  onExamStarted,
+}: {
+  visit: DashboardVisitSummary;
+  onExamStarted: () => void;
+}) {
+  const router = useRouter();
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const href = `/visits/${visit.id}?from=command-center`;
+
+  async function handleStartExam() {
+    setStarting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/visits/${visit.id}/exam/start`, { method: 'POST' });
+      if (!response.ok) {
+        const payload = (await response.json()) as { message?: string };
+        throw new Error(payload.message ?? `Could not start exam (${response.status})`);
+      }
+      onExamStarted();
+      router.push(href);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not start exam.');
+      setStarting(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleStartExam()}
+      disabled={starting}
+      className="ops-work-card ops-work-card--exam"
+      aria-label={`Start Exam for ${visit.patient.name}`}
+    >
+      <div className="ops-work-card__topline">
+        <span className="ops-pill">Ready for Doctor</span>
+        <span>{visit.elapsedMinutes} min</span>
+      </div>
+      <strong>{visit.patient.name}</strong>
+      <dl>
+        <div>
+          <dt>Provider</dt>
+          <dd>{visit.primaryVeterinarian?.displayName ?? 'Unassigned provider'}</dd>
+        </div>
+        <div>
+          <dt>Tech</dt>
+          <dd>{visit.assignedTechnician?.displayName ?? 'Unassigned technician'}</dd>
+        </div>
+        <div>
+          <dt>Reason</dt>
+          <dd>{visit.reason || appointmentTypeLabel(visit.visitType)}</dd>
+        </div>
+        <div>
+          <dt>Intake</dt>
+          <dd>{visit.intakeSummaryAvailable ? 'Summary available' : 'No summary yet'}</dd>
+        </div>
+      </dl>
+      <p>{clientLabel(visit.client)}</p>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      <span className="ops-card-action">{starting ? 'Starting Exam...' : 'Start Exam'}</span>
+    </button>
+  );
 }
 
 function VisitCard({
@@ -258,14 +336,55 @@ function VisitCard({
 
 function AppointmentCard({
   appointment,
+  onAppointmentCheckedIn,
   actionLabel = 'Open Patient',
   tone = 'upcoming',
 }: {
   appointment: DashboardAppointmentSummary;
+  onAppointmentCheckedIn?: () => void;
   actionLabel?: string;
   tone?: 'completed' | 'upcoming';
 }) {
   const href = appointmentHref(appointment);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const canCheckIn = Boolean(
+    onAppointmentCheckedIn && appointment.patient && CHECK_IN_STATES.has(appointment.state),
+  );
+
+  async function handleCheckIn() {
+    if (!appointment.patient) return;
+
+    setCheckingIn(true);
+    setError(null);
+
+    try {
+      const arriveResponse = await fetch(`/api/appointments/${appointment.id}/arrive`, {
+        method: 'POST',
+      });
+      const arrivePayload = (await arriveResponse.json()) as { message?: string };
+      if (!arriveResponse.ok) {
+        throw new Error(arrivePayload.message ?? 'Could not check in appointment.');
+      }
+
+      const visitResponse = await fetch('/api/visits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointmentId: appointment.id }),
+      });
+      const visitPayload = (await visitResponse.json()) as { message?: string };
+      if (!visitResponse.ok) {
+        throw new Error(visitPayload.message ?? 'Could not create visit.');
+      }
+
+      onAppointmentCheckedIn?.();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not check in appointment.');
+    } finally {
+      setCheckingIn(false);
+    }
+  }
+
   const card = (
     <>
       <div className="ops-work-card__topline">
@@ -292,9 +411,29 @@ function AppointmentCard({
         </div>
       </dl>
       <p>{appointmentTypeLabel(appointment.type)} · {appointment.reason}</p>
-      <span className="ops-card-action">{href ? actionLabel : 'No Patient Link'}</span>
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+      {canCheckIn ? (
+        <button
+          type="button"
+          className="ops-card-action ops-card-action--button"
+          onClick={() => void handleCheckIn()}
+          disabled={checkingIn}
+        >
+          {checkingIn ? 'Checking In…' : 'Check In'}
+        </button>
+      ) : (
+        <span className="ops-card-action">{href ? actionLabel : 'No Patient Link'}</span>
+      )}
     </>
   );
+
+  if (canCheckIn) {
+    return <div className={`ops-work-card ops-work-card--${tone}`}>{card}</div>;
+  }
 
   return href ? (
     <Link
@@ -434,14 +573,20 @@ export function OperationsCommandCenter() {
   }, [loadDashboard]);
 
   const waitingVisits = dashboard?.arrivedOrWaiting ?? [];
+  const examReadyVisits =
+    dashboard?.activeVisits.filter((visit) => visit.state === EXAM_READY_STATE) ?? [];
   const checkoutVisits =
     dashboard?.activeVisits.filter((visit) => visit.state === CHECKOUT_READY_STATE) ?? [];
   const inProgressVisits =
-    dashboard?.activeVisits.filter((visit) => visit.state !== CHECKOUT_READY_STATE) ?? [];
+    dashboard?.activeVisits.filter(
+      (visit) => visit.state !== CHECKOUT_READY_STATE && visit.state !== EXAM_READY_STATE,
+    ) ?? [];
   const completedAppointments =
     dashboard?.todaysAppointments.filter((appointment) => appointment.state === 'Completed') ?? [];
   const upcomingAppointments =
-    dashboard?.upcomingAppointments.filter((appointment) => appointment.state !== 'Completed') ?? [];
+    dashboard?.upcomingAppointments.filter((appointment) =>
+      UPCOMING_APPOINTMENT_STATES.has(appointment.state),
+    ) ?? [];
   const isStale = lastLoadedAt ? now - lastLoadedAt.getTime() > STALE_AFTER_MS : false;
 
   return (
@@ -532,6 +677,26 @@ export function OperationsCommandCenter() {
               </SectionShell>
 
               <SectionShell
+                title="Exam Ready / Ready for Doctor"
+                count={examReadyVisits.length}
+                tone="exam"
+              >
+                {examReadyVisits.length > 0 ? (
+                  <div className="ops-card-grid">
+                    {examReadyVisits.map((visit) => (
+                      <ExamReadyVisitCard
+                        key={visit.id}
+                        visit={visit}
+                        onExamStarted={refreshAfterVisitStarted}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyQueue label="No patients are ready for the doctor." />
+                )}
+              </SectionShell>
+
+              <SectionShell
                 title="In Progress / Active Visits"
                 count={inProgressVisits.length}
                 tone="active"
@@ -589,6 +754,7 @@ export function OperationsCommandCenter() {
                       <AppointmentCard
                         key={appointment.id}
                         appointment={appointment}
+                        onAppointmentCheckedIn={refreshAfterVisitStarted}
                         actionLabel="Open Patient"
                       />
                     ))}

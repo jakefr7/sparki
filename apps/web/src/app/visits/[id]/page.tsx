@@ -40,6 +40,22 @@ function personLabel(
   return `${name} · ${enumLabel(person.role)}`;
 }
 
+function examStatusForState(state: string): { label: string; detail: string } | null {
+  if (state === 'VeterinarianExamReady') {
+    return {
+      label: 'Ready for doctor',
+      detail: 'Technician intake is complete and the patient is waiting for the exam.',
+    };
+  }
+  if (state === 'VeterinarianExamInProgress') {
+    return {
+      label: 'Exam in progress',
+      detail: 'The veterinarian has started the exam.',
+    };
+  }
+  return null;
+}
+
 export default async function VisitWorkspacePage({
   params,
   searchParams,
@@ -64,6 +80,7 @@ export default async function VisitWorkspacePage({
         visit.appointment.scheduledAt,
       ).toLocaleString()}`
     : 'Walk-in / no appointment';
+  const examStatus = examStatusForState(visit.state);
 
   return (
     <main className="page page--wide">
@@ -89,6 +106,13 @@ export default async function VisitWorkspacePage({
       </header>
 
       <VisitWorkflowProgress state={visit.state} compact />
+
+      {examStatus && (
+        <section className="visit-exam-status" aria-label="Exam status">
+          <span>{examStatus.label}</span>
+          <p>{examStatus.detail}</p>
+        </section>
+      )}
 
       <ul className="visit-summary-line" aria-label="Visit context summary">
         <li>

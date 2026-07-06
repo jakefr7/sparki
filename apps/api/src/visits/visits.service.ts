@@ -10,6 +10,8 @@ import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import {
+  EXAM_IN_PROGRESS_STATE,
+  EXAM_READY_STATE,
   INTAKE_IN_PROGRESS_STATE,
   STARTABLE_VISIT_STATES,
   TERMINAL_VISIT_STATES,
@@ -282,11 +284,31 @@ export class VisitsService {
       return tx.visit.update({
         where: { id },
         data: {
-          state: 'VeterinarianExamReady',
+          state: EXAM_READY_STATE,
           lastUpdatedById,
         },
         include: visitInclude,
       });
+    });
+  }
+
+  async startExam(id: string, organizationId: string, lastUpdatedById: string) {
+    const visit = await this.findById(id, organizationId);
+
+    if (TERMINAL_VISIT_STATES.includes(visit.state)) {
+      throw new ConflictException(
+        `Visit ${id} is in a terminal state (${visit.state}) and cannot start exam`,
+      );
+    }
+
+    if (visit.state !== EXAM_READY_STATE) {
+      return visit;
+    }
+
+    return prisma.visit.update({
+      where: { id },
+      data: { state: EXAM_IN_PROGRESS_STATE, lastUpdatedById },
+      include: visitInclude,
     });
   }
 }

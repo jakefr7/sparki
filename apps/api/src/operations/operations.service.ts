@@ -28,6 +28,7 @@ const visitWithContext = Prisma.validator<Prisma.VisitDefaultArgs>()({
     primaryVeterinarian: true,
     assignedTechnician: true,
     currentOwner: true,
+    intake: true,
   },
 });
 type VisitWithContext = Prisma.VisitGetPayload<typeof visitWithContext>;
@@ -149,6 +150,7 @@ function toDashboardVisit(visit: VisitWithContext, now: Date): DashboardVisitSum
     primaryVeterinarian: toPersonSummary(visit.primaryVeterinarian),
     assignedTechnician: toPersonSummary(visit.assignedTechnician),
     currentOwner: toPersonSummary(visit.currentOwner),
+    intakeSummaryAvailable: Boolean(visit.intake?.completedAt),
   };
 }
 

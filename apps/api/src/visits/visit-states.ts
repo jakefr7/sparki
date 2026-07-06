@@ -42,3 +42,6 @@ export const STARTABLE_VISIT_STATES: VisitState[] = ['Arrived', 'ReadyForIntake'
 
 /** The single next state `start` moves a Visit into. */
 export const INTAKE_IN_PROGRESS_STATE: VisitState = 'IntakeInProgress';
+
+export const EXAM_READY_STATE: VisitState = 'VeterinarianExamReady';
+export const EXAM_IN_PROGRESS_STATE: VisitState = 'VeterinarianExamInProgress';

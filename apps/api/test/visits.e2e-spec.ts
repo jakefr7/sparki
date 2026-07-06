@@ -664,6 +664,7 @@ describe('Visits (e2e)', () => {
       state:
         | 'IntakeInProgress'
         | 'VeterinarianExamReady'
+        | 'VeterinarianExamInProgress'
         | 'CheckoutReady'
         | 'Archived' = 'IntakeInProgress',
     ) {
@@ -790,6 +791,42 @@ describe('Visits (e2e)', () => {
       const response = await request(app.getHttpServer()).post(
         `/visits/${visit.id}/intake/complete`,
       );
+
+      expect(response.status).toBe(409);
+    });
+
+    it('starts the veterinarian exam from exam-ready', async () => {
+      const visit = await createVisit('Start Exam Patient', 'VeterinarianExamReady');
+
+      const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/exam/start`);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        state: 'VeterinarianExamInProgress',
+        lastUpdatedById: DEV_USER_ID,
+      });
+
+      const updatedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      expect(updatedVisit.state).toBe('VeterinarianExamInProgress');
+    });
+
+    it('is a safe no-op when starting exam after the Visit has already moved forward', async () => {
+      const visit = await createVisit('Past Exam Start Patient', 'VeterinarianExamInProgress');
+
+      const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/exam/start`);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        state: 'VeterinarianExamInProgress',
+      });
+    });
+
+    it('rejects starting exam for a terminal Visit with 409', async () => {
+      const visit = await createVisit('Terminal Exam Patient', 'Archived');
+
+      const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/exam/start`);
 
       expect(response.status).toBe(409);
     });

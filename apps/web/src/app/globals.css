@@ -235,6 +235,10 @@ body {
   border-top: 3px solid #b8872a;
 }
 
+.ops-section--exam {
+  border-top: 3px solid #1f8a8a;
+}
+
 .ops-section--active {
   border-top: 3px solid #2c6f9f;
 }
@@ -358,6 +362,10 @@ body {
   border-left-color: #b8872a;
 }
 
+.ops-work-card--exam {
+  border-left-color: #1f8a8a;
+}
+
 .ops-work-card--active {
   border-left-color: #2c6f9f;
 }
@@ -406,6 +414,11 @@ body {
 .ops-work-card--active .ops-pill {
   background: color-mix(in srgb, #2c6f9f 16%, Canvas);
   color: color-mix(in srgb, CanvasText 80%, #2c6f9f 20%);
+}
+
+.ops-work-card--exam .ops-pill {
+  background: color-mix(in srgb, #1f8a8a 16%, Canvas);
+  color: color-mix(in srgb, CanvasText 80%, #1f8a8a 20%);
 }
 
 .ops-work-card--checkout .ops-pill {
@@ -484,6 +497,21 @@ body {
   font-weight: 800;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.ops-card-action--button {
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+}
+
+.ops-card-action--button:hover {
+  opacity: 0.85;
+}
+
+.ops-card-action--button:disabled {
+  opacity: 0.55;
+  cursor: wait;
 }
 
 .visit-workflow-steps {
@@ -1481,6 +1509,31 @@ body {
   flex-direction: column;
   gap: 0.3rem;
   text-align: right;
+}
+
+.visit-exam-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid color-mix(in srgb, #1f8a8a 28%, CanvasText 10%);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, #1f8a8a 8%, Canvas);
+}
+
+.visit-exam-status span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: color-mix(in srgb, CanvasText 82%, #1f8a8a 18%);
+}
+
+.visit-exam-status p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, CanvasText 68%, transparent);
 }
 
 .eyebrow {

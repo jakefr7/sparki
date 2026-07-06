@@ -42,6 +42,7 @@ export interface DashboardVisitSummary {
   primaryVeterinarian: DashboardPersonSummary | null;
   assignedTechnician: DashboardPersonSummary | null;
   currentOwner: DashboardPersonSummary | null;
+  intakeSummaryAvailable: boolean;
 }
 
 export interface DashboardStateCount {

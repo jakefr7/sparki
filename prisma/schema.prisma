@@ -437,12 +437,35 @@ model Visit {
   medicalRecord       MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
   medicalRecordId     String?
   soapNotes           SoapNote[]
+  intake              VisitIntake?
 
   @@index([organizationId])
   @@index([patientId])
   @@index([state])
   @@index([primaryVeterinarianId])
   @@index([assignedTechnicianId])
+}
+
+model VisitIntake {
+  id      String @id @default(cuid())
+  visitId String @unique
+
+  chiefComplaint       String?
+  historyNotes         String?
+  weight               Float?
+  temperature          Float?
+  heartRate            Int?
+  respiratoryRate      Int?
+  appetite             String?
+  vomiting             Boolean @default(false)
+  diarrhea             Boolean @default(false)
+  medicationsAllergies String?
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
 }
 
 // --- Medical Record / SOAP Note ------------------------------------------

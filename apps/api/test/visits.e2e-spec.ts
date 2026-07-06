@@ -657,4 +657,164 @@ describe('Visits (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe('Visit intake', () => {
+    async function createVisit(
+      patientName: string,
+      state:
+        | 'IntakeInProgress'
+        | 'VeterinarianExamReady'
+        | 'CheckoutReady'
+        | 'Archived' = 'IntakeInProgress',
+    ) {
+      const patientId = await createPatient(patientName);
+      return prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'WalkIn',
+          reason: 'Intake fixture',
+          state,
+          assignedTechnicianId: DEV_USER_ID,
+        },
+      });
+    }
+
+    it('saves intake data and returns it on the Visit payload', async () => {
+      const visit = await createVisit('Save Intake Patient');
+
+      const response = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Limping on left rear leg',
+        historyNotes: 'Started yesterday after daycare.',
+        weight: 42.5,
+        temperature: 101.2,
+        heartRate: 88,
+        respiratoryRate: 24,
+        appetite: 'Normal',
+        vomiting: false,
+        diarrhea: true,
+        medicationsAllergies: 'Carprofen allergy',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        lastUpdatedById: DEV_USER_ID,
+        intake: {
+          chiefComplaint: 'Limping on left rear leg',
+          historyNotes: 'Started yesterday after daycare.',
+          weight: 42.5,
+          temperature: 101.2,
+          heartRate: 88,
+          respiratoryRate: 24,
+          appetite: 'Normal',
+          vomiting: false,
+          diarrhea: true,
+          medicationsAllergies: 'Carprofen allergy',
+          completedAt: null,
+        },
+      });
+
+      const saved = await prisma.visitIntake.findUniqueOrThrow({ where: { visitId: visit.id } });
+      expect(saved.chiefComplaint).toBe('Limping on left rear leg');
+    });
+
+    it('normalizes omitted intake checkbox flags to false when updating', async () => {
+      const visit = await createVisit('Update Intake Patient');
+
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Coughing',
+        vomiting: true,
+      });
+
+      const response = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Coughing after exercise',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.intake).toMatchObject({
+        chiefComplaint: 'Coughing after exercise',
+        vomiting: false,
+        diarrhea: false,
+      });
+    });
+
+    it('completes intake by marking the intake complete and moving the Visit to exam-ready', async () => {
+      const visit = await createVisit('Complete Intake Patient');
+
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Ear shaking',
+        temperature: 102,
+      });
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/intake/complete`,
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        state: 'VeterinarianExamReady',
+        lastUpdatedById: DEV_USER_ID,
+        intake: {
+          chiefComplaint: 'Ear shaking',
+          temperature: 102,
+        },
+      });
+      expect(response.body.intake.completedAt).toEqual(expect.any(String));
+
+      const updatedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      const updatedIntake = await prisma.visitIntake.findUniqueOrThrow({
+        where: { visitId: visit.id },
+      });
+      expect(updatedVisit.state).toBe('VeterinarianExamReady');
+      expect(updatedIntake.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('is a safe no-op when completing intake after the Visit has already moved forward', async () => {
+      const visit = await createVisit('Past Intake Patient', 'VeterinarianExamReady');
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/intake/complete`,
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ id: visit.id, state: 'VeterinarianExamReady' });
+    });
+
+    it('rejects completing intake for a terminal Visit with 409', async () => {
+      const visit = await createVisit('Terminal Intake Patient', 'Archived');
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/intake/complete`,
+      );
+
+      expect(response.status).toBe(409);
+    });
+
+    it('returns 404 when saving intake for a Visit in a different organization', async () => {
+      const otherVisit = await prisma.visit.create({
+        data: {
+          organizationId: otherOrganizationId,
+          locationId: (
+            await prisma.location.create({
+              data: { organizationId: otherOrganizationId, name: 'Other Org Intake Location' },
+            })
+          ).id,
+          patientId: otherOrgPatientId,
+          visitType: 'WalkIn',
+          reason: 'Cross org intake attempt',
+          state: 'IntakeInProgress',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .put(`/visits/${otherVisit.id}/intake`)
+        .send({ chiefComplaint: 'Should not save' });
+
+      expect(response.status).toBe(404);
+    });
+  });
 });

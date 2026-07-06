@@ -95,7 +95,7 @@ test('"/" refocuses search after focus moves away (keyboard-first shortcut)', as
   await page.goto('/');
   const input = page.getByRole('combobox', { name: 'Search' });
 
-  await page.locator('h1').click();
+  await page.locator('.app-brand').click();
   await expect(input).not.toBeFocused();
 
   await page.keyboard.press('/');

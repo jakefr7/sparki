@@ -176,6 +176,20 @@ export interface VisitDetail {
     scheduledAt: string;
     state: string;
   } | null;
+  intake: {
+    id: string;
+    chiefComplaint: string | null;
+    historyNotes: string | null;
+    weight: number | null;
+    temperature: number | null;
+    heartRate: number | null;
+    respiratoryRate: number | null;
+    appetite: string | null;
+    vomiting: boolean;
+    diarrhea: boolean;
+    medicationsAllergies: string | null;
+    completedAt: string | null;
+  } | null;
   primaryVeterinarian: {
     id: string;
     displayName: string | null;

@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { VisitIntakePanel } from '../../../components/visit-intake-panel';
+import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { env } from '../../../lib/env';
 import {
   appointmentTypeLabel,
@@ -19,7 +21,10 @@ async function getVisit(id: string): Promise<VisitDetail | null> {
 }
 
 function enumLabel(value: string): string {
-  return value.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return value
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function personLabel(
@@ -33,26 +38,6 @@ function personLabel(
   if (!person) return 'Unassigned';
   const name = person.displayName ?? `${person.firstName} ${person.lastName}`;
   return `${name} · ${enumLabel(person.role)}`;
-}
-
-function nextStepForState(state: string): string {
-  if (
-    [
-      'Arrived',
-      'CheckInInProgress',
-      'ArrivedWithExceptions',
-      'Triaged',
-      'Waiting',
-      'ReadyForIntake',
-    ].includes(state)
-  ) {
-    return 'Room the patient, confirm intake context, or assign the clinical owner.';
-  }
-  if (state === 'CheckoutReady') return 'Review charges, collect payment, and close the visit.';
-  if (state === 'InProgress' || state === 'ProviderExam') {
-    return 'Continue the clinical workflow from the current visit state.';
-  }
-  return 'Continue the visit workflow from this state.';
 }
 
 export default async function VisitWorkspacePage({
@@ -71,7 +56,9 @@ export default async function VisitWorkspacePage({
 
   const openedFromCommandCenter = from === 'command-center';
   const backHref = openedFromCommandCenter ? '/' : `/patients/${visit.patient.id}`;
-  const backLabel = openedFromCommandCenter ? 'Back to Command Center' : `Back to ${visit.patient.name}`;
+  const backLabel = openedFromCommandCenter
+    ? 'Back to Command Center'
+    : `Back to ${visit.patient.name}`;
   const appointmentContext = visit.appointment
     ? `${appointmentTypeLabel(visit.appointment.type)} · ${new Date(
         visit.appointment.scheduledAt,
@@ -95,44 +82,52 @@ export default async function VisitWorkspacePage({
         </div>
         <div className="patient-header__status">
           <span className="patient-status">{enumLabel(visit.state)}</span>
-          <span className="source-label">Opened {openedFromCommandCenter ? 'from Command Center' : 'from patient workspace'}</span>
+          <span className="source-label">
+            Opened {openedFromCommandCenter ? 'from Command Center' : 'from patient workspace'}
+          </span>
         </div>
       </header>
 
-      <section className="visit-command-grid" aria-label="Visit command context">
-        <div className="visit-command-card visit-command-card--status">
-          <span>Visit status</span>
-          <strong>{enumLabel(visit.state)}</strong>
-          <p>
-            {enumLabel(visit.visitType)} · Started {new Date(visit.createdAt).toLocaleString()}
-          </p>
-        </div>
+      <VisitWorkflowProgress state={visit.state} compact />
 
-        <div className="visit-command-card">
-          <span>Patient / client context</span>
-          <strong>{visit.patient.name}</strong>
-          <p>{visit.client ? clientDisplayName(visit.client) : 'No client linked'}</p>
-        </div>
+      <ul className="visit-summary-line" aria-label="Visit context summary">
+        <li>
+          <span className="visit-summary-line__label">Patient</span>
+          {visit.patient.name}
+        </li>
+        <li>
+          <span className="visit-summary-line__label">Client</span>
+          {visit.client ? clientDisplayName(visit.client) : 'No client linked'}
+        </li>
+        <li>
+          <span className="visit-summary-line__label">Reason</span>
+          {visit.reason}
+        </li>
+        <li>
+          <span className="visit-summary-line__label">Provider</span>
+          {personLabel(visit.primaryVeterinarian)}
+        </li>
+        <li>
+          <span className="visit-summary-line__label">Technician</span>
+          {personLabel(visit.assignedTechnician)}
+        </li>
+      </ul>
 
-        <div className="visit-command-card">
-          <span>Assigned provider / technician</span>
-          <strong>{personLabel(visit.primaryVeterinarian)}</strong>
-          <p>Technician: {personLabel(visit.assignedTechnician)}</p>
-          <p>Current owner: {personLabel(visit.currentOwner)}</p>
-        </div>
+      <VisitIntakePanel visitId={visit.id} state={visit.state} intake={visit.intake} />
 
-        <div className="visit-command-card">
-          <span>Appointment reason</span>
-          <strong>{visit.reason}</strong>
-          <p>{appointmentContext}</p>
+      <details className="visit-context-details">
+        <summary>Appointment &amp; assignment details</summary>
+        <div className="visit-context-details__body">
+          <div>
+            <span className="visit-context-details__label">Appointment</span>
+            <p>{appointmentContext}</p>
+          </div>
+          <div>
+            <span className="visit-context-details__label">Current owner</span>
+            <p>{personLabel(visit.currentOwner)}</p>
+          </div>
         </div>
-
-        <div className="visit-command-card visit-command-card--next">
-          <span>Current next step</span>
-          <strong>{nextStepForState(visit.state)}</strong>
-          <p>This workspace is intentionally scoped to visit command context.</p>
-        </div>
-      </section>
+      </details>
     </main>
   );
 }

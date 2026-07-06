@@ -87,7 +87,10 @@ const WAITING_STATES = new Set([
 ]);
 
 function enumLabel(value: string): string {
-  return value.replace(/([a-z])([A-Z])/g, '$1 $2');
+  return value
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function timeLabel(value: string): string {
@@ -448,14 +451,10 @@ export function OperationsCommandCenter() {
   return (
     <main className="page page--ops">
       <header className="command-home-header command-home-header--ops">
-        <div>
-          <p className="eyebrow">Sparki</p>
-          <h1>Clinic Command Center</h1>
-        </div>
+        <span className="app-brand">Sparki</span>
         <div className="command-home-header__meta" aria-label="Clinic status">
           <span>
-            Operations snapshot
-            {refreshing ? ' · refreshing' : isStale ? ' · stale' : ''}
+            {refreshing ? 'Refreshing' : isStale ? 'Stale' : 'Live'}
           </span>
           <strong>{dashboard ? `Updated ${timeLabel(dashboard.generatedAt)}` : 'Loading floor'}</strong>
         </div>

@@ -8,6 +8,7 @@ import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
+import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import {
   INTAKE_IN_PROGRESS_STATE,
   STARTABLE_VISIT_STATES,
@@ -21,6 +22,7 @@ const visitInclude = {
   primaryVeterinarian: true,
   assignedTechnician: true,
   currentOwner: true,
+  intake: true,
 };
 
 /**
@@ -178,7 +180,9 @@ export class VisitsService {
   ): Promise<void> {
     const staff = await prisma.user.findFirst({ where: { id: userId, organizationId } });
     if (!staff) {
-      throw new BadRequestException(`Staff member ${userId} not found in organization ${organizationId}`);
+      throw new BadRequestException(
+        `Staff member ${userId} not found in organization ${organizationId}`,
+      );
     }
   }
 
@@ -229,4 +233,75 @@ export class VisitsService {
       include: visitInclude,
     });
   }
+
+  async saveIntake(
+    id: string,
+    organizationId: string,
+    lastUpdatedById: string,
+    input: SaveVisitIntakeInput,
+  ) {
+    await this.findById(id, organizationId);
+
+    await prisma.visitIntake.upsert({
+      where: { visitId: id },
+      create: {
+        visitId: id,
+        ...normalizeIntakeInput(input),
+      },
+      update: normalizeIntakeInput(input),
+    });
+
+    return prisma.visit.update({
+      where: { id },
+      data: { lastUpdatedById },
+      include: visitInclude,
+    });
+  }
+
+  async completeIntake(id: string, organizationId: string, lastUpdatedById: string) {
+    const visit = await this.findById(id, organizationId);
+
+    if (TERMINAL_VISIT_STATES.includes(visit.state)) {
+      throw new ConflictException(
+        `Visit ${id} is in a terminal state (${visit.state}) and cannot complete intake`,
+      );
+    }
+
+    if (visit.state !== INTAKE_IN_PROGRESS_STATE) {
+      return visit;
+    }
+
+    const completedAt = new Date();
+    return prisma.$transaction(async (tx) => {
+      await tx.visitIntake.upsert({
+        where: { visitId: id },
+        create: { visitId: id, completedAt },
+        update: { completedAt },
+      });
+
+      return tx.visit.update({
+        where: { id },
+        data: {
+          state: 'VeterinarianExamReady',
+          lastUpdatedById,
+        },
+        include: visitInclude,
+      });
+    });
+  }
+}
+
+function normalizeIntakeInput(input: SaveVisitIntakeInput) {
+  return {
+    chiefComplaint: input.chiefComplaint ?? null,
+    historyNotes: input.historyNotes ?? null,
+    weight: input.weight ?? null,
+    temperature: input.temperature ?? null,
+    heartRate: input.heartRate ?? null,
+    respiratoryRate: input.respiratoryRate ?? null,
+    appetite: input.appetite ?? null,
+    vomiting: input.vomiting ?? false,
+    diarrhea: input.diarrhea ?? false,
+    medicationsAllergies: input.medicationsAllergies ?? null,
+  };
 }

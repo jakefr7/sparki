@@ -1,0 +1,26 @@
+name: sparki
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sparki
+      POSTGRES_PASSWORD: sparki
+      POSTGRES_DB: sparki
+    # Host port 55432, not the default 5432: keeps this compose file from
+    # colliding with any other local Postgres (system install, another
+    # project's container) that already holds 5432 on the developer's
+    # machine. The container's internal port is untouched.
+    ports:
+      - '55432:5432'
+    volumes:
+      - sparki_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sparki -d sparki']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sparki_postgres_data:

@@ -1,0 +1,30 @@
+import { z } from 'zod';
+
+const clientLinkSchema = z.object({
+  clientId: z.string().min(1),
+  isPrimary: z.boolean(),
+});
+
+export const createPatientSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    species: z.string().min(1).max(100),
+    breed: z.string().min(1).max(100).optional(),
+    sex: z.string().min(1).max(50).optional(),
+    dateOfBirth: z.coerce.date().optional(),
+    weight: z.coerce.number().positive().optional(),
+    color: z.string().min(1).max(200).optional(),
+    // Patient<->Client is many-to-many with a primary flag (PatientClient),
+    // per docs/specs/modules/01-patient-workspace-mvp.md's "Client Context".
+    clients: z.array(clientLinkSchema).min(1),
+  })
+  .refine((data) => data.clients.filter((client) => client.isPrimary).length === 1, {
+    message: 'Exactly one client must be marked isPrimary',
+    path: ['clients'],
+  })
+  .refine(
+    (data) => new Set(data.clients.map((client) => client.clientId)).size === data.clients.length,
+    { message: 'clientId values must be unique', path: ['clients'] },
+  );
+
+export type CreatePatientInput = z.infer<typeof createPatientSchema>;

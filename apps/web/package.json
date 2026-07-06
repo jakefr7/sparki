@@ -1,0 +1,27 @@
+{
+  "name": "@sparki/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "dotenv -e ../../.env -- sh -c 'next dev --port ${WEB_PORT:-3000}'",
+    "start": "dotenv -e ../../.env -- next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@sparki/config": "workspace:*",
+    "next": "15.5.20",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.1.0",
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "eslint-config-next": "15.5.20",
+    "typescript": "^5.5.4"
+  }
+}

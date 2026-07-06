@@ -1,0 +1,35 @@
+{
+  "name": "sparki",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@8.7.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @sparki/db run generate",
+    "db:migrate": "pnpm --filter @sparki/db run migrate",
+    "db:seed-demo": "dotenv -e .env -- node scripts/reset-demo-clinic-data.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@prisma/client": "5.22.0",
+    "@types/node": "^20.14.0",
+    "dotenv-cli": "^11.0.0",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "prisma": "5.22.0",
+    "turbo": "^2.1.1",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.2.0"
+  }
+}

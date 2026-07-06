@@ -1,0 +1,929 @@
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, Canvas 91%, #26313a 9%) 0,
+      color-mix(in srgb, Canvas 96%, #50606f 4%) 18rem
+    ),
+    Canvas;
+}
+
+.page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.page--wide {
+  max-width: 1180px;
+}
+
+.page--ops {
+  max-width: 1280px;
+  padding-top: 1.25rem;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  color: inherit;
+  opacity: 0.7;
+  text-decoration: none;
+}
+.back-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.command-home-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+}
+
+.command-home-header--ops {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.command-home-header h1 {
+  margin: 0;
+  font-size: 1.85rem;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.command-home-header__meta {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.76rem;
+  color: color-mix(in srgb, CanvasText 68%, transparent);
+}
+
+.command-home-header__meta strong {
+  color: CanvasText;
+  font-size: 0.9rem;
+}
+
+.ops-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.ops-search-console,
+.floor-snapshot,
+.ops-queue {
+  border: 1px solid color-mix(in srgb, CanvasText 13%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, Canvas 96%, #6f7f8d 4%);
+  box-shadow: 0 1px 0 color-mix(in srgb, CanvasText 5%, transparent);
+}
+
+.ops-search-console {
+  padding: 1rem;
+}
+
+.ops-search-console__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.ops-search-console__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.ops-search-console__mode {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.45rem;
+  padding: 0.15rem 0.48rem;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, CanvasText 72%, transparent);
+  white-space: nowrap;
+}
+
+.ops-home__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.floor-snapshot,
+.ops-queue {
+  padding: 0.85rem;
+}
+
+.floor-snapshot__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.floor-snapshot__header h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.status-dot {
+  width: 0.56rem;
+  height: 0.56rem;
+  border-radius: 999px;
+  background: #2b8a5d;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #2b8a5d 18%, transparent);
+}
+
+.floor-snapshot__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin-bottom: 0.7rem;
+  border: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.floor-snapshot__metrics div {
+  min-height: 3.3rem;
+  padding: 0.55rem;
+  border-right: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  background: color-mix(in srgb, Canvas 98%, #94a3af 2%);
+}
+
+.floor-snapshot__metrics div:last-child {
+  border-right: 0;
+}
+
+.floor-snapshot__metrics span,
+.ops-queue li {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, CanvasText 66%, transparent);
+}
+
+.floor-snapshot__metrics strong {
+  display: block;
+  margin-top: 0.24rem;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.floor-snapshot__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.floor-snapshot__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.24rem 0.5rem;
+  align-items: center;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, Canvas 98%, CanvasText 2%);
+  color: inherit;
+  text-decoration: none;
+}
+
+.floor-snapshot__row:hover {
+  border-color: color-mix(in srgb, Highlight 45%, CanvasText 10%);
+  background: color-mix(in srgb, Highlight 8%, Canvas);
+}
+
+.floor-snapshot__row strong,
+.floor-snapshot__row span:not(.status-badge),
+.floor-snapshot__row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.floor-snapshot__row strong {
+  font-size: 0.9rem;
+}
+
+.floor-snapshot__row span:not(.status-badge),
+.floor-snapshot__row small {
+  grid-column: 1 / -1;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, CanvasText 66%, transparent);
+}
+
+.floor-snapshot__row small {
+  color: color-mix(in srgb, CanvasText 58%, transparent);
+}
+
+.floor-snapshot__empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, CanvasText 62%, transparent);
+}
+
+.ops-queue ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ops-queue li {
+  display: grid;
+  grid-template-columns: 1.45rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ops-queue li span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, Highlight 15%, Canvas);
+  color: CanvasText;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+/* Patient search */
+
+.patient-search {
+  margin-top: 0;
+}
+
+.patient-search__label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 0.375rem;
+  opacity: 0.72;
+}
+
+.patient-search__input {
+  width: 100%;
+  font-size: 0.98rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid color-mix(in srgb, CanvasText 35%, transparent);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, Canvas 98%, CanvasText 2%);
+  color: CanvasText;
+}
+.patient-search__input:focus {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+.patient-search__hint {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin: 0.5rem 0 0;
+}
+
+.patient-search__results {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background: Canvas;
+}
+
+.patient-search__result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, auto);
+  gap: 1rem;
+  align-items: start;
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+  cursor: pointer;
+}
+
+.patient-search__result:last-child {
+  border-bottom: 0;
+}
+
+.patient-search__result--active {
+  background: color-mix(in srgb, Highlight 10%, Canvas);
+}
+
+.patient-search__result-name {
+  min-width: 0;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.patient-search__entity-label {
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.58;
+}
+
+.patient-search__result-subtitle {
+  font-size: 0.86rem;
+  opacity: 0.7;
+  line-height: 1.25;
+}
+
+.patient-search__result-client {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  line-height: 1.25;
+}
+
+.patient-search__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+  min-width: 0;
+}
+
+.patient-search__result-headline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.patient-search__operation-detail {
+  max-width: 100%;
+  margin-top: 0.16rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  opacity: 0.76;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patient-search__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.36rem;
+  min-width: 170px;
+}
+
+.patient-search__actions .button-primary,
+.patient-search__actions .button-secondary {
+  width: 100%;
+  justify-content: center;
+}
+
+.patient-search__actions .visit-action {
+  width: 100%;
+  margin-top: 0;
+}
+
+.patient-search__status {
+  opacity: 0.6;
+  font-size: 0.9rem;
+}
+
+.patient-search__no-results {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+/* Patient workspace */
+
+.patient-header {
+  margin-bottom: 1.5rem;
+}
+
+.patient-header--command {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+}
+
+.patient-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 2rem;
+  line-height: 1.08;
+}
+
+.patient-header__subtitle {
+  opacity: 0.7;
+  margin: 0 0 0.5rem;
+}
+
+.patient-status {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, CanvasText 12%, transparent);
+  margin-right: 0.5rem;
+}
+
+.patient-header__status {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: right;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.muted {
+  opacity: 0.7;
+}
+
+.command-center {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1.2rem;
+}
+
+.command-center__main,
+.context-rail,
+.current-visit-panel {
+  background: Canvas;
+  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+  border-radius: 0.5rem;
+}
+
+.command-center__main {
+  padding: 1rem;
+}
+
+.current-visit-panel {
+  padding: 0.9rem;
+  background: color-mix(in srgb, Canvas 92%, Highlight 8%);
+}
+
+.current-visit-panel__header,
+.current-visit-panel__body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.current-visit-panel__header {
+  margin-bottom: 0.8rem;
+}
+
+.current-visit-panel h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.current-visit-panel p {
+  margin: 0.25rem 0 0;
+}
+
+.context-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.85rem;
+}
+
+.context-rail section {
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 10%, transparent);
+}
+
+.context-rail section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.context-rail__heading {
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+
+.rail-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.86rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 1.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-badge--active {
+  color: #f7fbf7;
+  background: #246b49;
+}
+
+.status-badge--scheduled {
+  color: #101820;
+  background: #d8b84e;
+}
+
+.status-badge--idle {
+  color: CanvasText;
+  background: color-mix(in srgb, CanvasText 12%, Canvas);
+}
+
+.source-label {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.client-card {
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.client-card--primary {
+  border-width: 2px;
+}
+
+.client-card__badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-left: 0.5rem;
+}
+
+.empty-state {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.section-card {
+  border: 1px dashed color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  background: Canvas;
+}
+
+.section-card h3 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.section-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.workspace-actions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.48rem 0.75rem;
+  border-radius: 0.375rem;
+  background: CanvasText;
+  color: Canvas;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.button-primary:hover {
+  opacity: 0.85;
+}
+.button-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.8rem;
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid color-mix(in srgb, CanvasText 35%, transparent);
+  cursor: pointer;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.button-secondary:hover {
+  background: color-mix(in srgb, CanvasText 8%, transparent);
+}
+.button-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.appointment-card {
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: Canvas;
+}
+
+.appointment-card__state {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-left: 0.5rem;
+}
+
+.appointment-card__time {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.appointment-card__note {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.visit-action {
+  margin-top: 0.75rem;
+}
+
+.walk-in-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.walk-in-form--compact {
+  justify-content: flex-end;
+}
+
+.walk-in-form--compact label {
+  width: auto;
+}
+
+.walk-in-form label {
+  width: 100%;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.walk-in-form input {
+  min-width: 220px;
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.quick-visit-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 190px) auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.quick-visit-form label {
+  grid-column: 1 / -1;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.62;
+}
+
+.quick-visit-form input {
+  width: 100%;
+  min-width: 0;
+  font-size: 0.9rem;
+  padding: 0.44rem 0.55rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.quick-visit-form .form-error {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 860px) {
+  .command-home-header--ops,
+  .ops-home {
+    grid-template-columns: 1fr;
+  }
+
+  .command-home-header--ops {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .command-home-header__meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .patient-search__result,
+  .command-center,
+  .ops-home {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-search__actions,
+  .current-visit-panel__body,
+  .patient-header--command {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .patient-search__actions {
+    justify-content: flex-start;
+  }
+
+  .patient-header__status {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* Schedule appointment form */
+
+.appointment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  max-width: 400px;
+}
+
+.appointment-form label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.appointment-form input,
+.appointment-form select {
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.appointment-form button {
+  margin-top: 1.25rem;
+  align-self: flex-start;
+}
+
+.form-error {
+  color: #c0392b;
+  font-size: 0.875rem;
+  margin: 0.5rem 0 0;
+}
+
+/* Patient intake wizard */
+
+.intake-form__step {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin: 1rem 0 0;
+}
+
+.intake-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+  max-width: 400px;
+}
+
+.intake-form label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.intake-form input,
+.intake-form select {
+  font-size: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, CanvasText 30%, transparent);
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.intake-form__fieldset {
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border-radius: 0.375rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.intake-form__fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+  margin-top: 0.5rem;
+}
+
+.intake-form__fieldset input[type='number'],
+.intake-form__fieldset input[type='date'] {
+  margin-left: 1.5rem;
+}
+
+.intake-form button {
+  margin-top: 1.25rem;
+  align-self: flex-start;
+}

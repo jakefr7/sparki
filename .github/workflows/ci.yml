@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: 'postgresql://sparki:sparki@localhost:55432/sparki?schema=public'
+  NODE_ENV: test
+
+jobs:
+  build-lint-typecheck-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sparki
+          POSTGRES_PASSWORD: sparki
+          POSTGRES_DB: sparki
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U sparki -d sparki"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8.7.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database migrations
+        run: pnpm --filter @sparki/db exec prisma migrate deploy --schema ../../prisma/schema.prisma
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @sparki/web exec playwright install --with-deps chromium
+
+      - name: E2E tests (Playwright)
+        run: pnpm test:e2e

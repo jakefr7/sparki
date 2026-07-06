@@ -1,0 +1,464 @@
+// Minimum schema for Sprint 1's vertical slice (login -> patient search ->
+// patient workspace -> schedule appointment -> create visit -> update visit
+// state -> create medical record -> persist data). See
+// docs/engineering/00-engineering-plan.md.
+//
+// Scope, deliberately narrow:
+// - Only Organization, Location, User, Role, Patient, Client, Appointment,
+//   Visit, MedicalRecord, plus SoapNote (the minimum content model needed to
+//   make MedicalRecord usable for Sprint 1's "create draft SOAP Note" step —
+//   folds in what docs/blueprint/08-core-domain-model-v1.md calls "Visit
+//   Record Entry", since for this slice they are the same thing).
+// - Event, Audit Event, Billing, Inventory, Labs, Communication, and AI
+//   fields are deferred until an implementation task needs them.
+// - Enum values mirror the exact state names in
+//   docs/specs/modules/02-visit-lifecycle-mvp.md and
+//   docs/specs/modules/04-scheduling-mvp.md; do not rename or trim them here.
+// - Migration/provenance fields (sourceSystem, sourceId, sourceConfidence,
+//   importedAt) live on every core tenant record that may originate from a
+//   legacy system (Patient, Client, Appointment, MedicalRecord, SoapNote) per
+//   ADR-003 and docs/blueprint/06-migration-strategy.md: migration is a
+//   first-class concern, so provenance is captured from day one rather than
+//   retrofitted once a migration workflow exists. No migration workflow or
+//   service is implemented here — these are bare columns only.
+
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../packages/db/generated/client"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+// pg_trgm backs the GIN trigram indexes on Patient.name / Client.name used by
+// Patient Search's fuzzy matching (docs/specs/modules/01-patient-workspace-mvp.md
+// "Open Patient From Search"; docs/engineering/00-engineering-plan.md
+// recommends trigram indexes for patient search before reaching for a
+// separate search service).
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm]
+}
+
+// --- Organization / Location / User / Role -------------------------------
+// docs/blueprint/08-core-domain-model-v1.md (Organization, Location, User,
+// Role) and docs/blueprint/11-permission-and-ownership-v1.md (isolation,
+// role capabilities).
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations    Location[]
+  users        User[]
+  roles        Role[]
+  clients      Client[]
+  patients     Patient[]
+  appointments Appointment[]
+  visits       Visit[]
+}
+
+model Location {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  users        User[]
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([organizationId])
+}
+
+// v1 role capabilities are fixed (Receptionist, Technician, Veterinarian,
+// Practice Manager, Hospital Owner) per the permission doc, but Role stays a
+// real table — not an enum — because the domain model defines Role as an
+// administrable object ("created, assigned, modified, retired") with future
+// custom/location-specific roles. Seed the v1 set as data, not schema.
+model Role {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  users        User[]       @relation("UserRoles")
+
+  @@unique([organizationId, name])
+}
+
+model User {
+  id             String    @id @default(cuid())
+  organizationId String
+  email          String    @unique
+  name           String
+  // Sparki owns authorization; WorkOS AuthKit owns authentication (see
+  // apps/api/src/auth). Nullable until real sign-in issues this.
+  workosUserId   String?   @unique
+  deactivatedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization         Organization  @relation(fields: [organizationId], references: [id])
+  roles                Role[]        @relation("UserRoles")
+  locations            Location[]
+  createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
+  providedAppointments Appointment[] @relation("AppointmentProvider")
+  ownedVisits          Visit[]       @relation("VisitOwner")
+  authoredSoapNotes    SoapNote[]    @relation("SoapNoteAuthor")
+  signedSoapNotes      SoapNote[]    @relation("SoapNoteVeterinarian")
+
+  @@index([organizationId])
+}
+
+// --- Client / Patient -----------------------------------------------------
+// docs/blueprint/08-core-domain-model-v1.md (Client, Patient) and
+// docs/specs/modules/01-patient-workspace-mvp.md ("Client Context": primary +
+// secondary client, so Patient<->Client is many-to-many with a primary flag).
+
+model Client {
+  id                     String  @id @default(cuid())
+  organizationId         String
+  firstName              String
+  lastName               String
+  email                  String?
+  phone                  String?
+  preferredContactMethod String?
+
+  // Migration/provenance (see schema-level note above). Set only by a future
+  // migration workflow; nullable because native (non-imported) records have
+  // no source system.
+  sourceSystem     String?
+  sourceId         String?
+  sourceConfidence Float?
+  importedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  patients     PatientClient[]
+  appointments Appointment[]
+  visits       Visit[]
+
+  @@index([organizationId])
+  // Fuzzy/substring matching for Patient Search's "search by client name";
+  // expression index (not a plain column index) because the searchable name
+  // is firstName || ' ' || lastName. See migration.sql for the raw
+  // CREATE INDEX this can't express in Prisma schema syntax.
+}
+
+enum PatientStatus {
+  Active
+  Inactive
+  Deceased
+  Transferred
+  Unknown
+}
+
+model Patient {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  species        String
+  breed          String?
+  sex            String?
+  dateOfBirth    DateTime?
+  weight         Float?
+  color          String?
+  status         PatientStatus @default(Active)
+
+  // Migration/provenance (see schema-level note above). Set only by a future
+  // migration workflow; nullable because native (non-imported) records have
+  // no source system.
+  sourceSystem     String?
+  sourceId         String?
+  sourceConfidence Float?
+  importedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization  Organization    @relation(fields: [organizationId], references: [id])
+  clients       PatientClient[]
+  appointments  Appointment[]
+  visits        Visit[]
+  medicalRecord MedicalRecord?
+
+  @@index([organizationId])
+  @@index([organizationId, name])
+  // Fuzzy/substring matching for Patient Search's "search by patient name".
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model PatientClient {
+  patientId String
+  clientId  String
+  isPrimary Boolean @default(false)
+
+  patient Patient @relation(fields: [patientId], references: [id])
+  client  Client  @relation(fields: [clientId], references: [id])
+
+  @@id([patientId, clientId])
+}
+
+// --- Appointment -----------------------------------------------------------
+// docs/specs/modules/04-scheduling-mvp.md: required data, appointment types,
+// and the closed MVP state model.
+
+enum AppointmentType {
+  WellnessPreventiveCare
+  SickVisit
+  Recheck
+  TechnicianAppointment
+  Vaccination
+  SurgeryProcedure
+  DropOff
+  EmergencyUrgent
+  Telemedicine
+  Euthanasia
+  BoardingNonMedical
+}
+
+enum AppointmentSource {
+  Phone
+  InClinic
+  FollowUp
+  Reminder
+  ExternalIntegration
+  Migration
+  Other
+}
+
+enum AppointmentState {
+  Draft
+  Scheduled
+  PreVisitPending
+  Confirmed
+  Arrived
+  VisitCreated
+  Completed
+  Rescheduled
+  Cancelled
+  NoShow
+}
+
+model Appointment {
+  id                     String  @id @default(cuid())
+  organizationId         String
+  locationId             String
+  // Nullable: "Appointment creation should be possible with provisional
+  // Patient or Client when phone-call reality requires it" (scheduling spec).
+  patientId              String?
+  provisionalPatientName String?
+  clientId               String?
+  provisionalClientName  String?
+
+  type   AppointmentType
+  reason String
+  source AppointmentSource
+  state  AppointmentState  @default(Draft)
+
+  scheduledAt             DateTime
+  expectedDurationMinutes Int?
+
+  providerId String?
+
+  createdById String?
+
+  // Migration/provenance (see schema-level note above). Set only by a future
+  // migration workflow; nullable because native (non-imported) records have
+  // no source system.
+  sourceSystem     String?
+  sourceId         String?
+  sourceConfidence Float?
+  importedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  patient      Patient?     @relation(fields: [patientId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
+  provider     User?        @relation("AppointmentProvider", fields: [providerId], references: [id])
+  createdBy    User?        @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  visit        Visit?
+
+  @@index([organizationId])
+  @@index([locationId, scheduledAt])
+  @@index([patientId])
+}
+
+// --- Visit -------------------------------------------------------------
+// docs/specs/modules/02-visit-lifecycle-mvp.md: entry sources and the closed
+// 47-state MVP state machine (Visit State is a property of Visit, not a
+// separate object, per docs/blueprint/08-core-domain-model-v1.md).
+
+enum VisitType {
+  Scheduled
+  WalkIn
+  Emergency
+  DropOff
+  Telemedicine
+  TechnicianAppointment
+  SurgeryAdmission
+  HospitalizationContinuation
+  FollowUp
+}
+
+enum VisitState {
+  IntentCreated
+  Scheduled
+  PreVisitPending
+  Confirmed
+  Arrived
+  CheckInInProgress
+  ArrivedWithExceptions
+  Triaged
+  Waiting
+  ReadyForIntake
+  IntakeInProgress
+  VeterinarianExamReady
+  VeterinarianExamInProgress
+  PlanDrafted
+  EstimateNeeded
+  EstimatePrepared
+  ClientApprovalPending
+  Approved
+  PartiallyApproved
+  Declined
+  DiagnosticsPending
+  DiagnosticsInProgress
+  ResultsPending
+  ResultsReady
+  VeterinarianReviewPending
+  TreatmentPending
+  TreatmentInProgress
+  TreatmentComplete
+  MedicationPending
+  ClientCommunicationPending
+  FollowUpPending
+  CheckoutReady
+  CheckoutInProgress
+  PaymentPending
+  PaymentComplete
+  RecordCompletionPending
+  RecordComplete
+  VisitClosing
+  VisitClosingWithExceptions
+  Archived
+  ArchivedWithExceptions
+  Cancelled
+  CancelledAfterArrival
+  NoShow
+  Rescheduled
+  Referred
+  Deferred
+}
+
+model Visit {
+  id             String  @id @default(cuid())
+  organizationId String
+  locationId     String
+  patientId      String
+  clientId       String?
+  appointmentId  String? @unique
+
+  visitType VisitType
+  reason    String
+  state     VisitState @default(IntentCreated)
+
+  currentOwnerId String?
+  nextAction     String?
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  location        Location       @relation(fields: [locationId], references: [id])
+  patient         Patient        @relation(fields: [patientId], references: [id])
+  client          Client?        @relation(fields: [clientId], references: [id])
+  appointment     Appointment?   @relation(fields: [appointmentId], references: [id])
+  currentOwner    User?          @relation("VisitOwner", fields: [currentOwnerId], references: [id])
+  medicalRecord   MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
+  medicalRecordId String?
+  soapNotes       SoapNote[]
+
+  @@index([organizationId])
+  @@index([patientId])
+  @@index([state])
+}
+
+// --- Medical Record / SOAP Note ------------------------------------------
+// docs/specs/modules/03-medical-records-mvp.md: one Medical Record per
+// Patient; SOAP Note draft/review/sign/lock/amend/void lifecycle.
+
+model MedicalRecord {
+  id        String @id @default(cuid())
+  patientId String @unique
+
+  // Migration/provenance (see schema-level note above). Set only by a future
+  // migration workflow; nullable because native (non-imported) records have
+  // no source system.
+  sourceSystem     String?
+  sourceId         String?
+  sourceConfidence Float?
+  importedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient   Patient    @relation(fields: [patientId], references: [id])
+  soapNotes SoapNote[]
+  visits    Visit[]
+}
+
+enum SoapNoteStatus {
+  Draft
+  ReadyForReview
+  Signed
+  Locked
+  Amended
+  Voided
+}
+
+model SoapNote {
+  id              String  @id @default(cuid())
+  medicalRecordId String
+  visitId         String
+  authorId        String
+  veterinarianId  String?
+
+  subjective String?
+  objective  String?
+  assessment String?
+  plan       String?
+
+  status   SoapNoteStatus @default(Draft)
+  signedAt DateTime?
+
+  // Migration/provenance (see schema-level note above). Set only by a future
+  // migration workflow; nullable because native (non-imported) records have
+  // no source system.
+  sourceSystem     String?
+  sourceId         String?
+  sourceConfidence Float?
+  importedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  visit         Visit         @relation(fields: [visitId], references: [id])
+  author        User          @relation("SoapNoteAuthor", fields: [authorId], references: [id])
+  veterinarian  User?         @relation("SoapNoteVeterinarian", fields: [veterinarianId], references: [id])
+
+  @@index([medicalRecordId])
+  @@index([visitId])
+}

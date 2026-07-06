@@ -155,22 +155,22 @@ function SectionShell({
 }: {
   title: string;
   count: number;
-  tone?: 'waiting' | 'active' | 'checkout' | 'completed' | 'upcoming';
+  tone?: 'waiting' | 'active' | 'checkout' | 'completed' | 'upcoming' | 'rail';
   children: ReactNode;
 }) {
   const headingId = `${title.replace(/\W+/g, '-').toLowerCase()}-heading`;
 
   return (
-    <section
-      className={tone ? `ops-section ops-section--${tone}` : 'ops-section'}
-      aria-labelledby={headingId}
-    >
-      <div className="ops-section__header">
+    <details className={tone ? `ops-section ops-section--${tone}` : 'ops-section'} open>
+      <summary className="ops-section__header">
         <h2 id={headingId}>{title}</h2>
-        <span>{count}</span>
-      </div>
-      {children}
-    </section>
+        <span className="ops-section__toggle">
+          <span className="ops-section__count">{count}</span>
+          <span className="ops-section__chevron" aria-hidden="true" />
+        </span>
+      </summary>
+      <div className="ops-section__body">{children}</div>
+    </details>
   );
 }
 
@@ -348,11 +348,7 @@ function ProviderContext({ dashboard }: { dashboard: OperationsDashboard }) {
   }, [dashboard]);
 
   return (
-    <section className="ops-section ops-section--rail" aria-labelledby="provider-context-heading">
-      <div className="ops-section__header">
-        <h2 id="provider-context-heading">Provider / Technician Context</h2>
-        <span>{people.length}</span>
-      </div>
+    <SectionShell title="Provider / Technician Context" count={people.length} tone="rail">
       {people.length > 0 ? (
         <div className="ops-provider-list">
           {people.slice(0, 8).map(({ person, active, upcoming, nextPatient }) => (
@@ -376,7 +372,7 @@ function ProviderContext({ dashboard }: { dashboard: OperationsDashboard }) {
       ) : (
         <EmptyQueue label="No provider or technician assignments in the current dashboard snapshot." />
       )}
-    </section>
+    </SectionShell>
   );
 }
 
@@ -599,11 +595,7 @@ export function OperationsCommandCenter() {
 
               <ProviderContext dashboard={dashboard} />
 
-              <section className="ops-section ops-section--rail" aria-labelledby="state-counts-heading">
-                <div className="ops-section__header">
-                  <h2 id="state-counts-heading">Visit States</h2>
-                  <span>{dashboard.visitsByState.length}</span>
-                </div>
+              <SectionShell title="Visit States" count={dashboard.visitsByState.length} tone="rail">
                 {dashboard.visitsByState.length > 0 ? (
                   <div className="ops-state-list">
                     {dashboard.visitsByState.map((state) => (
@@ -616,7 +608,7 @@ export function OperationsCommandCenter() {
                 ) : (
                   <EmptyQueue label="No open visit states in the current snapshot." />
                 )}
-              </section>
+              </SectionShell>
             </aside>
           </div>
         </>

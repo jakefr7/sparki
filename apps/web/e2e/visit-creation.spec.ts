@@ -1,7 +1,8 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
+import { fixtureId } from './support/fixture-id';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
-const RUN_ID = Date.now();
+const RUN_ID = fixtureId();
 
 async function createPatient(request: APIRequestContext, suffix: string) {
   const clientResponse = await request.post(`${API_URL}/clients`, {

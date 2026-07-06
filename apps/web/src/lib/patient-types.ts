@@ -7,6 +7,8 @@ export interface PrimaryClientSummary {
   preferredContactMethod: string | null;
 }
 
+export type ClientSearchResult = PrimaryClientSummary;
+
 export interface PatientSearchResult {
   id: string;
   name: string;
@@ -88,6 +90,34 @@ export interface UpcomingAppointment {
   scheduledAt: string;
   expectedDurationMinutes: number | null;
   state: string;
+}
+
+export interface DashboardAppointmentSummary {
+  id: string;
+  type: string;
+  reason: string;
+  state: string;
+  scheduledAt: string;
+  expectedDurationMinutes: number | null;
+  patient: {
+    id: string;
+    name: string;
+    species: string;
+  } | null;
+  client: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+  provider: {
+    id: string;
+    displayName: string;
+    role: string;
+  } | null;
+}
+
+export interface OperationsDashboard {
+  todaysAppointments: DashboardAppointmentSummary[];
 }
 
 export interface PatientWorkspace {

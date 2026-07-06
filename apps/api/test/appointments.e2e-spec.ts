@@ -74,7 +74,7 @@ describe('Appointments (e2e)', () => {
     await prisma.patientClient.deleteMany({ where: { patientId } });
     await prisma.patient.deleteMany({ where: { id: patientId } });
     await prisma.client.deleteMany({
-      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+      where: { id: { in: [primaryClientId, secondaryClientId, otherOrgClientId] } },
     });
     await prisma.location.deleteMany({ where: { organizationId: otherOrganizationId } });
     await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
@@ -282,6 +282,55 @@ describe('Appointments (e2e)', () => {
       const response = await request(app.getHttpServer()).get(`/appointments/${created.id}`);
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /appointments/:id/link-patient', () => {
+    it('links an open appointment to a patient in the same organization', async () => {
+      const appointment = await prisma.appointment.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          clientId: primaryClientId,
+          type: 'Vaccination',
+          reason: 'New patient appointment',
+          source: 'Phone',
+          state: 'Scheduled',
+          scheduledAt: new Date('2027-02-01T15:00:00.000Z'),
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(`/appointments/${appointment.id}/link-patient`)
+        .send({ patientId, clientId: primaryClientId });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        id: appointment.id,
+        patientId,
+        clientId: primaryClientId,
+      });
+    });
+
+    it('rejects linking an appointment that already has another patient', async () => {
+      const appointment = await seedAppointment('Scheduled');
+      const otherPatient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Other Link Patient',
+          species: 'Canine',
+          clients: { create: [{ clientId: primaryClientId, isPrimary: true }] },
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .post(`/appointments/${appointment.id}/link-patient`)
+        .send({ patientId: otherPatient.id, clientId: primaryClientId });
+
+      expect(response.status).toBe(409);
+
+      await prisma.patientClient.deleteMany({ where: { patientId: otherPatient.id } });
+      await prisma.patient.delete({ where: { id: otherPatient.id } });
     });
   });
 

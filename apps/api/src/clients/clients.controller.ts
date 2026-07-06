@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ClientsService } from './clients.service';
 import { createClientSchema, type CreateClientInput } from './dto/create-client.schema';
+import { searchClientsQuerySchema, type SearchClientsQuery } from './dto/search-clients.schema';
 
 @Controller('clients')
 export class ClientsController {
@@ -15,6 +16,15 @@ export class ClientsController {
     @Body(new ZodValidationPipe(createClientSchema)) body: CreateClientInput,
   ) {
     return this.clients.create(user.organizationId, body);
+  }
+
+  // Must come before ':id' so it isn't matched as a client ID.
+  @Get('search')
+  search(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(searchClientsQuerySchema)) query: SearchClientsQuery,
+  ) {
+    return this.clients.search(user.organizationId, query.query, query.limit);
   }
 
   @Get(':id')

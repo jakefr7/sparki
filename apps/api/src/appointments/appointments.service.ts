@@ -5,7 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { prisma, type AppointmentSource, type AppointmentState } from '@sparki/db';
-import type { CreateAppointmentInput } from './dto/create-appointment.schema';
+import type {
+  CreateAppointmentInput,
+  LinkAppointmentPatientInput,
+} from './dto/create-appointment.schema';
 
 /**
  * This slice creates appointments directly as committed bookings from
@@ -116,6 +119,46 @@ export class AppointmentsService {
       throw new NotFoundException(`Appointment ${id} not found`);
     }
     return appointment;
+  }
+
+  async linkPatient(id: string, organizationId: string, input: LinkAppointmentPatientInput) {
+    const appointment = await this.findById(id, organizationId);
+    const patient = await prisma.patient.findFirst({
+      where: { id: input.patientId, organizationId },
+      include: { clients: { where: { isPrimary: true }, include: { client: true } } },
+    });
+
+    if (!patient) {
+      throw new NotFoundException(`Patient ${input.patientId} not found`);
+    }
+
+    if (appointment.patientId && appointment.patientId !== patient.id) {
+      throw new ConflictException(`Appointment ${id} already has a patient`);
+    }
+
+    const clientId = input.clientId ?? patient.clients[0]?.client.id ?? null;
+    if (input.clientId) {
+      const client = await prisma.client.findFirst({
+        where: { id: input.clientId, organizationId },
+      });
+      if (!client) {
+        throw new BadRequestException(
+          `Client ${input.clientId} not found in organization ${organizationId}`,
+        );
+      }
+    }
+
+    if (appointment.clientId && clientId && appointment.clientId !== clientId) {
+      throw new BadRequestException(`Appointment ${id} belongs to a different client`);
+    }
+
+    return prisma.appointment.update({
+      where: { id },
+      data: {
+        patientId: patient.id,
+        clientId: appointment.clientId ?? clientId,
+      },
+    });
   }
 
   async listUpcomingForPatient(patientId: string, organizationId: string, limit = 5) {

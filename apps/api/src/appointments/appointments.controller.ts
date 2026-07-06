@@ -5,7 +5,9 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AppointmentsService } from './appointments.service';
 import {
   createAppointmentSchema,
+  linkAppointmentPatientSchema,
   type CreateAppointmentInput,
+  type LinkAppointmentPatientInput,
 } from './dto/create-appointment.schema';
 
 @Controller('appointments')
@@ -23,6 +25,15 @@ export class AppointmentsController {
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.appointments.findById(id, user.organizationId);
+  }
+
+  @Post(':id/link-patient')
+  linkPatient(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(linkAppointmentPatientSchema)) body: LinkAppointmentPatientInput,
+  ) {
+    return this.appointments.linkPatient(id, user.organizationId, body);
   }
 
   @Post(':id/confirm')

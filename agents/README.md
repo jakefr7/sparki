@@ -26,6 +26,16 @@ The Constitution is the highest product authority in the repository. Agent role 
 - Agents should add TODOs when future work needs validation, research, or constitutional alignment.
 - Agents should not cross role boundaries silently.
 
+## Local Testing Ports
+
+Use these defaults for local web/e2e work unless the user explicitly says otherwise:
+
+- API: `http://127.0.0.1:4000`
+- Web app for Playwright/e2e: `http://127.0.0.1:3001`
+- Prefer `127.0.0.1` over `localhost` to avoid IPv6 `::1` sandbox/connectivity issues.
+- Avoid port `3000` for e2e web runs; it is commonly occupied by another local service in this workspace.
+- When starting servers manually, run Playwright with `PLAYWRIGHT_SKIP_WEB_SERVER=1`, `API_URL=http://127.0.0.1:4000`, and `WEB_PORT=3001`.
+
 ## Handoff Expectations
 
 When work crosses roles:

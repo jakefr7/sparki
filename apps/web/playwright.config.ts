@@ -7,10 +7,10 @@ import { defineConfig, devices } from '@playwright/test';
 // value the same way, so the zod schema's 'development' default is fine.
 process.env.DATABASE_URL ??= 'postgresql://sparki:sparki@localhost:55432/sparki?schema=public';
 process.env.API_PORT ??= '4000';
-process.env.API_URL ??= 'http://localhost:4000';
-process.env.WEB_PORT ??= '3000';
+process.env.API_URL ??= 'http://127.0.0.1:4000';
+process.env.WEB_PORT ??= '3001';
 
-const WEB_URL = `http://localhost:${process.env.WEB_PORT}`;
+const WEB_URL = `http://127.0.0.1:${process.env.WEB_PORT}`;
 const shouldStartWebServers = process.env.PLAYWRIGHT_SKIP_WEB_SERVER !== '1';
 
 export default defineConfig({

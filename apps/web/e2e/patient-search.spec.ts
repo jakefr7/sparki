@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { fixtureId } from './support/fixture-id';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
-const RUN_ID = Date.now();
+const RUN_ID = fixtureId();
 const CLIENT_FIRST_NAME = 'Playwright';
 const CLIENT_LAST_NAME = `Client ${RUN_ID}`;
 const CLIENT_NAME = `${CLIENT_FIRST_NAME} ${CLIENT_LAST_NAME}`;

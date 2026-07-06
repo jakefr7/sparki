@@ -20,6 +20,10 @@ Full role definition: [agents/claude.md](./agents/claude.md).
 
 Do not skip ahead to source code before reading the Constitution and architecture doc — engineering decisions here are downstream of product law, not independent of it.
 
+## Local Testing Defaults
+
+For local web/e2e work, use the shared port convention in [agents/README.md](./agents/README.md): API on `http://127.0.0.1:4000`, web on `http://127.0.0.1:3001`, `WEB_PORT=3001`, and `PLAYWRIGHT_SKIP_WEB_SERVER=1` when servers are started manually. Avoid `localhost` and port `3000` for Playwright runs in this workspace.
+
 ## Product vs Engineering: Decision Boundaries
 
 **Product decides:** workflows, UX, product philosophy, what problem is being solved and for whom, prioritization of features.

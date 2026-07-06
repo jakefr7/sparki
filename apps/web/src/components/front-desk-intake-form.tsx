@@ -170,6 +170,7 @@ export function FrontDeskIntakeForm() {
 
   function changeClient() {
     setSelectedClient(null);
+    setVisitMode('walkin');
     requestAnimationFrame(() => clientSearchRef.current?.focus());
   }
 
@@ -247,7 +248,7 @@ export function FrontDeskIntakeForm() {
         }
         router.push('/');
       } else {
-        if (!selectedAppointmentId) {
+        if (!selectedClient || !selectedAppointmentId) {
           throw new Error("Choose today's appointment before creating the patient.");
         }
         const appointmentResponse = await fetch(
@@ -551,10 +552,11 @@ export function FrontDeskIntakeForm() {
               <input
                 type="radio"
                 name="visit-mode"
+                disabled={!selectedClient}
                 checked={visitMode === 'appointment'}
                 onChange={() => setVisitMode('appointment')}
               />
-              Scheduled Appointment
+              Link Existing Appointment
             </label>
             <label>
               <input
@@ -567,19 +569,29 @@ export function FrontDeskIntakeForm() {
             </label>
           </div>
 
+          <div className="front-desk-visit-support">
+            <p className="front-desk-muted">
+              Use this when the client already has an appointment today.
+            </p>
+            <button
+              type="button"
+              className="button-secondary front-desk-schedule-later"
+              disabled
+              title="Coming soon"
+            >
+              Schedule for later
+              <span>Coming soon</span>
+            </button>
+          </div>
+
           {visitMode === 'appointment' && (
             <div className="front-desk-appointments" aria-live="polite">
-              {!selectedClient && (
-                <p className="front-desk-muted">
-                  Choose an existing client first to see today&apos;s appointments.
-                </p>
-              )}
               {selectedClient && appointmentsLoading && (
                 <p className="front-desk-muted">Checking today&apos;s appointments…</p>
               )}
               {selectedClient && !appointmentsLoading && clientAppointments.length === 0 && (
                 <p className="front-desk-muted">
-                  No open appointments for this client today. Use Walk-In for an immediate visit.
+                  No appointments found today. Use Walk-In for now.
                 </p>
               )}
               {clientAppointments.length > 0 && (

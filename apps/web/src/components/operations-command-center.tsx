@@ -462,7 +462,12 @@ export function OperationsCommandCenter() {
             <p className="eyebrow">Command lookup</p>
             <h2>Find the visit, client, or patient</h2>
           </div>
-          <span className="ops-search-console__mode">Live records</span>
+          <div className="ops-search-console__actions">
+            <Link href="/patients/new" className="button-primary ops-registration-action">
+              Register Client
+            </Link>
+            <span className="ops-search-console__mode">Live records</span>
+          </div>
         </div>
         <PatientSearch />
       </section>

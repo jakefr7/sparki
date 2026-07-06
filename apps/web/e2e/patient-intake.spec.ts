@@ -13,6 +13,8 @@ const EXISTING_CLIENT_LAST_NAME = `Client ${RUN_ID}`;
 const EXISTING_CLIENT_PHONE = `555-01${RUN_ID.slice(-2)}`;
 const EXISTING_PATIENT_NAME = `Existing Intake Patient ${RUN_ID}`;
 const EXISTING_APPOINTMENT_REASON = `Vaccination booster ${RUN_ID}`;
+const NO_APPOINTMENT_CLIENT_FIRST_NAME = 'NoApptIntake';
+const NO_APPOINTMENT_CLIENT_LAST_NAME = `Client ${RUN_ID}`;
 
 let existingClientId: string;
 
@@ -40,6 +42,15 @@ test.beforeAll(async ({ request }) => {
       scheduledAt: new Date(Date.now() + 60 * 60 * 1000),
     },
   });
+
+  const noAppointmentClientResponse = await request.post(`${API_URL}/clients`, {
+    data: {
+      firstName: NO_APPOINTMENT_CLIENT_FIRST_NAME,
+      lastName: NO_APPOINTMENT_CLIENT_LAST_NAME,
+      phone: `555-02${RUN_ID.slice(-2)}`,
+    },
+  });
+  expect(noAppointmentClientResponse.ok()).toBe(true);
 });
 
 test('search with no match offers patient creation; new client + new patient walk-in opens the workspace and is searchable after refresh', async ({
@@ -58,6 +69,9 @@ test('search with no match offers patient creation; new client + new patient wal
   // Offer to create a new patient.
   await page.getByRole('link', { name: 'Create New Patient' }).click();
   await expect(page).toHaveURL('/patients/new');
+  await expect(page.getByRole('radio', { name: 'Walk-In' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Link Existing Appointment' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Schedule for later/ })).toBeDisabled();
 
   // New client (no existing match) + new patient, in one pass.
   await page.getByLabel('First name').fill(CLIENT_FIRST_NAME);
@@ -115,7 +129,8 @@ test('existing client search collapses the new-client fields; existing client + 
   await page.getByLabel('Age (years)').fill('4');
 
   await page.getByLabel('Reason for visit').fill(EXISTING_APPOINTMENT_REASON);
-  await page.getByRole('radio', { name: 'Scheduled Appointment' }).check();
+  await expect(page.getByText('Use this when the client already has an appointment today.')).toBeVisible();
+  await page.getByRole('radio', { name: 'Link Existing Appointment' }).check();
   await page
     .getByLabel(new RegExp(`Vaccination.*${EXISTING_APPOINTMENT_REASON}`))
     .check();
@@ -128,6 +143,23 @@ test('existing client search collapses the new-client fields; existing client + 
   ).toBeVisible();
   await expect(page.getByText('Scheduled').first()).toBeVisible();
   await expect(page.getByText(EXISTING_APPOINTMENT_REASON).first()).toBeVisible();
+});
+
+test('existing client with no appointment gets a clear walk-in message', async ({ page }) => {
+  await page.goto('/patients/new');
+
+  await page.getByLabel('Search existing client').fill(NO_APPOINTMENT_CLIENT_FIRST_NAME);
+  const match = page.getByRole('option', {
+    name: new RegExp(`${NO_APPOINTMENT_CLIENT_FIRST_NAME} ${NO_APPOINTMENT_CLIENT_LAST_NAME}`),
+  });
+  await expect(match).toBeVisible();
+  await match.click();
+
+  await expect(page.getByRole('radio', { name: 'Walk-In' })).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Link Existing Appointment' })).toBeEnabled();
+  await page.getByRole('radio', { name: 'Link Existing Appointment' }).check();
+
+  await expect(page.getByText('No appointments found today. Use Walk-In for now.')).toBeVisible();
 });
 
 test('requires the MVP client fields before creating a new client', async ({ page }) => {

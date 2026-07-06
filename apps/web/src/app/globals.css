@@ -134,6 +134,20 @@ body {
   white-space: nowrap;
 }
 
+.ops-search-console__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ops-registration-action {
+  min-height: 1.8rem;
+  padding-inline: 0.72rem;
+  font-size: 0.84rem;
+}
+
 .ops-home__rail {
   display: flex;
   flex-direction: column;
@@ -989,8 +1003,32 @@ body {
   color: CanvasText;
 }
 
+.front-desk-visit-mode label:has(input:disabled) {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .front-desk-visit-mode input {
   width: auto;
+}
+
+.front-desk-visit-support {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+}
+
+.front-desk-schedule-later {
+  gap: 0.45rem;
+}
+
+.front-desk-schedule-later span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: color-mix(in srgb, CanvasText 55%, transparent);
 }
 
 .front-desk-appointments {

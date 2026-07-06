@@ -1,0 +1,135 @@
+# Sparki
+
+Sparki is a veterinary operating system built around patient-centered workflow. See
+[`docs/blueprint/00-product-constitution.md`](./docs/blueprint/00-product-constitution.md) for
+product law and [`docs/engineering/00-engineering-plan.md`](./docs/engineering/00-engineering-plan.md)
+for the engineering roadmap this repo implements against.
+
+This README covers the **engineering foundation only** (Sprint 0): monorepo setup, local
+development, and the tooling every future feature builds on. It does not cover product behavior —
+that lives in `docs/`.
+
+If you're an AI collaborator, read [`README_FOR_CLAUDE.md`](./README_FOR_CLAUDE.md) or the
+relevant file in [`agents/`](./agents/README.md) before making changes.
+
+## Prerequisites
+
+- Node.js 20+ (see `.nvmrc`)
+- pnpm 8.7+ (`corepack enable` will pick up the version pinned in `package.json`)
+- Docker (for local Postgres)
+
+## Setup
+
+```bash
+cp .env.example .env
+pnpm install
+docker compose up -d          # starts Postgres on localhost:55432
+pnpm dev                       # runs apps/api and apps/web together
+```
+
+- API: http://localhost:4000 (health check at `/health/live`, `/health/ready`)
+- Web: http://localhost:3000
+
+### Database
+
+`prisma/schema.prisma` has the minimum model set for Sprint 1's vertical slice: `Organization`,
+`Location`, `User`, `Role`, `Client`, `Patient`, `Appointment`, `Visit`, `MedicalRecord`, and
+`SoapNote`. Event, Audit Event, Billing, Inventory, Labs, Communication, and AI fields are
+deliberately deferred; migration/provenance fields (source system, source ID, confidence,
+imported-at) are already present on every tenant record that may originate from a legacy system —
+see the comment block at the top of the schema file for why.
+
+```bash
+pnpm db:generate   # generate the Prisma client
+pnpm db:migrate     # create/apply a dev migration
+```
+
+`packages/db` exports both `prisma` (the generated client) and `pool` (a raw `pg` Pool, for the
+health check and any query that needs to bypass the ORM per the engineering plan).
+
+## Repository layout
+
+```text
+apps/
+  api/      NestJS API (modular monolith)
+  web/      Next.js frontend (App Router)
+
+packages/
+  config/   Shared, schema-validated environment loading (zod)
+  db/       Raw Postgres pool + (future) Prisma client
+
+prisma/
+  schema.prisma   Sprint 1 vertical-slice models (see "Database" above)
+
+docs/       Product Constitution, blueprints, ADRs, specs, engineering plan
+agents/     AI collaborator role definitions
+```
+
+Why this shape: see "Repository Strategy" in
+[`docs/engineering/00-engineering-plan.md`](./docs/engineering/00-engineering-plan.md).
+
+## Scripts
+
+Run from the repo root (Turborepo fans these out to every app/package):
+
+| Command                        | What it does                                                                  |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `pnpm dev`                     | Run api + web in watch mode                                                   |
+| `pnpm build`                   | Build every app/package                                                       |
+| `pnpm lint`                    | ESLint across the workspace                                                   |
+| `pnpm typecheck`               | `tsc --noEmit` across the workspace                                           |
+| `pnpm test`                    | Vitest (unit + e2e) across the workspace                                      |
+| `pnpm format` / `format:check` | Prettier write/check (code only — `docs/` is excluded, see `.prettierignore`) |
+
+Scope any of these to one package with `pnpm --filter @sparki/api <script>`.
+
+## Testing
+
+`apps/api` has both unit tests (`*.spec.ts`) and e2e tests (`test/*.e2e-spec.ts`, run through a
+real Nest application instance via Supertest). The e2e suite hits real Postgres tables (patients,
+clients, etc.), so **migrations must be applied** (`pnpm --filter @sparki/db run migrate`) and
+**Postgres must be running** (`docker compose up -d`) before `pnpm test`.
+
+`apps/web/e2e/*.spec.ts` are Playwright browser tests covering the Patient Search workflow
+end-to-end (real API, real Postgres, real browser — no mocking). Run with `pnpm test:e2e`; the
+Playwright config boots `apps/api` and `apps/web` in dev mode automatically
+(`apps/web/playwright.config.ts`), so no separate `pnpm dev` is needed first. First run only:
+`pnpm --filter @sparki/web exec playwright install --with-deps chromium`.
+
+## Authentication
+
+Every route goes through a global guard (`apps/api/src/auth/`); routes opt out explicitly with
+`@Public()` (see `health.controller.ts`). Which guard runs depends on `NODE_ENV`:
+
+- **`production`**: `AuthGuard`, backed by `AuthService`, which wraps
+  [WorkOS AuthKit](https://workos.com/docs/authkit) per the engineering plan's recommendation — it
+  throws `NotImplementedException` until `WORKOS_API_KEY` is configured and real session
+  verification is implemented (a future task, not this one).
+- **`development` / `test`**: `DevelopmentAuthGuard`, which attaches a fake `AuthenticatedUser`
+  (id, email, `organizationId`, `locationId`, `roles`) backed by a real, idempotently-seeded
+  Organization/Location/Role/User (`DEV_ORGANIZATION_ID` etc. in
+  `development-user.service.ts`). This lets every controller read `organizationId` from
+  `@CurrentUser()` exactly as it will in production, without live WorkOS credentials. The guard
+  refuses to construct at all if `NODE_ENV=production`.
+
+Controllers never take `organizationId` as a request parameter — it always comes from
+`@CurrentUser()`.
+
+## CI
+
+`.github/workflows/ci.yml` runs format check, lint, typecheck, build, and test against a Postgres
+service container on every push/PR to `main`.
+
+## Environment variables
+
+See `.env.example`. Validation lives in `packages/config` (`apiEnvSchema` / `webEnvSchema`) —
+`apps/api` requires `DATABASE_URL`; `apps/web` does not.
+
+Prisma CLI, Nest, and Next.js don't auto-load a monorepo-root `.env` on their own (Prisma only
+looks next to `schema.prisma`; Next.js only looks in the app's own directory). Every script that
+needs it (`dev`, `start`, `migrate`, `migrate:deploy`, `generate`, `studio`) is wrapped with
+`dotenv-cli` (`dotenv -e ../../.env -- <command>`) so `cp .env.example .env` is genuinely
+sufficient — no exporting env vars by hand. In CI, `.env` doesn't exist at all; `dotenv-cli`
+silently no-ops when the file is missing and the job's real environment variables (set in
+`ci.yml`) pass through untouched.
+# sparki

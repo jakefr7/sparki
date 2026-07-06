@@ -4,7 +4,11 @@ import { prisma } from '@sparki/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
-import { DEV_LOCATION_ID, DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
+import {
+  DEV_LOCATION_ID,
+  DEV_ORGANIZATION_ID,
+  DEV_USER_ID,
+} from '../src/auth/development-user.service';
 
 describe('Visits (e2e)', () => {
   let app: INestApplication;
@@ -556,6 +560,99 @@ describe('Visits (e2e)', () => {
       });
 
       const response = await request(app.getHttpServer()).get(`/visits/${otherVisit.id}`);
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('POST /visits/:id/start', () => {
+    async function createVisit(
+      patientId: string,
+      state: 'Arrived' | 'ReadyForIntake' | 'IntakeInProgress' | 'CheckoutReady' | 'Archived',
+    ) {
+      return prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'WalkIn',
+          reason: 'Start transition fixture',
+          state,
+          primaryVeterinarianId: DEV_USER_ID,
+        },
+      });
+    }
+
+    it.each(['Arrived', 'ReadyForIntake'] as const)(
+      'transitions a Visit in %s to IntakeInProgress and sets lastUpdatedById',
+      async (state) => {
+        const patientId = await createPatient(`Start Visit Patient ${state}`);
+        const visit = await createVisit(patientId, state);
+
+        const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
+
+        expect(response.status).toBe(201);
+        expect(response.body).toMatchObject({
+          id: visit.id,
+          state: 'IntakeInProgress',
+          lastUpdatedById: DEV_USER_ID,
+          primaryVeterinarianId: DEV_USER_ID,
+        });
+      },
+    );
+
+    it('is a safe no-op for a Visit already past intake', async () => {
+      const patientId = await createPatient('Already Started Visit Patient');
+      const visit = await createVisit(patientId, 'CheckoutReady');
+
+      const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ id: visit.id, state: 'CheckoutReady' });
+
+      const unchanged = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      expect(unchanged.state).toBe('CheckoutReady');
+      expect(unchanged.updatedAt.getTime()).toBe(visit.updatedAt.getTime());
+    });
+
+    it('is idempotent when called again after already starting', async () => {
+      const patientId = await createPatient('Restart Visit Patient');
+      const visit = await createVisit(patientId, 'Arrived');
+
+      await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
+      const second = await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
+
+      expect(second.status).toBe(201);
+      expect(second.body.state).toBe('IntakeInProgress');
+    });
+
+    it('rejects starting a terminal Visit with 409', async () => {
+      const patientId = await createPatient('Terminal Visit Patient');
+      const visit = await createVisit(patientId, 'Archived');
+
+      const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
+
+      expect(response.status).toBe(409);
+    });
+
+    it('returns 404 when the Visit belongs to a different organization', async () => {
+      const otherVisit = await prisma.visit.create({
+        data: {
+          organizationId: otherOrganizationId,
+          locationId: (
+            await prisma.location.create({
+              data: { organizationId: otherOrganizationId, name: 'Other Org Start Location' },
+            })
+          ).id,
+          patientId: otherOrgPatientId,
+          visitType: 'WalkIn',
+          reason: 'Cross org start attempt',
+          state: 'Arrived',
+        },
+      });
+
+      const response = await request(app.getHttpServer()).post(`/visits/${otherVisit.id}/start`);
 
       expect(response.status).toBe(404);
     });

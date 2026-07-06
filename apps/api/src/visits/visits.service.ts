@@ -8,9 +8,20 @@ import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
-import { TERMINAL_VISIT_STATES } from './visit-states';
+import {
+  INTAKE_IN_PROGRESS_STATE,
+  STARTABLE_VISIT_STATES,
+  TERMINAL_VISIT_STATES,
+} from './visit-states';
 
-const visitInclude = { patient: true, client: true, appointment: true };
+const visitInclude = {
+  patient: true,
+  client: true,
+  appointment: true,
+  primaryVeterinarian: true,
+  assignedTechnician: true,
+  currentOwner: true,
+};
 
 /**
  * Default Visit type per Appointment type when the caller doesn't override
@@ -187,15 +198,35 @@ export class VisitsService {
   async listActiveForOrganization(organizationId: string) {
     return prisma.visit.findMany({
       where: { organizationId, state: { notIn: TERMINAL_VISIT_STATES } },
-      include: {
-        patient: true,
-        client: true,
-        appointment: true,
-        primaryVeterinarian: true,
-        assignedTechnician: true,
-        currentOwner: true,
-      },
+      include: visitInclude,
       orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * Advances a Visit from an arrival/pre-intake state into
+   * IntakeInProgress. Conservative by design: a Visit already past that
+   * point (mid-exam, checkout, etc.) is returned unchanged rather than
+   * forced through a transition the caller didn't ask for, and a terminal
+   * Visit is rejected outright rather than silently reactivated.
+   */
+  async start(id: string, organizationId: string, lastUpdatedById: string) {
+    const visit = await this.findById(id, organizationId);
+
+    if (TERMINAL_VISIT_STATES.includes(visit.state)) {
+      throw new ConflictException(
+        `Visit ${id} is in a terminal state (${visit.state}) and cannot be started`,
+      );
+    }
+
+    if (!STARTABLE_VISIT_STATES.includes(visit.state)) {
+      return visit;
+    }
+
+    return prisma.visit.update({
+      where: { id },
+      data: { state: INTAKE_IN_PROGRESS_STATE, lastUpdatedById },
+      include: visitInclude,
     });
   }
 }

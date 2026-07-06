@@ -21,4 +21,9 @@ export class VisitsController {
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.visits.findById(id, user.organizationId);
   }
+
+  @Post(':id/start')
+  start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.visits.start(id, user.organizationId, user.id);
+  }
 }

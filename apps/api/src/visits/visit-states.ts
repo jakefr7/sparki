@@ -31,3 +31,14 @@ export const ARRIVED_OR_WAITING_STATES: VisitState[] = [
   'Waiting',
   'ReadyForIntake',
 ];
+
+/**
+ * States `POST /visits/:id/start` will actually transition out of — the
+ * arrival/pre-intake states where "start" means something concrete
+ * (begin intake). Any other active state is already past that point, so
+ * starting from there is a no-op rather than an error.
+ */
+export const STARTABLE_VISIT_STATES: VisitState[] = ['Arrived', 'ReadyForIntake'];
+
+/** The single next state `start` moves a Visit into. */
+export const INTAKE_IN_PROGRESS_STATE: VisitState = 'IntakeInProgress';

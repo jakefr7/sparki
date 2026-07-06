@@ -176,6 +176,27 @@ export interface VisitDetail {
     scheduledAt: string;
     state: string;
   } | null;
+  primaryVeterinarian: {
+    id: string;
+    displayName: string | null;
+    firstName: string;
+    lastName: string;
+    role: string;
+  } | null;
+  assignedTechnician: {
+    id: string;
+    displayName: string | null;
+    firstName: string;
+    lastName: string;
+    role: string;
+  } | null;
+  currentOwner: {
+    id: string;
+    displayName: string | null;
+    firstName: string;
+    lastName: string;
+    role: string;
+  } | null;
 }
 
 /** Mirrors StaffService's response shape (apps/api/src/staff). */

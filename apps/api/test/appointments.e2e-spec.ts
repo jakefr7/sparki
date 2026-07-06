@@ -213,7 +213,9 @@ describe('Appointments (e2e)', () => {
         data: {
           organizationId: otherOrganizationId,
           email: `other-org-user-${Date.now()}@example.com`,
-          name: 'Other Org Vet',
+          firstName: 'Other Org',
+          lastName: 'Vet',
+          role: 'VETERINARIAN',
         },
       });
 

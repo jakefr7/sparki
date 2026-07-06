@@ -5,7 +5,6 @@ const prisma = new PrismaClient();
 
 const DEV_ORGANIZATION_ID = 'dev-organization';
 const DEV_LOCATION_ID = 'dev-location';
-const DEV_USER_ID = 'dev-user';
 
 function todayAt(hour, minute) {
   const date = new Date();
@@ -16,6 +15,114 @@ function todayAt(hour, minute) {
 function dateOfBirth(isoDate) {
   return new Date(`${isoDate}T12:00:00.000Z`);
 }
+
+// Fixed, well-known IDs (not generated cuids) so repeated runs upsert the
+// same rows instead of accumulating duplicates.
+const STAFF = [
+  {
+    id: 'staff-owner',
+    firstName: 'Renee',
+    lastName: 'Castillo',
+    email: 'renee.castillo@sparkidemo.vet',
+    role: 'OWNER',
+    jobTitle: 'Hospital Owner',
+    canReceiveAppointments: false,
+    canOwnVisits: false,
+    color: '#7C3AED',
+  },
+  {
+    id: 'staff-practice-manager',
+    firstName: 'Dana',
+    lastName: 'Whitfield',
+    email: 'dana.whitfield@sparkidemo.vet',
+    role: 'PRACTICE_MANAGER',
+    jobTitle: 'Practice Manager',
+    canReceiveAppointments: false,
+    canOwnVisits: false,
+    color: '#0EA5E9',
+  },
+  {
+    id: 'staff-front-desk-1',
+    firstName: 'Marcus',
+    lastName: 'Nguyen',
+    email: 'marcus.nguyen@sparkidemo.vet',
+    role: 'FRONT_DESK',
+    jobTitle: 'Front Desk Coordinator',
+    canReceiveAppointments: false,
+    canOwnVisits: true,
+    color: '#F59E0B',
+  },
+  {
+    id: 'staff-front-desk-2',
+    firstName: 'Lauren',
+    lastName: 'Obi',
+    email: 'lauren.obi@sparkidemo.vet',
+    role: 'FRONT_DESK',
+    jobTitle: 'Front Desk Coordinator',
+    canReceiveAppointments: false,
+    canOwnVisits: true,
+    color: '#F97316',
+  },
+  {
+    id: 'staff-vet-1',
+    firstName: 'Priya',
+    lastName: 'Shah',
+    displayName: 'Dr. Priya Shah',
+    email: 'priya.shah@sparkidemo.vet',
+    role: 'VETERINARIAN',
+    jobTitle: 'Veterinarian',
+    licenseNumber: 'VET-10432',
+    canReceiveAppointments: true,
+    canOwnVisits: true,
+    color: '#059669',
+  },
+  {
+    id: 'staff-vet-2',
+    firstName: 'Owen',
+    lastName: 'Brennan',
+    displayName: 'Dr. Owen Brennan',
+    email: 'owen.brennan@sparkidemo.vet',
+    role: 'VETERINARIAN',
+    jobTitle: 'Veterinarian',
+    licenseNumber: 'VET-10877',
+    canReceiveAppointments: true,
+    canOwnVisits: true,
+    color: '#16A34A',
+  },
+  {
+    id: 'staff-tech-1',
+    firstName: 'Kayla',
+    lastName: 'Morris',
+    email: 'kayla.morris@sparkidemo.vet',
+    role: 'TECHNICIAN',
+    jobTitle: 'Veterinary Technician',
+    canReceiveAppointments: true,
+    canOwnVisits: true,
+    color: '#DB2777',
+  },
+  {
+    id: 'staff-tech-2',
+    firstName: 'Ben',
+    lastName: 'Alvarado',
+    email: 'ben.alvarado@sparkidemo.vet',
+    role: 'TECHNICIAN',
+    jobTitle: 'Veterinary Technician',
+    canReceiveAppointments: true,
+    canOwnVisits: true,
+    color: '#DC2626',
+  },
+  {
+    id: 'staff-tech-3',
+    firstName: 'Sofia',
+    lastName: 'Ramirez',
+    email: 'sofia.ramirez@sparkidemo.vet',
+    role: 'TECHNICIAN',
+    jobTitle: 'Veterinary Technician',
+    canReceiveAppointments: true,
+    canOwnVisits: true,
+    color: '#EA580C',
+  },
+];
 
 async function ensureDevClinic() {
   const organization = await prisma.organization.upsert({
@@ -34,36 +141,60 @@ async function ensureDevClinic() {
     },
   });
 
-  const roleNames = ['Receptionist', 'Technician', 'Veterinarian', 'Practice Manager'];
-  const roles = [];
-  for (const name of roleNames) {
-    roles.push(
-      await prisma.role.upsert({
-        where: { organizationId_name: { organizationId: organization.id, name } },
-        update: {},
-        create: { organizationId: organization.id, name },
-      }),
-    );
+  for (const member of STAFF) {
+    await prisma.user.upsert({
+      where: { id: member.id },
+      update: {
+        organizationId: organization.id,
+        email: member.email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        displayName: member.displayName ?? null,
+        role: member.role,
+        isActive: true,
+        locations: { set: [{ id: location.id }] },
+        staffProfile: {
+          upsert: {
+            update: {
+              jobTitle: member.jobTitle,
+              licenseNumber: member.licenseNumber ?? null,
+              canReceiveAppointments: member.canReceiveAppointments,
+              canOwnVisits: member.canOwnVisits,
+              color: member.color,
+            },
+            create: {
+              jobTitle: member.jobTitle,
+              licenseNumber: member.licenseNumber ?? null,
+              canReceiveAppointments: member.canReceiveAppointments,
+              canOwnVisits: member.canOwnVisits,
+              color: member.color,
+            },
+          },
+        },
+      },
+      create: {
+        id: member.id,
+        organizationId: organization.id,
+        email: member.email,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        displayName: member.displayName ?? null,
+        role: member.role,
+        locations: { connect: [{ id: location.id }] },
+        staffProfile: {
+          create: {
+            jobTitle: member.jobTitle,
+            licenseNumber: member.licenseNumber ?? null,
+            canReceiveAppointments: member.canReceiveAppointments,
+            canOwnVisits: member.canOwnVisits,
+            color: member.color,
+          },
+        },
+      },
+    });
   }
 
-  await prisma.user.upsert({
-    where: { id: DEV_USER_ID },
-    update: {
-      organizationId: organization.id,
-      email: 'dev@sparki.local',
-      name: 'Development User',
-      locations: { set: [{ id: location.id }] },
-      roles: { set: roles.map((role) => ({ id: role.id })) },
-    },
-    create: {
-      id: DEV_USER_ID,
-      organizationId: organization.id,
-      email: 'dev@sparki.local',
-      name: 'Development User',
-      locations: { connect: [{ id: location.id }] },
-      roles: { connect: roles.map((role) => ({ id: role.id })) },
-    },
-  });
+  return { organization, location };
 }
 
 async function clearDevClinicalData() {
@@ -137,7 +268,8 @@ async function createPatientCase({ client, patient, appointment, visit }) {
         state: appointment.state,
         scheduledAt: appointment.scheduledAt,
         expectedDurationMinutes: appointment.expectedDurationMinutes ?? 30,
-        createdById: DEV_USER_ID,
+        providerId: appointment.providerId ?? null,
+        createdById: 'staff-front-desk-1',
       },
     });
   }
@@ -153,7 +285,11 @@ async function createPatientCase({ client, patient, appointment, visit }) {
         visitType: visit.visitType,
         reason: visit.reason,
         state: visit.state,
-        currentOwnerId: DEV_USER_ID,
+        currentOwnerId: visit.currentOwnerId ?? 'staff-front-desk-1',
+        primaryVeterinarianId: visit.primaryVeterinarianId ?? appointment?.providerId ?? null,
+        assignedTechnicianId: visit.assignedTechnicianId ?? null,
+        createdById: 'staff-front-desk-1',
+        lastUpdatedById: 'staff-front-desk-1',
         nextAction: visit.nextAction,
       },
     });
@@ -184,6 +320,7 @@ async function seedDemoCases() {
         state: 'VisitCreated',
         scheduledAt: todayAt(9, 15),
         expectedDurationMinutes: 40,
+        providerId: 'staff-vet-1',
       },
       visit: {
         linkAppointment: true,
@@ -191,6 +328,7 @@ async function seedDemoCases() {
         reason: 'Vomiting overnight',
         state: 'Arrived',
         nextAction: 'Technician intake',
+        assignedTechnicianId: 'staff-tech-1',
       },
     },
     {
@@ -216,14 +354,16 @@ async function seedDemoCases() {
         reason: 'Not eating since yesterday',
         state: 'Arrived',
         nextAction: 'Assign room',
+        primaryVeterinarianId: 'staff-vet-2',
+        assignedTechnicianId: 'staff-tech-2',
       },
     },
     {
       client: {
         firstName: 'Priya',
-        lastName: 'Shah',
+        lastName: 'Deshmukh',
         phone: '555-0149',
-        email: 'priya.shah@example.com',
+        email: 'priya.deshmukh@example.com',
       },
       patient: {
         name: 'Pepper',
@@ -240,6 +380,7 @@ async function seedDemoCases() {
         state: 'Scheduled',
         scheduledAt: todayAt(14, 30),
         expectedDurationMinutes: 25,
+        providerId: 'staff-vet-2',
       },
       visit: null,
     },
@@ -284,6 +425,7 @@ async function seedDemoCases() {
         state: 'VisitCreated',
         scheduledAt: todayAt(10, 45),
         expectedDurationMinutes: 30,
+        providerId: 'staff-vet-1',
       },
       visit: {
         linkAppointment: true,
@@ -291,6 +433,7 @@ async function seedDemoCases() {
         reason: 'Recheck ear infection',
         state: 'ReadyForIntake',
         nextAction: 'Collect history',
+        assignedTechnicianId: 'staff-tech-3',
       },
     },
   ];
@@ -305,7 +448,8 @@ async function main() {
   await clearDevClinicalData();
   await seedDemoCases();
 
-  const [clients, patients, appointments, visits] = await Promise.all([
+  const [staff, clients, patients, appointments, visits] = await Promise.all([
+    prisma.user.count({ where: { organizationId: DEV_ORGANIZATION_ID } }),
     prisma.client.count({ where: { organizationId: DEV_ORGANIZATION_ID } }),
     prisma.patient.count({ where: { organizationId: DEV_ORGANIZATION_ID } }),
     prisma.appointment.count({ where: { organizationId: DEV_ORGANIZATION_ID } }),
@@ -313,7 +457,7 @@ async function main() {
   ]);
 
   console.log(
-    `Seeded Sparki dev clinic: ${clients} clients, ${patients} patients, ${appointments} appointments, ${visits} visits.`,
+    `Seeded Sparki dev clinic: ${staff} staff, ${clients} clients, ${patients} patients, ${appointments} appointments, ${visits} visits.`,
   );
 }
 

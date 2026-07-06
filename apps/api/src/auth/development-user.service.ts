@@ -13,24 +13,13 @@ export const DEV_USER_ID = 'dev-user';
 const DEV_USER_EMAIL = 'dev@sparki.local';
 
 /**
- * The v1 fixed role set (docs/blueprint/08-core-domain-model-v1.md / Role
- * comment in schema.prisma). The dev user gets all of them so local/test
- * development is never blocked by role-capability checks that don't exist
- * yet — narrowing this is a product decision for whenever authorization
- * enforcement actually ships.
- */
-const DEV_ROLE_NAMES = [
-  'Receptionist',
-  'Technician',
-  'Veterinarian',
-  'Practice Manager',
-  'Hospital Owner',
-];
-
-/**
- * Stands in for WorkOS AuthKit + Sparki's User/Role mapping (AuthService)
- * until that's implemented. Lives outside AuthService deliberately: this is
- * fake, non-production identity plumbing, not an auth provider.
+ * Stands in for WorkOS AuthKit + Sparki's User mapping (AuthService) until
+ * that's implemented. Lives outside AuthService deliberately: this is fake,
+ * non-production identity plumbing, not an auth provider.
+ *
+ * OWNER so local/test development is never blocked by role-capability
+ * checks that don't exist yet — narrowing this is a product decision for
+ * whenever authorization enforcement actually ships.
  */
 @Injectable()
 export class DevelopmentUserService {
@@ -58,29 +47,22 @@ export class DevelopmentUserService {
       },
     });
 
-    const roles = await Promise.all(
-      DEV_ROLE_NAMES.map((name) =>
-        prisma.role.upsert({
-          where: { organizationId_name: { organizationId: organization.id, name } },
-          update: {},
-          create: { organizationId: organization.id, name },
-        }),
-      ),
-    );
-
     const user = await prisma.user.upsert({
       where: { id: DEV_USER_ID },
       update: {
         locations: { connect: [{ id: location.id }] },
-        roles: { connect: roles.map((role) => ({ id: role.id })) },
       },
       create: {
         id: DEV_USER_ID,
         organizationId: organization.id,
         email: DEV_USER_EMAIL,
-        name: 'Development User',
+        firstName: 'Development',
+        lastName: 'User',
+        role: 'OWNER',
         locations: { connect: [{ id: location.id }] },
-        roles: { connect: roles.map((role) => ({ id: role.id })) },
+        staffProfile: {
+          create: { canReceiveAppointments: true, canOwnVisits: true },
+        },
       },
     });
 
@@ -89,7 +71,7 @@ export class DevelopmentUserService {
       email: user.email,
       organizationId: organization.id,
       locationId: location.id,
-      roles: DEV_ROLE_NAMES,
+      role: user.role,
     };
   }
 }

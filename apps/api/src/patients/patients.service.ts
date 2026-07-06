@@ -9,6 +9,7 @@ import {
   type VisitType,
 } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
@@ -16,17 +17,6 @@ const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
 });
 
 type PatientWithClients = Prisma.PatientGetPayload<typeof patientWithClients>;
-
-const TERMINAL_VISIT_STATES: VisitState[] = [
-  'Archived',
-  'ArchivedWithExceptions',
-  'Cancelled',
-  'CancelledAfterArrival',
-  'NoShow',
-  'Rescheduled',
-  'Referred',
-  'Deferred',
-];
 
 export interface PatientSearchResult {
   id: string;

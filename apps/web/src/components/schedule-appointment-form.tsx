@@ -1,11 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import {
   APPOINTMENT_TYPES,
   appointmentTypeLabel,
   type AppointmentTypeValue,
+  type StaffMember,
 } from '../lib/patient-types';
 
 export function ScheduleAppointmentForm({ patientId }: { patientId: string }) {
@@ -16,8 +17,19 @@ export function ScheduleAppointmentForm({ patientId }: { patientId: string }) {
   const [visitReason, setVisitReason] = useState('');
   const [startTime, setStartTime] = useState('');
   const [expectedDurationMinutes, setExpectedDurationMinutes] = useState('');
+  const [assignedProviderId, setAssignedProviderId] = useState('');
+  const [providers, setProviders] = useState<StaffMember[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/staff?canReceiveAppointments=true', { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<StaffMember[]>) : []))
+      .then(setProviders)
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,6 +48,7 @@ export function ScheduleAppointmentForm({ patientId }: { patientId: string }) {
           expectedDurationMinutes: expectedDurationMinutes
             ? Number(expectedDurationMinutes)
             : undefined,
+          assignedProviderId: assignedProviderId || undefined,
         }),
       });
 
@@ -98,6 +111,21 @@ export function ScheduleAppointmentForm({ patientId }: { patientId: string }) {
         onChange={(event) => setExpectedDurationMinutes(event.target.value)}
         placeholder="Optional"
       />
+
+      <label htmlFor="assigned-provider">Provider</label>
+      <select
+        id="assigned-provider"
+        value={assignedProviderId}
+        onChange={(event) => setAssignedProviderId(event.target.value)}
+      >
+        <option value="">Unassigned</option>
+        {providers.map((provider) => (
+          <option key={provider.id} value={provider.id}>
+            {provider.displayName}
+            {provider.jobTitle ? ` · ${provider.jobTitle}` : ''}
+          </option>
+        ))}
+      </select>
 
       {error && (
         <p className="form-error" role="alert">

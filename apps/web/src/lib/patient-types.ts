@@ -178,6 +178,18 @@ export interface VisitDetail {
   } | null;
 }
 
+/** Mirrors StaffService's response shape (apps/api/src/staff). */
+export interface StaffMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+  role: string;
+  jobTitle: string | null;
+  canReceiveAppointments: boolean;
+  canOwnVisits: boolean;
+}
+
 /** Mirrors Clinic Provisioning v1's default species list (Dog, Cat); "Other"
  *  keeps intake unblocked for clinics that see additional species. */
 export const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'] as const;

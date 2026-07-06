@@ -16,6 +16,10 @@ export const createVisitSchema = z
     clientId: z.string().min(1).optional(),
     visitType: z.nativeEnum(VisitType).optional(),
     reason: z.string().min(1).max(500).optional(),
+    // Omitted when created from an Appointment: defaults to the
+    // Appointment's assigned provider (see VisitsService).
+    primaryVeterinarianId: z.string().min(1).optional(),
+    assignedTechnicianId: z.string().min(1).optional(),
   })
   .refine((data) => Boolean(data.appointmentId) || Boolean(data.patientId), {
     message: 'Either appointmentId or patientId is required',

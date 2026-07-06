@@ -1,3 +1,5 @@
+import type { UserRole } from '@sparki/db';
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -6,6 +8,6 @@ export interface AuthenticatedUser {
   /** Current location context. Users may be assigned to more than one
    *  Location (see User.locations), but a request acts within exactly one. */
   locationId: string;
-  /** Role names from the fixed v1 set (Role.name), e.g. "Veterinarian". */
-  roles: string[];
+  /** Identity only (User.role) — no permission framework yet. */
+  role: UserRole;
 }

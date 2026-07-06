@@ -4,9 +4,10 @@
 // docs/engineering/00-engineering-plan.md.
 //
 // Scope, deliberately narrow:
-// - Only Organization, Location, User, Role, Patient, Client, Appointment,
-//   Visit, MedicalRecord, plus SoapNote (the minimum content model needed to
-//   make MedicalRecord usable for Sprint 1's "create draft SOAP Note" step —
+// - Only Organization, Location, User, StaffProfile, Patient, Client,
+//   Appointment, Visit, MedicalRecord, plus SoapNote (the minimum content
+//   model needed to make MedicalRecord usable for Sprint 1's "create draft
+//   SOAP Note" step —
 //   folds in what docs/blueprint/08-core-domain-model-v1.md calls "Visit
 //   Record Entry", since for this slice they are the same thing).
 // - Event, Audit Event, Billing, Inventory, Labs, Communication, and AI
@@ -39,10 +40,10 @@ datasource db {
   extensions = [pg_trgm]
 }
 
-// --- Organization / Location / User / Role -------------------------------
-// docs/blueprint/08-core-domain-model-v1.md (Organization, Location, User,
-// Role) and docs/blueprint/11-permission-and-ownership-v1.md (isolation,
-// role capabilities).
+// --- Organization / Location / User / StaffProfile -----------------------
+// docs/blueprint/08-core-domain-model-v1.md (Organization, Location, User)
+// and docs/blueprint/11-permission-and-ownership-v1.md (isolation). Role is
+// identity only (fixed UserRole enum below) — no permission framework yet.
 
 model Organization {
   id        String   @id @default(cuid())
@@ -52,7 +53,6 @@ model Organization {
 
   locations    Location[]
   users        User[]
-  roles        Role[]
   clients      Client[]
   patients     Patient[]
   appointments Appointment[]
@@ -74,45 +74,80 @@ model Location {
   @@index([organizationId])
 }
 
-// v1 role capabilities are fixed (Receptionist, Technician, Veterinarian,
-// Practice Manager, Hospital Owner) per the permission doc, but Role stays a
-// real table — not an enum — because the domain model defines Role as an
-// administrable object ("created, assigned, modified, retired") with future
-// custom/location-specific roles. Seed the v1 set as data, not schema.
-model Role {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  createdAt      DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id])
-  users        User[]       @relation("UserRoles")
-
-  @@unique([organizationId, name])
+// Role is identity only for v1 — no permission framework. A fixed enum
+// (rather than the administrable Role table this replaces) matches that: the
+// only thing a Role currently drives is "what kind of person is this",
+// not what they're allowed to do.
+enum UserRole {
+  OWNER
+  PRACTICE_MANAGER
+  FRONT_DESK
+  VETERINARIAN
+  TECHNICIAN
+  ASSISTANT
+  CLIENT
 }
 
 model User {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   organizationId String
-  email          String    @unique
-  name           String
+  email          String   @unique
+  phone          String?
+  firstName      String
+  lastName       String
+  // Override for the two-line firstName/lastName default (e.g. "Dr. Priya
+  // Shah") — nullable because most users are fine with the computed default.
+  displayName    String?
+  role           UserRole
+  isActive       Boolean  @default(true)
   // Sparki owns authorization; WorkOS AuthKit owns authentication (see
   // apps/api/src/auth). Nullable until real sign-in issues this.
-  workosUserId   String?   @unique
-  deactivatedAt  DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  workosUserId   String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  organization         Organization  @relation(fields: [organizationId], references: [id])
-  roles                Role[]        @relation("UserRoles")
-  locations            Location[]
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  locations    Location[]
+  staffProfile StaffProfile?
+
   createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
   providedAppointments Appointment[] @relation("AppointmentProvider")
-  ownedVisits          Visit[]       @relation("VisitOwner")
-  authoredSoapNotes    SoapNote[]    @relation("SoapNoteAuthor")
-  signedSoapNotes      SoapNote[]    @relation("SoapNoteVeterinarian")
+
+  ownedVisits               Visit[] @relation("VisitOwner")
+  primaryVeterinarianVisits Visit[] @relation("VisitPrimaryVeterinarian")
+  assignedTechnicianVisits  Visit[] @relation("VisitAssignedTechnician")
+  createdVisits             Visit[] @relation("VisitCreatedBy")
+  lastUpdatedVisits         Visit[] @relation("VisitLastUpdatedBy")
+
+  authoredSoapNotes SoapNote[] @relation("SoapNoteAuthor")
+  signedSoapNotes   SoapNote[] @relation("SoapNoteVeterinarian")
 
   @@index([organizationId])
+  @@index([organizationId, role])
+}
+
+// Staff-only attributes, kept off User so Client rows (the majority of
+// User over time) don't carry a wall of nullable staff columns. Created for
+// every non-CLIENT User; scheduling/visit-ownership/messaging all read from
+// here rather than re-deriving capability from role.
+model StaffProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  jobTitle      String?
+  licenseNumber String?
+
+  canReceiveAppointments Boolean @default(false)
+  canOwnVisits           Boolean @default(false)
+
+  // Calendar/roster color, e.g. "#4F46E5". Avatar image can reuse this field
+  // later (URL) if photos are ever added — no separate column until then.
+  color String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 // --- Client / Patient -----------------------------------------------------
@@ -144,12 +179,12 @@ model Client {
   patients     PatientClient[]
   appointments Appointment[]
   visits       Visit[]
-
-  @@index([organizationId])
   // Fuzzy/substring matching for Patient Search's "search by client name";
   // expression index (not a plain column index) because the searchable name
   // is firstName || ' ' || lastName. See migration.sql for the raw
   // CREATE INDEX this can't express in Prisma schema syntax.
+
+  @@index([organizationId])
 }
 
 enum PatientStatus {
@@ -373,26 +408,41 @@ model Visit {
   reason    String
   state     VisitState @default(IntentCreated)
 
-  currentOwnerId String?
-  nextAction     String?
+  // Workflow ownership (whoever's queue this Visit currently sits in) — may
+  // differ from the care team below, e.g. a front desk user owns intake
+  // before a veterinarian is assigned. All nullable: not every Visit has an
+  // assigned care team yet (e.g. a walk-in before triage), and existing rows
+  // predate these columns.
+  currentOwnerId        String?
+  primaryVeterinarianId String?
+  assignedTechnicianId  String?
+  createdById           String?
+  lastUpdatedById       String?
+  nextAction            String?
 
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  organization    Organization   @relation(fields: [organizationId], references: [id])
-  location        Location       @relation(fields: [locationId], references: [id])
-  patient         Patient        @relation(fields: [patientId], references: [id])
-  client          Client?        @relation(fields: [clientId], references: [id])
-  appointment     Appointment?   @relation(fields: [appointmentId], references: [id])
-  currentOwner    User?          @relation("VisitOwner", fields: [currentOwnerId], references: [id])
-  medicalRecord   MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
-  medicalRecordId String?
-  soapNotes       SoapNote[]
+  organization        Organization   @relation(fields: [organizationId], references: [id])
+  location            Location       @relation(fields: [locationId], references: [id])
+  patient             Patient        @relation(fields: [patientId], references: [id])
+  client              Client?        @relation(fields: [clientId], references: [id])
+  appointment         Appointment?   @relation(fields: [appointmentId], references: [id])
+  currentOwner        User?          @relation("VisitOwner", fields: [currentOwnerId], references: [id])
+  primaryVeterinarian User?          @relation("VisitPrimaryVeterinarian", fields: [primaryVeterinarianId], references: [id])
+  assignedTechnician  User?          @relation("VisitAssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  createdBy           User?          @relation("VisitCreatedBy", fields: [createdById], references: [id])
+  lastUpdatedBy       User?          @relation("VisitLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+  medicalRecord       MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
+  medicalRecordId     String?
+  soapNotes           SoapNote[]
 
   @@index([organizationId])
   @@index([patientId])
   @@index([state])
+  @@index([primaryVeterinarianId])
+  @@index([assignedTechnicianId])
 }
 
 // --- Medical Record / SOAP Note ------------------------------------------

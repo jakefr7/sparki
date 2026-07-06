@@ -4,28 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { prisma, type AppointmentType, type VisitState, type VisitType } from '@sparki/db';
+import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
+import { TERMINAL_VISIT_STATES } from './visit-states';
 
 const visitInclude = { patient: true, client: true, appointment: true };
-
-/**
- * States that represent a closed episode of care (see
- * docs/specs/modules/02-visit-lifecycle-mvp.md "Terminal States"). Anything
- * not in this set counts as "active" for duplicate-Visit prevention.
- */
-const TERMINAL_VISIT_STATES: VisitState[] = [
-  'Archived',
-  'ArchivedWithExceptions',
-  'Cancelled',
-  'CancelledAfterArrival',
-  'NoShow',
-  'Rescheduled',
-  'Referred',
-  'Deferred',
-];
 
 /**
  * Default Visit type per Appointment type when the caller doesn't override
@@ -66,12 +51,18 @@ export class VisitsService {
    * exposes a `markArrived` transition, so this enforces that precondition
    * exactly rather than accepting any not-yet-terminal state.
    */
-  async create(organizationId: string, locationId: string, input: CreateVisitInput) {
+  async create(
+    organizationId: string,
+    locationId: string,
+    createdById: string,
+    input: CreateVisitInput,
+  ) {
     let patientId: string;
     let clientId: string | null;
     let reason: string;
     let visitType: VisitType;
     let appointmentId: string | null = null;
+    let primaryVeterinarianId: string | null = input.primaryVeterinarianId ?? null;
 
     if (input.appointmentId) {
       const appointment = await this.appointments.findById(input.appointmentId, organizationId);
@@ -92,6 +83,9 @@ export class VisitsService {
       clientId = input.clientId ?? appointment.clientId ?? null;
       reason = input.reason ?? appointment.reason;
       visitType = input.visitType ?? APPOINTMENT_TYPE_TO_VISIT_TYPE[appointment.type];
+      // The Appointment's assigned provider carries over as the Visit's
+      // primary veterinarian unless the caller explicitly overrides it.
+      primaryVeterinarianId = input.primaryVeterinarianId ?? appointment.providerId ?? null;
     } else {
       // Guaranteed present by createVisitSchema's refinements when
       // appointmentId is absent.
@@ -114,6 +108,13 @@ export class VisitsService {
       const primary =
         patient.clients.find((patientClient) => patientClient.isPrimary) ?? patient.clients[0];
       clientId = primary?.client.id ?? null;
+    }
+
+    if (primaryVeterinarianId) {
+      await this.assertStaffBelongsToOrganization(primaryVeterinarianId, organizationId);
+    }
+    if (input.assignedTechnicianId) {
+      await this.assertStaffBelongsToOrganization(input.assignedTechnicianId, organizationId);
     }
 
     return prisma.$transaction(async (tx) => {
@@ -150,10 +151,24 @@ export class VisitsService {
           visitType,
           reason,
           state: 'Arrived',
+          primaryVeterinarianId,
+          assignedTechnicianId: input.assignedTechnicianId ?? null,
+          createdById,
+          lastUpdatedById: createdById,
         },
         include: visitInclude,
       });
     });
+  }
+
+  private async assertStaffBelongsToOrganization(
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const staff = await prisma.user.findFirst({ where: { id: userId, organizationId } });
+    if (!staff) {
+      throw new BadRequestException(`Staff member ${userId} not found in organization ${organizationId}`);
+    }
   }
 
   async findById(id: string, organizationId: string) {
@@ -165,5 +180,22 @@ export class VisitsService {
       throw new NotFoundException(`Visit ${id} not found`);
     }
     return visit;
+  }
+
+  /** All non-terminal Visits for the organization — the Command Center's
+   *  live floor view. */
+  async listActiveForOrganization(organizationId: string) {
+    return prisma.visit.findMany({
+      where: { organizationId, state: { notIn: TERMINAL_VISIT_STATES } },
+      include: {
+        patient: true,
+        client: true,
+        appointment: true,
+        primaryVeterinarian: true,
+        assignedTechnician: true,
+        currentOwner: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 }

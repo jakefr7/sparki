@@ -14,7 +14,7 @@ export class VisitsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createVisitSchema)) body: CreateVisitInput,
   ) {
-    return this.visits.create(user.organizationId, user.locationId, body);
+    return this.visits.create(user.organizationId, user.locationId, user.id, body);
   }
 
   @Get(':id')

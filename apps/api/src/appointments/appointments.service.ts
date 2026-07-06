@@ -24,6 +24,15 @@ const DEFAULT_SOURCE: AppointmentSource = 'Phone';
 
 const UPCOMING_EXCLUDED_STATES: AppointmentState[] = ['Cancelled', 'NoShow', 'Completed'];
 
+/** [start of day, start of next day) in local server time, for "today" queries. */
+function dayBoundsFor(date: Date): { start: Date; end: Date } {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
 /**
  * The four explicit transition actions this module exposes, mapped to the
  * states each may start from — the subset of docs/specs/modules/
@@ -117,6 +126,32 @@ export class AppointmentsService {
         scheduledAt: { gte: new Date() },
         state: { notIn: UPCOMING_EXCLUDED_STATES },
       },
+      orderBy: { scheduledAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  /** All appointments scheduled for "today" (local server day) across the
+   *  organization — the Command Center's day-at-a-glance list. */
+  async listTodayForOrganization(organizationId: string) {
+    const { start, end } = dayBoundsFor(new Date());
+    return prisma.appointment.findMany({
+      where: { organizationId, scheduledAt: { gte: start, lt: end } },
+      include: { patient: true, client: true, provider: true },
+      orderBy: { scheduledAt: 'asc' },
+    });
+  }
+
+  /** Org-wide sibling of listUpcomingForPatient, for dashboards that aren't
+   *  scoped to one Patient. */
+  async listUpcomingForOrganization(organizationId: string, limit = 10) {
+    return prisma.appointment.findMany({
+      where: {
+        organizationId,
+        scheduledAt: { gte: new Date() },
+        state: { notIn: UPCOMING_EXCLUDED_STATES },
+      },
+      include: { patient: true, client: true, provider: true },
       orderBy: { scheduledAt: 'asc' },
       take: limit,
     });

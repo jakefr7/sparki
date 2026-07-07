@@ -66,9 +66,37 @@ export class DevelopmentUserService {
       },
     });
 
+    // ADR-006: additive alongside the User fields above — DevelopmentAuthGuard
+    // reads the AuthenticatedUser this method returns directly and never goes
+    // through AuthService.resolveMembership, so these rows aren't load-bearing
+    // for the fake dev guard. Kept in sync anyway so the dev org is a valid
+    // fixture for anything that does exercise the real resolution path.
+    await prisma.organizationMembership.upsert({
+      where: { organizationId_userId: { organizationId: organization.id, userId: user.id } },
+      update: { role: user.role, isActive: true },
+      create: {
+        organizationId: organization.id,
+        userId: user.id,
+        role: user.role,
+        isActive: true,
+      },
+    });
+    await prisma.clinicLocationAccess.upsert({
+      where: { clinicLocationId_userId: { clinicLocationId: location.id, userId: user.id } },
+      update: { role: user.role, isActive: true },
+      create: {
+        organizationId: organization.id,
+        clinicLocationId: location.id,
+        userId: user.id,
+        role: user.role,
+        isActive: true,
+      },
+    });
+
     return {
       id: user.id,
       email: user.email,
+      name: user.displayName ?? `${user.firstName} ${user.lastName}`,
       organizationId: organization.id,
       locationId: location.id,
       role: user.role,

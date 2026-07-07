@@ -5,9 +5,11 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AuthService } from './auth.service';
+import { AppConfigService } from '../config/app-config.service';
+import { readSessionCookie, setSessionCookie } from './session-cookie';
 import type { AuthenticatedUser } from './types';
 
 @Injectable()
@@ -15,6 +17,7 @@ export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly authService: AuthService,
+    private readonly config: AppConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -27,20 +30,19 @@ export class AuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
-    const token = extractBearerToken(request);
-    if (!token) {
-      throw new UnauthorizedException('Missing bearer token');
+    const sealedSession = readSessionCookie(request);
+    if (!sealedSession) {
+      throw new UnauthorizedException('Not authenticated');
     }
 
-    request.user = await this.authService.verifyToken(token);
+    const { user, refreshedSealedSession } = await this.authService.verifySession(sealedSession);
+
+    if (refreshedSealedSession) {
+      const response = context.switchToHttp().getResponse<Response>();
+      setSessionCookie(response, refreshedSealedSession, this.config.nodeEnv === 'production');
+    }
+
+    request.user = user;
     return true;
   }
-}
-
-function extractBearerToken(request: Request): string | undefined {
-  const header = request.headers.authorization;
-  if (!header?.startsWith('Bearer ')) {
-    return undefined;
-  }
-  return header.slice('Bearer '.length);
 }

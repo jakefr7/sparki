@@ -25,11 +25,13 @@ export class AppConfigService {
     apiKey: string | undefined;
     clientId: string | undefined;
     redirectUri: string | undefined;
+    cookiePassword: string | undefined;
   } {
     return {
       apiKey: this.env.WORKOS_API_KEY,
       clientId: this.env.WORKOS_CLIENT_ID,
       redirectUri: this.env.WORKOS_REDIRECT_URI,
+      cookiePassword: this.env.WORKOS_COOKIE_PASSWORD,
     };
   }
 }

@@ -2,6 +2,17 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { useCurrentUser } from '../lib/use-current-user';
+
+const ROLE_DISPLAY_LABELS: Record<string, string> = {
+  OWNER: 'Owner',
+  PRACTICE_MANAGER: 'Practice Manager',
+  FRONT_DESK: 'Receptionist',
+  VETERINARIAN: 'Veterinarian',
+  TECHNICIAN: 'Technician',
+  ASSISTANT: 'Assistant',
+  CLIENT: 'Client',
+};
 
 export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/settings';
 
@@ -129,10 +140,6 @@ export function DashboardHeader({
         {subtitle && <p>{subtitle}</p>}
       </div>
       <div className="dashboard-header__tools">
-        <label className="dashboard-search">
-          <span className="sr-only">Global search</span>
-          <input type="search" placeholder="Search patients, clients, invoices..." />
-        </label>
         <div className="dashboard-header__meta" aria-label="Current date">
           {todayLabel}
         </div>
@@ -189,6 +196,11 @@ export function DashboardShell({
   children: ReactNode;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { user: currentUser } = useCurrentUser();
+
+  const resolvedUserName = userName ?? currentUser?.name;
+  const resolvedRoleLabel =
+    roleLabel ?? (currentUser ? (ROLE_DISPLAY_LABELS[currentUser.role] ?? currentUser.role) : undefined);
 
   return (
     <div
@@ -208,8 +220,8 @@ export function DashboardShell({
           eyebrow={eyebrow}
           title={title}
           subtitle={subtitle}
-          userName={userName}
-          roleLabel={roleLabel}
+          userName={resolvedUserName}
+          roleLabel={resolvedRoleLabel}
           refreshing={refreshing}
           onRefresh={onRefresh}
         />

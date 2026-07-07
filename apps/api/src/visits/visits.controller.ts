@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { requireRole } from '../auth/require-role';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { createVisitSchema, type CreateVisitInput } from './dto/create-visit.schema';
@@ -57,8 +58,13 @@ export class VisitsController {
     return this.visits.saveExamFindings(id, user.organizationId, user.id, body);
   }
 
+  // Clinical exam completion is veterinarian-owned per
+  // docs/blueprint/11-permission-and-ownership-v1.md ("Veterinarian owns
+  // Clinical Decisions... Medical Record content requires clinical
+  // accountability"); OWNER retains it as the highest-access role.
   @Post(':id/exam/complete')
   completeExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
     return this.visits.completeExam(id, user.organizationId, user.id);
   }
 }

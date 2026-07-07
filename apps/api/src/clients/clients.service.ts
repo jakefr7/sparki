@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@sparki/db';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import type { CreateClientInput } from './dto/create-client.schema';
+import type { UpdateClientInput } from './dto/update-client.schema';
 
 export interface ClientSearchResult {
   id: string;
@@ -33,6 +34,15 @@ export class ClientsService {
       throw new NotFoundException(`Client ${id} not found`);
     }
     return client;
+  }
+
+  async update(id: string, organizationId: string, input: UpdateClientInput) {
+    await this.findById(id, organizationId);
+
+    return prisma.client.update({
+      where: { id },
+      data: Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
+    });
   }
 
   /**

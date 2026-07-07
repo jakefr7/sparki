@@ -1,16 +1,16 @@
-import { NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { env } from '../../../../../../lib/env';
+import { proxyFetch, relayJson } from '../../../../../../lib/api-proxy';
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+) {
   const { id } = await params;
 
-  const upstreamResponse = await fetch(new URL(`/visits/${id}/intake/complete`, env.API_URL), {
+  const upstreamResponse = await proxyFetch(request, new URL(`/visits/${id}/intake/complete`, env.API_URL), {
     method: 'POST',
   });
 
-  const responseBody: unknown = await upstreamResponse.json();
-  return NextResponse.json(responseBody, { status: upstreamResponse.status });
+  return relayJson(upstreamResponse);
 }

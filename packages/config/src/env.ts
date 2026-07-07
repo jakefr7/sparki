@@ -9,11 +9,15 @@ export const apiEnvSchema = baseEnvSchema.extend({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   API_PORT: z.coerce.number().int().positive().default(4000),
 
-  // WorkOS AuthKit (docs/engineering/00-engineering-plan.md). Optional at
-  // Sprint 0: auth scaffolding only, no live integration yet.
+  // WorkOS AuthKit (docs/engineering/00-engineering-plan.md). Optional so
+  // Sprint 0 auth scaffolding still boots with no live integration; once set,
+  // AuthModule switches from DevelopmentAuthGuard to the real AuthGuard.
   WORKOS_API_KEY: z.string().optional(),
   WORKOS_CLIENT_ID: z.string().optional(),
   WORKOS_REDIRECT_URI: z.string().optional(),
+  // Encrypts the sealed session cookie (iron-session under the hood).
+  // Required whenever WorkOS is configured; must be >=32 chars.
+  WORKOS_COOKIE_PASSWORD: z.string().min(32).optional(),
 
   // Origin apps/web is served from; the API only accepts browser requests
   // (CORS) from this origin.

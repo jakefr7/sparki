@@ -341,7 +341,7 @@ export function TodayOperationsPage() {
             <div className="home-widget__header">
               <div>
                 <p className="eyebrow">Appointments</p>
-                <h2 id="today-appointments-heading">Today's Schedule</h2>
+                <h2 id="today-appointments-heading">Today&apos;s Schedule</h2>
               </div>
               <span className="dashboard-live-status">Live · Updated {formatTime(dashboard.generatedAt)}</span>
             </div>

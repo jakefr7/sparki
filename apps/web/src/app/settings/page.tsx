@@ -1,4 +1,5 @@
 import { DashboardShell } from '../../components/dashboard-shell';
+import { AccountSection } from '../../components/settings/account-section';
 import { AppearanceSection } from '../../components/settings/appearance-section';
 
 const UPCOMING_SECTIONS = ['Notifications', 'Clinic', 'Users', 'Keyboard Shortcuts', 'About'];
@@ -10,7 +11,10 @@ export default function SettingsPage() {
         <nav aria-label="Settings sections">
           <ul className="settings-nav">
             <li>
-              <span className="settings-nav__item settings-nav__item--active">Appearance</span>
+              <span className="settings-nav__item settings-nav__item--active">Account</span>
+            </li>
+            <li>
+              <span className="settings-nav__item">Appearance</span>
             </li>
             {UPCOMING_SECTIONS.map((section) => (
               <li key={section}>
@@ -23,7 +27,10 @@ export default function SettingsPage() {
           </ul>
         </nav>
 
-        <AppearanceSection />
+        <div className="settings-sections-stack">
+          <AccountSection />
+          <AppearanceSection />
+        </div>
       </div>
     </DashboardShell>
   );

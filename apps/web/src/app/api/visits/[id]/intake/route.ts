@@ -1,19 +1,19 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { env } from '../../../../../lib/env';
+import { proxyFetch, relayJson } from '../../../../../lib/api-proxy';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
-): Promise<NextResponse> {
+) {
   const { id } = await params;
   const body: unknown = await request.json();
 
-  const upstreamResponse = await fetch(new URL(`/visits/${id}/intake`, env.API_URL), {
+  const upstreamResponse = await proxyFetch(request, new URL(`/visits/${id}/intake`, env.API_URL), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 
-  const responseBody: unknown = await upstreamResponse.json();
-  return NextResponse.json(responseBody, { status: upstreamResponse.status });
+  return relayJson(upstreamResponse);
 }

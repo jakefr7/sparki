@@ -167,4 +167,64 @@ describe('Clients (e2e)', () => {
       expect(response.body).toEqual([]);
     });
   });
+
+  describe('PATCH /clients/:id', () => {
+    it('updates identity/contact fields and leaves omitted fields unchanged', async () => {
+      const created = await prisma.client.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          firstName: 'Original',
+          lastName: 'Owner',
+          phone: '555-0111',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/clients/${created.id}`)
+        .send({ lastName: 'Updated Owner', email: 'updated@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: created.id,
+        firstName: 'Original',
+        lastName: 'Updated Owner',
+        phone: '555-0111',
+        email: 'updated@example.com',
+      });
+    });
+
+    it('rejects an invalid email with 400', async () => {
+      const created = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Bad', lastName: 'Email' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/clients/${created.id}`)
+        .send({ email: 'not-an-email' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects an empty body with 400', async () => {
+      const created = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Empty', lastName: 'Body' },
+      });
+
+      const response = await request(app.getHttpServer()).patch(`/clients/${created.id}`).send({});
+
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 when the client belongs to a different organization', async () => {
+      const created = await prisma.client.create({
+        data: { organizationId: otherOrganizationId, firstName: 'Cross', lastName: 'Org Edit' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/clients/${created.id}`)
+        .send({ firstName: 'Should Not Apply' });
+
+      expect(response.status).toBe(404);
+    });
+  });
 });

@@ -17,12 +17,14 @@
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @sparki/db run generate",
     "db:migrate": "pnpm --filter @sparki/db run migrate",
-    "db:seed-demo": "dotenv -e .env -- node scripts/reset-demo-clinic-data.mjs"
+    "db:seed-demo": "dotenv -e .env -- node scripts/reset-demo-clinic-data.mjs",
+    "db:seed-auth-users": "dotenv -e .env -- node scripts/seed-auth-users.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
     "@prisma/client": "5.22.0",
     "@types/node": "^20.14.0",
+    "@workos-inc/node": "^7.24.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^9.9.0",
     "eslint-config-prettier": "^9.1.0",

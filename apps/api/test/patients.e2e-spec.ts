@@ -372,4 +372,73 @@ describe('Patients (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe('PATCH /patients/:id', () => {
+    it('updates identity fields and leaves omitted fields unchanged', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Edit Me',
+          species: 'Canine',
+          breed: 'Labrador',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}`)
+        .send({ name: 'Edited Name', sex: 'Female' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: created.body.id,
+        name: 'Edited Name',
+        breed: 'Labrador',
+        sex: 'Female',
+      });
+    });
+
+    it('clears a nullable field when explicitly set to null', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Clear Me',
+          species: 'Canine',
+          breed: 'Poodle',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}`)
+        .send({ breed: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body.breed).toBeNull();
+    });
+
+    it('rejects an empty body with 400', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Empty Body Patient',
+          species: 'Canine',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+
+      const response = await request(app.getHttpServer()).patch(`/patients/${created.body.id}`).send({});
+
+      expect(response.status).toBe(400);
+    });
+
+    it('returns 404 when the patient belongs to a different organization', async () => {
+      const created = await prisma.patient.create({
+        data: { organizationId: otherOrganizationId, name: 'Cross Org Edit', species: 'Feline' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/patients/${created.id}`)
+        .send({ name: 'Should Not Apply' });
+
+      expect(response.status).toBe(404);
+    });
+  });
 });

@@ -1,9 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '../../../../lib/env';
+import { proxyFetch, relayJson } from '../../../../lib/api-proxy';
 
 /** Same server-side proxy pattern as /api/patients/search — see that route
- *  for why (private API origin, cookie-forwarding-ready for future auth). */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+ *  for why (private API origin, forwards the auth session cookie). */
+export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get('query')?.trim() ?? '';
   if (!query) {
     return NextResponse.json([]);
@@ -16,7 +17,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     upstreamUrl.searchParams.set('limit', limit);
   }
 
-  const upstreamResponse = await fetch(upstreamUrl, { cache: 'no-store' });
-  const body: unknown = await upstreamResponse.json();
-  return NextResponse.json(body, { status: upstreamResponse.status });
+  const upstreamResponse = await proxyFetch(request, upstreamUrl);
+  return relayJson(upstreamResponse);
 }

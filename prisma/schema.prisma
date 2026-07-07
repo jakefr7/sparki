@@ -57,6 +57,9 @@ model Organization {
   patients     Patient[]
   appointments Appointment[]
   visits       Visit[]
+
+  memberships     OrganizationMembership[]
+  locationAccess  ClinicLocationAccess[]
 }
 
 model Location {
@@ -70,6 +73,8 @@ model Location {
   users        User[]
   appointments Appointment[]
   visits       Visit[]
+
+  locationAccess ClinicLocationAccess[]
 
   @@index([organizationId])
 }
@@ -110,6 +115,14 @@ model User {
   locations    Location[]
   staffProfile StaffProfile?
 
+  // Normalized org/location grants (see ADR-006). AuthService.resolveMembership
+  // reads these, not organizationId/role/locations above, to build the
+  // request's AuthenticatedUser — those older fields are kept live only for
+  // staff.service.ts and dev-seed compatibility during the transition, not
+  // removed yet.
+  organizationMemberships OrganizationMembership[]
+  clinicLocationAccess    ClinicLocationAccess[]
+
   createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
   providedAppointments Appointment[] @relation("AppointmentProvider")
 
@@ -148,6 +161,51 @@ model StaffProfile {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
+}
+
+// --- Organization / location membership -----------------------------------
+// ADR-006: normalized org- and location-level access grants, additive
+// alongside the legacy User.organizationId/role/locations fields during the
+// transition (those fields are not removed by this migration). A user is
+// expected to hold at most one active OrganizationMembership in v1 — there is
+// no multi-org switcher yet, so AuthService.resolveMembership treats more
+// than one active row as an error rather than guessing which one to use.
+
+model OrganizationMembership {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           UserRole
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+// Location-level counterpart to OrganizationMembership — a user's role/access
+// at one specific clinic location. Looked up scoped to the resolved
+// OrganizationMembership's organizationId, per user.
+model ClinicLocationAccess {
+  id               String   @id @default(cuid())
+  organizationId   String
+  clinicLocationId String
+  userId           String
+  role             UserRole
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  clinicLocation Location     @relation(fields: [clinicLocationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([clinicLocationId, userId])
+  @@index([userId])
 }
 
 // --- Client / Patient -----------------------------------------------------

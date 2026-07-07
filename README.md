@@ -99,21 +99,34 @@ Playwright config boots `apps/api` and `apps/web` in dev mode automatically
 ## Authentication
 
 Every route goes through a global guard (`apps/api/src/auth/`); routes opt out explicitly with
-`@Public()` (see `health.controller.ts`). Which guard runs depends on `NODE_ENV`:
+`@Public()` (see `health.controller.ts`, `auth.controller.ts`'s `login`/`logout`). Which guard runs
+depends on whether WorkOS is configured, not just `NODE_ENV`:
 
-- **`production`**: `AuthGuard`, backed by `AuthService`, which wraps
-  [WorkOS AuthKit](https://workos.com/docs/authkit) per the engineering plan's recommendation — it
-  throws `NotImplementedException` until `WORKOS_API_KEY` is configured and real session
-  verification is implemented (a future task, not this one).
-- **`development` / `test`**: `DevelopmentAuthGuard`, which attaches a fake `AuthenticatedUser`
-  (id, email, `organizationId`, `locationId`, `roles`) backed by a real, idempotently-seeded
-  Organization/Location/Role/User (`DEV_ORGANIZATION_ID` etc. in
+- **`AuthGuard`** (always in production; also in dev/test once `WORKOS_API_KEY`,
+  `WORKOS_CLIENT_ID`, and `WORKOS_COOKIE_PASSWORD` are set): backed by `AuthService`, which wraps
+  [WorkOS AuthKit](https://workos.com/docs/authkit) per the engineering plan's recommendation.
+  WorkOS owns authentication (credentials, password storage, sessions); Sparki's own
+  `User`/`StaffProfile` own role and clinic membership, linked by `User.workosUserId`. Sign-in goes
+  through `POST /auth/login` (email+password against WorkOS, sealed into an httpOnly
+  `sparki_session` cookie), `GET /auth/me` returns the current user, `POST /auth/logout` clears the
+  session. The guard transparently refreshes an expired access token and re-issues the cookie
+  on any request — no separate silent-refresh flow needed client-side.
+- **`DevelopmentAuthGuard`** (dev/test fallback when WorkOS isn't configured): attaches a fake
+  `AuthenticatedUser` (id, email, `organizationId`, `locationId`, `role`) backed by a real,
+  idempotently-seeded Organization/Location/User (`DEV_ORGANIZATION_ID` etc. in
   `development-user.service.ts`). This lets every controller read `organizationId` from
   `@CurrentUser()` exactly as it will in production, without live WorkOS credentials. The guard
   refuses to construct at all if `NODE_ENV=production`.
 
 Controllers never take `organizationId` as a request parameter — it always comes from
 `@CurrentUser()`.
+
+### Dev/test staff-login accounts
+
+`pnpm db:seed-auth-users` creates (or links) three role-scoped WorkOS + Sparki DB accounts for
+manual login testing — receptionist, technician, veterinarian — all with password
+`SparkiTest123!`. See `scripts/seed-auth-users.mjs` for the exact emails and the manual WorkOS
+dashboard fallback if `WORKOS_API_KEY`/`WORKOS_CLIENT_ID` aren't set.
 
 ## CI
 

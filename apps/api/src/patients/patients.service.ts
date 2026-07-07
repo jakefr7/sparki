@@ -12,6 +12,7 @@ import { AppointmentsService } from '../appointments/appointments.service';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
+import type { UpdatePatientInput } from './dto/update-patient.schema';
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
   include: { clients: { include: { client: true } } },
@@ -96,6 +97,16 @@ export class PatientsService {
       throw new NotFoundException(`Patient ${id} not found`);
     }
     return patient;
+  }
+
+  async update(id: string, organizationId: string, input: UpdatePatientInput) {
+    await this.findById(id, organizationId);
+
+    return prisma.patient.update({
+      where: { id },
+      data: Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
+      ...patientWithClients,
+    });
   }
 
   /**

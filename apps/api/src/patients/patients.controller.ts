@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { createPatientSchema, type CreatePatientInput } from './dto/create-patient.schema';
 import { searchPatientsQuerySchema, type SearchPatientsQuery } from './dto/search-patients.schema';
+import { updatePatientSchema, type UpdatePatientInput } from './dto/update-patient.schema';
 import { PatientsService } from './patients.service';
 
 @Controller('patients')
@@ -35,5 +36,14 @@ export class PatientsController {
   @Get(':id/workspace')
   getWorkspaceSummary(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.patients.getWorkspaceSummary(id, user.organizationId);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updatePatientSchema)) body: UpdatePatientInput,
+  ) {
+    return this.patients.update(id, user.organizationId, body);
   }
 }

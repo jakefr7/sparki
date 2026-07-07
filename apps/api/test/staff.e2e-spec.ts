@@ -11,6 +11,7 @@ describe('Staff (e2e)', () => {
   let otherOrganizationId: string;
   let veterinarianId: string;
   let technicianId: string;
+  let otherOrganizationUserId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -52,7 +53,7 @@ describe('Staff (e2e)', () => {
     });
     technicianId = technician.id;
 
-    await prisma.user.create({
+    const otherOrganizationUser = await prisma.user.create({
       data: {
         organizationId: otherOrganizationId,
         email: `staff-e2e-other-org-${Date.now()}@example.com`,
@@ -61,15 +62,13 @@ describe('Staff (e2e)', () => {
         role: 'VETERINARIAN',
       },
     });
+    otherOrganizationUserId = otherOrganizationUser.id;
   });
 
   afterAll(async () => {
-    const userFilter = {
-      organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-      id: { not: 'dev-user' },
-    };
-    await prisma.staffProfile.deleteMany({ where: { user: userFilter } });
-    await prisma.user.deleteMany({ where: userFilter });
+    const createdUserIds = [veterinarianId, technicianId, otherOrganizationUserId].filter(Boolean);
+    await prisma.staffProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();
   });

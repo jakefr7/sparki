@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@sparki/db';
+import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import type { CreateClientInput } from './dto/create-client.schema';
 
 export interface ClientSearchResult {
@@ -45,13 +46,8 @@ export class ClientsService {
       SELECT id, "firstName", "lastName", phone, email, "preferredContactMethod"
       FROM "Client"
       WHERE "organizationId" = ${organizationId}
-        AND (
-          ("firstName" || ' ' || "lastName") ILIKE '%' || ${query} || '%'
-          OR ("firstName" || ' ' || "lastName") % ${query}
-          OR phone ILIKE '%' || ${query} || '%'
-          OR email ILIKE '%' || ${query} || '%'
-        )
-      ORDER BY similarity(lower("firstName" || ' ' || "lastName"), lower(${query})) DESC
+        AND ${clientFuzzyMatchCondition('', query)}
+      ORDER BY ${clientNameSimilarity('', query)} DESC
       LIMIT ${limit}
     `;
   }

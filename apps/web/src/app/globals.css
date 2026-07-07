@@ -1541,6 +1541,31 @@ body {
   margin-right: 0.5rem;
 }
 
+.patient-status--active {
+  color: #f7fbf7;
+  background: var(--success);
+}
+
+.patient-status--inactive {
+  color: CanvasText;
+  background: color-mix(in srgb, CanvasText 12%, Canvas);
+}
+
+.patient-status--deceased {
+  color: #f7f7f7;
+  background: var(--danger);
+}
+
+.patient-status--transferred {
+  color: #101820;
+  background: var(--warning);
+}
+
+.patient-status--unknown {
+  color: CanvasText;
+  background: color-mix(in srgb, CanvasText 12%, Canvas);
+}
+
 .patient-header__status {
   display: flex;
   align-items: flex-end;

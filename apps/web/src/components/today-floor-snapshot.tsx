@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { enumLabel, timeLabel } from '../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -26,14 +27,6 @@ function statusTone(result: PatientSearchResult): string {
   if (result.activeVisit) return 'active';
   if (result.nextAppointment) return 'scheduled';
   return 'idle';
-}
-
-function timeLabel(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function enumLabel(value: string): string {
-  return value.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 function operationDetail(result: PatientSearchResult): string {

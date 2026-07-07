@@ -34,7 +34,6 @@ export interface PatientSearchResult {
     scheduledAt: string;
     state: string;
   } | null;
-  operationalRank: number;
 }
 
 export interface WorkspaceClient {
@@ -81,8 +80,6 @@ export type CurrentVisitSection =
       visit: ActiveVisitSummary;
     };
 
-export type WorkspaceSection = UnavailableWorkspaceSection;
-
 export interface UpcomingAppointment {
   id: string;
   type: string;
@@ -92,6 +89,24 @@ export interface UpcomingAppointment {
   state: string;
 }
 
+export interface DashboardPersonSummary {
+  id: string;
+  displayName: string;
+  role: string;
+}
+
+export interface DashboardPatientSummary {
+  id: string;
+  name: string;
+  species: string;
+}
+
+export interface DashboardClientSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 export interface DashboardAppointmentSummary {
   id: string;
   type: string;
@@ -99,25 +114,42 @@ export interface DashboardAppointmentSummary {
   state: string;
   scheduledAt: string;
   expectedDurationMinutes: number | null;
-  patient: {
-    id: string;
-    name: string;
-    species: string;
-  } | null;
-  client: {
-    id: string;
-    firstName: string;
-    lastName: string;
-  } | null;
-  provider: {
-    id: string;
-    displayName: string;
-    role: string;
-  } | null;
+  patient: DashboardPatientSummary | null;
+  client: DashboardClientSummary | null;
+  provider: DashboardPersonSummary | null;
+}
+
+export interface DashboardVisitSummary {
+  id: string;
+  visitType: string;
+  reason: string;
+  state: string;
+  createdAt: string;
+  elapsedMinutes: number;
+  patient: DashboardPatientSummary;
+  client: DashboardClientSummary | null;
+  appointment: { id: string; scheduledAt: string; type: string } | null;
+  primaryVeterinarian: DashboardPersonSummary | null;
+  assignedTechnician: DashboardPersonSummary | null;
+  currentOwner: DashboardPersonSummary | null;
+  intakeSummaryAvailable: boolean;
 }
 
 export interface OperationsDashboard {
+  generatedAt: string;
+  summary: {
+    scheduledToday: number;
+    arrived: number;
+    active: number;
+    checkoutReady: number;
+    completedToday: number;
+    totalToday: number;
+  };
   todaysAppointments: DashboardAppointmentSummary[];
+  upcomingAppointments: DashboardAppointmentSummary[];
+  activeVisits: DashboardVisitSummary[];
+  arrivedOrWaiting: DashboardVisitSummary[];
+  visitsByState: { state: string; count: number }[];
 }
 
 export interface PatientWorkspace {
@@ -138,11 +170,11 @@ export interface PatientWorkspace {
   upcomingAppointments: UpcomingAppointment[];
   sections: {
     currentVisit: CurrentVisitSection;
-    workItems: WorkspaceSection;
-    timeline: WorkspaceSection;
-    communication: WorkspaceSection;
-    financial: WorkspaceSection;
-    attachments: WorkspaceSection;
+    workItems: UnavailableWorkspaceSection;
+    timeline: UnavailableWorkspaceSection;
+    communication: UnavailableWorkspaceSection;
+    financial: UnavailableWorkspaceSection;
+    attachments: UnavailableWorkspaceSection;
   };
 }
 

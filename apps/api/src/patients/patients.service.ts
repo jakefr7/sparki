@@ -9,6 +9,7 @@ import {
   type VisitType,
 } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
 
@@ -125,17 +126,12 @@ export class PatientsService {
 
         UNION ALL
 
-        SELECT p2.id AS id, similarity(lower(c."firstName" || ' ' || c."lastName"), lower(${query})) AS score
+        SELECT p2.id AS id, ${clientNameSimilarity('c', query)} AS score
         FROM "Patient" p2
         JOIN "PatientClient" pc ON pc."patientId" = p2.id
         JOIN "Client" c ON c.id = pc."clientId"
         WHERE p2."organizationId" = ${organizationId}
-          AND (
-            (c."firstName" || ' ' || c."lastName") ILIKE '%' || ${query} || '%'
-            OR (c."firstName" || ' ' || c."lastName") % ${query}
-            OR c.phone ILIKE '%' || ${query} || '%'
-            OR c.email ILIKE '%' || ${query} || '%'
-          )
+          AND ${clientFuzzyMatchCondition('c', query)}
       ) AS matches
       GROUP BY id
       ORDER BY score DESC
@@ -147,27 +143,29 @@ export class PatientsService {
     }
 
     const rankedIds = ranked.map((row) => row.id);
-    const patients = await prisma.patient.findMany({
-      where: { id: { in: rankedIds } },
-      ...patientWithClients,
-    });
-    const activeVisits = await prisma.visit.findMany({
-      where: {
-        patientId: { in: rankedIds },
-        organizationId,
-        state: { notIn: TERMINAL_VISIT_STATES },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    const appointments = await prisma.appointment.findMany({
-      where: {
-        patientId: { in: rankedIds },
-        organizationId,
-        scheduledAt: { gte: new Date() },
-        state: { notIn: ['Cancelled', 'NoShow', 'Completed'] },
-      },
-      orderBy: { scheduledAt: 'asc' },
-    });
+    const [patients, activeVisits, appointments] = await Promise.all([
+      prisma.patient.findMany({
+        where: { id: { in: rankedIds } },
+        ...patientWithClients,
+      }),
+      prisma.visit.findMany({
+        where: {
+          patientId: { in: rankedIds },
+          organizationId,
+          state: { notIn: TERMINAL_VISIT_STATES },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.appointment.findMany({
+        where: {
+          patientId: { in: rankedIds },
+          organizationId,
+          scheduledAt: { gte: new Date() },
+          state: { notIn: ['Cancelled', 'NoShow', 'Completed'] },
+        },
+        orderBy: { scheduledAt: 'asc' },
+      }),
+    ]);
 
     const byId = new Map(patients.map((patient) => [patient.id, patient]));
     const activeVisitByPatientId = new Map<string, (typeof activeVisits)[number]>();
@@ -206,19 +204,18 @@ export class PatientsService {
    */
   async getWorkspaceSummary(id: string, organizationId: string) {
     const patient = await this.findById(id, organizationId);
-    const upcomingAppointments = await this.appointments.listUpcomingForPatient(
-      patient.id,
-      organizationId,
-    );
-    const activeVisit = await prisma.visit.findFirst({
-      where: {
-        patientId: patient.id,
-        organizationId,
-        state: { notIn: TERMINAL_VISIT_STATES },
-      },
-      include: { client: true, appointment: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    const [upcomingAppointments, activeVisit] = await Promise.all([
+      this.appointments.listUpcomingForPatient(patient.id, organizationId),
+      prisma.visit.findFirst({
+        where: {
+          patientId: patient.id,
+          organizationId,
+          state: { notIn: TERMINAL_VISIT_STATES },
+        },
+        include: { client: true, appointment: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
 
     return {
       patient: {

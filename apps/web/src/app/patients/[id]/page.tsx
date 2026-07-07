@@ -5,6 +5,7 @@ import {
   StartWalkInVisitForm,
 } from '../../../components/start-visit-actions';
 import { env } from '../../../lib/env';
+import { formatAge } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -22,12 +23,6 @@ async function getWorkspace(id: string): Promise<PatientWorkspace | null> {
     throw new Error(`Failed to load patient workspace (${response.status})`);
   }
   return response.json() as Promise<PatientWorkspace>;
-}
-
-function formatAge(dateOfBirth: string | null): string | null {
-  if (!dateOfBirth) return null;
-  const years = (Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-  return years < 1 ? 'under 1 year old' : `${Math.floor(years)} years old`;
 }
 
 const SECTION_LABELS = {

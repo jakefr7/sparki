@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { timeLabel } from '../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -270,10 +271,6 @@ export function FrontDeskIntakeForm() {
       setError(caught instanceof Error ? caught.message : 'Could not complete registration.');
       setSubmitting(false);
     }
-  }
-
-  function appointmentTimeLabel(value: string): string {
-    return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
 
   const primaryActionLabel = selectedClient ? 'Create Patient' : 'Create Client & Patient';
@@ -576,8 +573,8 @@ export function FrontDeskIntakeForm() {
             <button
               type="button"
               className="button-secondary front-desk-schedule-later"
-              disabled
-              title="Coming soon"
+              aria-disabled="true"
+              onClick={(event) => event.preventDefault()}
             >
               Schedule for later
               <span>Coming soon</span>
@@ -608,7 +605,7 @@ export function FrontDeskIntakeForm() {
                       />
                       <span>
                         <strong>
-                          {appointmentTimeLabel(appointment.scheduledAt)} ·{' '}
+                          {timeLabel(appointment.scheduledAt)} ·{' '}
                           {appointmentTypeLabel(appointment.type)}
                         </strong>
                         <small>

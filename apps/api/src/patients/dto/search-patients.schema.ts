@@ -1,8 +1,5 @@
-import { z } from 'zod';
+import { paginatedSearchQuerySchema } from '../../common/paginated-search-query.schema';
 
-export const searchPatientsQuerySchema = z.object({
-  query: z.string().min(1).max(200),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
+export const searchPatientsQuerySchema = paginatedSearchQuerySchema;
 
-export type SearchPatientsQuery = z.infer<typeof searchPatientsQuerySchema>;
+export type SearchPatientsQuery = ReturnType<typeof searchPatientsQuerySchema.parse>;

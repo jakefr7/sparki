@@ -4,6 +4,7 @@ import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { env } from '../../../lib/env';
+import { enumLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -19,13 +20,6 @@ async function getVisit(id: string): Promise<VisitDetail | null> {
     throw new Error(`Failed to load visit (${response.status})`);
   }
   return response.json() as Promise<VisitDetail>;
-}
-
-function enumLabel(value: string): string {
-  return value
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function personLabel(

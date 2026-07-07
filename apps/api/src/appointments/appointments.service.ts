@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { prisma, type AppointmentSource, type AppointmentState } from '@sparki/db';
+import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import type {
   CreateAppointmentInput,
   LinkAppointmentPatientInput,
@@ -74,25 +75,16 @@ export class AppointmentsService {
 
     const clientId = input.clientId ?? patient.clients[0]?.client.id ?? null;
     if (input.clientId) {
-      const client = await prisma.client.findFirst({
-        where: { id: input.clientId, organizationId },
-      });
-      if (!client) {
-        throw new BadRequestException(
-          `Client ${input.clientId} not found in organization ${organizationId}`,
-        );
-      }
+      await assertBelongsToOrganization(prisma.client, 'Client', input.clientId, organizationId);
     }
 
     if (input.assignedProviderId) {
-      const provider = await prisma.user.findFirst({
-        where: { id: input.assignedProviderId, organizationId },
-      });
-      if (!provider) {
-        throw new BadRequestException(
-          `Provider ${input.assignedProviderId} not found in organization ${organizationId}`,
-        );
-      }
+      await assertBelongsToOrganization(
+        prisma.user,
+        'Provider',
+        input.assignedProviderId,
+        organizationId,
+      );
     }
 
     return prisma.appointment.create({
@@ -138,14 +130,7 @@ export class AppointmentsService {
 
     const clientId = input.clientId ?? patient.clients[0]?.client.id ?? null;
     if (input.clientId) {
-      const client = await prisma.client.findFirst({
-        where: { id: input.clientId, organizationId },
-      });
-      if (!client) {
-        throw new BadRequestException(
-          `Client ${input.clientId} not found in organization ${organizationId}`,
-        );
-      }
+      await assertBelongsToOrganization(prisma.client, 'Client', input.clientId, organizationId);
     }
 
     if (appointment.clientId && clientId && appointment.clientId !== clientId) {

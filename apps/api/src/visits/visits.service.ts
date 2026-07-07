@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
+import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
@@ -116,24 +117,21 @@ export class VisitsService {
     const patient = await this.patients.findById(patientId, organizationId);
 
     if (clientId) {
-      const client = await prisma.client.findFirst({ where: { id: clientId, organizationId } });
-      if (!client) {
-        throw new BadRequestException(
-          `Client ${clientId} not found in organization ${organizationId}`,
-        );
-      }
+      await assertBelongsToOrganization(prisma.client, 'Client', clientId, organizationId);
     } else {
       const primary =
         patient.clients.find((patientClient) => patientClient.isPrimary) ?? patient.clients[0];
       clientId = primary?.client.id ?? null;
     }
 
-    if (primaryVeterinarianId) {
-      await this.assertStaffBelongsToOrganization(primaryVeterinarianId, organizationId);
-    }
-    if (input.assignedTechnicianId) {
-      await this.assertStaffBelongsToOrganization(input.assignedTechnicianId, organizationId);
-    }
+    await Promise.all([
+      primaryVeterinarianId
+        ? assertBelongsToOrganization(prisma.user, 'Staff member', primaryVeterinarianId, organizationId)
+        : null,
+      input.assignedTechnicianId
+        ? assertBelongsToOrganization(prisma.user, 'Staff member', input.assignedTechnicianId, organizationId)
+        : null,
+    ]);
 
     return prisma.$transaction(async (tx) => {
       // Re-checked inside the transaction to narrow (not eliminate — Postgres
@@ -177,18 +175,6 @@ export class VisitsService {
         include: visitInclude,
       });
     });
-  }
-
-  private async assertStaffBelongsToOrganization(
-    userId: string,
-    organizationId: string,
-  ): Promise<void> {
-    const staff = await prisma.user.findFirst({ where: { id: userId, organizationId } });
-    if (!staff) {
-      throw new BadRequestException(
-        `Staff member ${userId} not found in organization ${organizationId}`,
-      );
-    }
   }
 
   async findById(id: string, organizationId: string) {

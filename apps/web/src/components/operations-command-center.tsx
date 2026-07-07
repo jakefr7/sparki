@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { appointmentTypeLabel, clientDisplayName } from '../lib/patient-types';
+import { enumLabel, timeLabel } from '../lib/format';
+import {
+  appointmentTypeLabel,
+  clientDisplayName,
+  type DashboardAppointmentSummary,
+  type DashboardClientSummary,
+  type DashboardPersonSummary,
+  type DashboardVisitSummary,
+  type OperationsDashboard,
+} from '../lib/patient-types';
 import { PatientSearch } from './patient-search';
 
 const REFRESH_INTERVAL_MS = 45_000;
@@ -16,69 +25,6 @@ const CHECKOUT_STATES = new Set(['CheckoutReady', 'CheckoutInProgress']);
 const UPCOMING_APPOINTMENT_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
 const CHECK_IN_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
 
-interface DashboardPersonSummary {
-  id: string;
-  displayName: string;
-  role: string;
-}
-
-interface DashboardPatientSummary {
-  id: string;
-  name: string;
-  species: string;
-}
-
-interface DashboardClientSummary {
-  id: string;
-  firstName: string;
-  lastName: string;
-}
-
-interface DashboardAppointmentSummary {
-  id: string;
-  type: string;
-  reason: string;
-  state: string;
-  scheduledAt: string;
-  expectedDurationMinutes: number | null;
-  patient: DashboardPatientSummary | null;
-  client: DashboardClientSummary | null;
-  provider: DashboardPersonSummary | null;
-}
-
-interface DashboardVisitSummary {
-  id: string;
-  visitType: string;
-  reason: string;
-  state: string;
-  createdAt: string;
-  elapsedMinutes: number;
-  patient: DashboardPatientSummary;
-  client: DashboardClientSummary | null;
-  appointment: { id: string; scheduledAt: string; type: string } | null;
-  primaryVeterinarian: DashboardPersonSummary | null;
-  assignedTechnician: DashboardPersonSummary | null;
-  currentOwner: DashboardPersonSummary | null;
-  intakeSummaryAvailable: boolean;
-}
-
-interface OperationsDashboard {
-  generatedAt: string;
-  summary: {
-    scheduledToday: number;
-    arrived: number;
-    active: number;
-    checkoutReady: number;
-    completedToday: number;
-    totalToday: number;
-  };
-  todaysAppointments: DashboardAppointmentSummary[];
-  upcomingAppointments: DashboardAppointmentSummary[];
-  activeVisits: DashboardVisitSummary[];
-  arrivedOrWaiting: DashboardVisitSummary[];
-  visitsByState: { state: string; count: number }[];
-}
-
 const CHECKOUT_READY_STATE = 'CheckoutReady';
 const EXAM_READY_STATE = 'VeterinarianExamReady';
 const WAITING_STATES = new Set([
@@ -89,17 +35,6 @@ const WAITING_STATES = new Set([
   'Waiting',
   'ReadyForIntake',
 ]);
-
-function enumLabel(value: string): string {
-  return value
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
-}
-
-function timeLabel(value: string): string {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
 
 function clientLabel(client: DashboardClientSummary | null): string {
   return client ? clientDisplayName(client) : 'Client not linked';

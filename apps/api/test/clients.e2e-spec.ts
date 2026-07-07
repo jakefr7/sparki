@@ -92,4 +92,79 @@ describe('Clients (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe('GET /clients/search', () => {
+    it('matches by client name', async () => {
+      await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Reginald', lastName: 'Barkington' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/clients/search')
+        .query({ query: 'Barkington' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ firstName: 'Reginald' })]),
+      );
+    });
+
+    it('matches by phone or email', async () => {
+      await prisma.client.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          firstName: 'Contact',
+          lastName: 'Match',
+          phone: '555-0199',
+          email: 'contact-match@example.com',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/clients/search')
+        .query({ query: 'contact-match@example.com' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ lastName: 'Match' })]),
+      );
+    });
+
+    it('tolerates a typo via trigram fuzzy matching', async () => {
+      await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Biscuit', lastName: 'Hoskins' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/clients/search')
+        .query({ query: 'Biskit Hoskins' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ firstName: 'Biscuit' })]),
+      );
+    });
+
+    it('returns an empty array when nothing matches', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/clients/search')
+        .query({ query: 'qzxjvkqzxjvk' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it('does not return clients from a different organization', async () => {
+      await prisma.client.create({
+        data: { organizationId: otherOrganizationId, firstName: 'Only', lastName: 'InOtherOrg' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/clients/search')
+        .query({ query: 'Only InOtherOrg' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+  });
 });

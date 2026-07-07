@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { formatAge } from '../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -12,14 +13,13 @@ import { QuickWalkInVisitAction, StartAppointmentVisitButton } from './start-vis
 
 const DEBOUNCE_MS = 150;
 
-function formatAge(dateOfBirth: string | null): string | null {
-  if (!dateOfBirth) return null;
-  const years = (Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-  return years < 1 ? '<1 yr' : `${Math.floor(years)} yr`;
-}
-
 function resultSubtitle(result: PatientSearchResult): string {
-  const parts = [result.species, result.breed, result.sex, formatAge(result.dateOfBirth)].filter(
+  const parts = [
+    result.species,
+    result.breed,
+    result.sex,
+    formatAge(result.dateOfBirth, 'short'),
+  ].filter(
     (part): part is string => Boolean(part),
   );
   return parts.join(' · ');

@@ -50,10 +50,14 @@ test('appointment -> start visit -> visit workspace', async ({ page, request }) 
   await page.getByRole('button', { name: 'Start Visit' }).click();
 
   await expect(page).toHaveURL(/\/visits\/[^/]+$/);
-  await expect(page.getByRole('heading', { name: 'Visit Workspace' })).toBeVisible();
-  await expect(page.getByText(visitReason)).toBeVisible();
-  await expect(page.getByText(`Client: Visit Client ${RUN_ID} Appointment`)).toBeVisible();
-  await expect(page.getByText(/Appointment: Sick Visit/)).toBeVisible();
+  await expect(page.getByText('Visit Workspace')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: patient.name })).toBeVisible();
+  const contextSummary = page.getByRole('list', { name: 'Visit context summary' });
+  await expect(contextSummary).toContainText(visitReason);
+  await expect(contextSummary).toContainText(`Visit Client ${RUN_ID} Appointment`);
+
+  await page.getByText('Appointment & assignment details').click();
+  await expect(page.getByText('Sick Visit')).toBeVisible();
 
   await page.getByRole('link', { name: new RegExp(`Back to ${patient.name}`) }).click();
   await expect(page.getByRole('heading', { name: 'Current Visit' })).toBeVisible();
@@ -74,9 +78,12 @@ test('patient workspace -> start walk-in visit -> visit workspace', async ({ pag
   await page.getByRole('button', { name: 'Create Walk-In Visit' }).click();
 
   await expect(page).toHaveURL(/\/visits\/[^/]+$/);
-  await expect(page.getByRole('heading', { name: 'Visit Workspace' })).toBeVisible();
-  await expect(page.getByText(visitReason)).toBeVisible();
-  await expect(page.getByText('Appointment: Walk-in / no appointment')).toBeVisible();
+  await expect(page.getByText('Visit Workspace')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: patient.name })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Visit context summary' })).toContainText(visitReason);
+
+  await page.getByText('Appointment & assignment details').click();
+  await expect(page.getByText('Walk-in / no appointment')).toBeVisible();
 });
 
 test('active visit is shown instead of duplicate visit actions', async ({ page, request }) => {

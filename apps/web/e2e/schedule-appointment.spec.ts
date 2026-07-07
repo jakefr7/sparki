@@ -35,10 +35,15 @@ test('search patient, open workspace, schedule an appointment, and it persists a
 }) => {
   // Search patient.
   await page.goto('/');
-  const input = page.getByRole('combobox', { name: 'Patient search' });
+  const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially(PATIENT_NAME);
-  await expect(page.getByRole('option', { name: new RegExp(PATIENT_NAME) })).toBeVisible();
-  await input.press('Enter');
+  // Click the exact match rather than pressing Enter: fuzzy ranking against
+  // the shared dev DB's accumulated fixtures can put another result first.
+  const option = page.getByRole('option', { name: new RegExp(PATIENT_NAME) });
+  await expect(option).toBeVisible();
+  // Click the identity block, not the action buttons area, which stops
+  // propagation so it doesn't trigger the option's own click handler.
+  await option.locator('.patient-search__identity').click();
 
   // Open patient workspace.
   await expect(page).toHaveURL(`/patients/${patientId}`);
@@ -56,15 +61,16 @@ test('search patient, open workspace, schedule an appointment, and it persists a
   await page.getByLabel('Expected duration (minutes)').fill('30');
   await page.getByRole('button', { name: 'Schedule appointment' }).click();
 
-  // Back on the workspace, appointment shows in the summary.
+  // Back on the workspace, appointment shows in the Upcoming Appointments summary.
   await expect(page).toHaveURL(`/patients/${patientId}`);
-  await expect(page.getByText(VISIT_REASON)).toBeVisible();
-  await expect(page.getByText('Wellness / Preventive Care')).toBeVisible();
-  await expect(page.getByText('30 min')).toBeVisible();
+  const upcomingAppointments = page.getByRole('region', { name: 'Upcoming Appointments' });
+  await expect(upcomingAppointments).toContainText(VISIT_REASON);
+  await expect(upcomingAppointments).toContainText('Wellness / Preventive Care');
+  await expect(upcomingAppointments).toContainText('30 min');
 
   // Refresh page and appointment persists.
   await page.reload();
-  await expect(page.getByText(VISIT_REASON)).toBeVisible();
+  await expect(upcomingAppointments).toContainText(VISIT_REASON);
 });
 
 test('rejects an incomplete appointment form', async ({ page }) => {

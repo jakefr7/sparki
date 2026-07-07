@@ -1,710 +1,138 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { enumLabel, timeLabel } from '../lib/format';
-import {
-  appointmentTypeLabel,
-  clientDisplayName,
-  type DashboardAppointmentSummary,
-  type DashboardClientSummary,
-  type DashboardPersonSummary,
-  type DashboardVisitSummary,
-  type OperationsDashboard,
-} from '../lib/patient-types';
-import { PatientSearch } from './patient-search';
-
-const REFRESH_INTERVAL_MS = 45_000;
-const STALE_AFTER_MS = 60_000;
-
-/** Mirrors VisitsService's STARTABLE_VISIT_STATES — the only states where
- *  POST /visits/:id/start does anything (see apps/api/src/visits). */
-const STARTABLE_STATES = new Set(['Arrived', 'ReadyForIntake']);
-const CHECKOUT_STATES = new Set(['CheckoutReady', 'CheckoutInProgress']);
-const UPCOMING_APPOINTMENT_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
-const CHECK_IN_STATES = new Set(['Scheduled', 'PreVisitPending', 'Confirmed']);
-
-const CHECKOUT_READY_STATE = 'CheckoutReady';
-const EXAM_READY_STATE = 'VeterinarianExamReady';
-const WAITING_STATES = new Set([
-  'Arrived',
-  'CheckInInProgress',
-  'ArrivedWithExceptions',
-  'Triaged',
-  'Waiting',
-  'ReadyForIntake',
-]);
-
-function clientLabel(client: DashboardClientSummary | null): string {
-  return client ? clientDisplayName(client) : 'Client not linked';
-}
-
-function visitOwner(visit: DashboardVisitSummary): DashboardPersonSummary | null {
-  const clinicalCurrentOwner =
-    visit.currentOwner && ['VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(visit.currentOwner.role)
-      ? visit.currentOwner
-      : null;
-
-  return visit.primaryVeterinarian ?? visit.assignedTechnician ?? clinicalCurrentOwner ?? visit.currentOwner;
-}
-
-function ownerLabel(owner: DashboardPersonSummary | null): string {
-  if (!owner) return 'Front desk';
-  return `${owner.displayName} · ${personRoleLabel(owner)}`;
-}
-
-function visitNextAction(visit: DashboardVisitSummary): string {
-  if (visit.state === EXAM_READY_STATE) return 'Ready for doctor';
-  if (visit.state === CHECKOUT_READY_STATE) return 'Collect payment and close visit';
-  if (WAITING_STATES.has(visit.state)) return 'Room, triage, or assign owner';
-  return 'Continue visit workflow';
-}
-
-function appointmentNextAction(appointment: DashboardAppointmentSummary): string {
-  if (appointment.state === 'Completed') return 'Review completed appointment';
-  if (appointment.state === 'Arrived') return 'Start or resume visit';
-  return 'Prepare for arrival';
-}
-
-function personRoleLabel(person: DashboardPersonSummary): string {
-  return enumLabel(person.role).replace('Clinic ', '');
-}
-
-function visitActionLabel(visit: DashboardVisitSummary): string {
-  if (visit.state === EXAM_READY_STATE) return 'Start Exam';
-  if (STARTABLE_STATES.has(visit.state)) return 'Start Intake';
-  if (CHECKOUT_STATES.has(visit.state)) return 'Open Checkout';
-  return 'Open Visit';
-}
-
-function appointmentHref(appointment: DashboardAppointmentSummary): string | null {
-  return appointment.patient ? `/patients/${appointment.patient.id}` : null;
-}
-
-function visitTone(visit: DashboardVisitSummary): 'waiting' | 'exam' | 'active' | 'checkout' {
-  if (visit.state === CHECKOUT_READY_STATE) return 'checkout';
-  if (visit.state === EXAM_READY_STATE) return 'exam';
-  if (WAITING_STATES.has(visit.state)) return 'waiting';
-  return 'active';
-}
-
-function SectionShell({
-  title,
-  count,
-  tone,
-  children,
-}: {
-  title: string;
-  count: number;
-  tone?: 'waiting' | 'exam' | 'active' | 'checkout' | 'completed' | 'upcoming' | 'rail';
-  children: ReactNode;
-}) {
-  const headingId = `${title.replace(/\W+/g, '-').toLowerCase()}-heading`;
-
-  return (
-    <details className={tone ? `ops-section ops-section--${tone}` : 'ops-section'} open>
-      <summary className="ops-section__header">
-        <h2 id={headingId}>{title}</h2>
-        <span className="ops-section__toggle">
-          <span className="ops-section__count">{count}</span>
-          <span className="ops-section__chevron" aria-hidden="true" />
-        </span>
-      </summary>
-      <div className="ops-section__body">{children}</div>
-    </details>
-  );
-}
-
-function EmptyQueue({ label }: { label: string }) {
-  return <p className="ops-empty-state">{label}</p>;
-}
-
-function ExamReadyVisitCard({
-  visit,
-  onExamStarted,
-}: {
-  visit: DashboardVisitSummary;
-  onExamStarted: () => void;
-}) {
-  const router = useRouter();
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const href = `/visits/${visit.id}?from=command-center`;
-
-  async function handleStartExam() {
-    setStarting(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/visits/${visit.id}/exam/start`, { method: 'POST' });
-      if (!response.ok) {
-        const payload = (await response.json()) as { message?: string };
-        throw new Error(payload.message ?? `Could not start exam (${response.status})`);
-      }
-      onExamStarted();
-      router.push(href);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start exam.');
-      setStarting(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => void handleStartExam()}
-      disabled={starting}
-      className="ops-work-card ops-work-card--exam"
-      aria-label={`Start Exam for ${visit.patient.name}`}
-    >
-      <div className="ops-work-card__topline">
-        <span className="ops-pill">Ready for Doctor</span>
-        <span>{visit.elapsedMinutes} min</span>
-      </div>
-      <strong>{visit.patient.name}</strong>
-      <dl>
-        <div>
-          <dt>Provider</dt>
-          <dd>{visit.primaryVeterinarian?.displayName ?? 'Unassigned provider'}</dd>
-        </div>
-        <div>
-          <dt>Tech</dt>
-          <dd>{visit.assignedTechnician?.displayName ?? 'Unassigned technician'}</dd>
-        </div>
-        <div>
-          <dt>Reason</dt>
-          <dd>{visit.reason || appointmentTypeLabel(visit.visitType)}</dd>
-        </div>
-        <div>
-          <dt>Intake</dt>
-          <dd>{visit.intakeSummaryAvailable ? 'Summary available' : 'No summary yet'}</dd>
-        </div>
-      </dl>
-      <p>{clientLabel(visit.client)}</p>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <span className="ops-card-action">{starting ? 'Starting Exam...' : 'Start Exam'}</span>
-    </button>
-  );
-}
-
-function VisitCard({
-  visit,
-  onVisitStarted,
-}: {
-  visit: DashboardVisitSummary;
-  onVisitStarted: () => void;
-}) {
-  const router = useRouter();
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const owner = visitOwner(visit);
-  const tone = visitTone(visit);
-  const href = `/visits/${visit.id}?from=command-center`;
-  const startable = STARTABLE_STATES.has(visit.state);
-
-  async function handleActivate() {
-    if (!startable) {
-      router.push(href);
-      return;
-    }
-
-    setStarting(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
-      if (!response.ok) {
-        throw new Error(`Could not start visit (${response.status})`);
-      }
-      onVisitStarted();
-      router.push(href);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start visit.');
-      setStarting(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={() => void handleActivate()}
-      disabled={starting}
-      className={`ops-work-card ops-work-card--${tone}`}
-      aria-label={`${visitActionLabel(visit)} for ${visit.patient.name}`}
-    >
-      <div className="ops-work-card__topline">
-        <span className="ops-pill">{enumLabel(visit.state)}</span>
-        <span>{visit.elapsedMinutes} min</span>
-      </div>
-      <strong>{visit.patient.name}</strong>
-      <dl>
-        <div>
-          <dt>Client</dt>
-          <dd>{clientLabel(visit.client)}</dd>
-        </div>
-        <div>
-          <dt>State</dt>
-          <dd>{enumLabel(visit.state)}</dd>
-        </div>
-        <div>
-          <dt>Owner</dt>
-          <dd>{ownerLabel(owner)}</dd>
-        </div>
-        <div>
-          <dt>Next</dt>
-          <dd>{visitNextAction(visit)}</dd>
-        </div>
-      </dl>
-      <p>{visit.reason || appointmentTypeLabel(visit.visitType)}</p>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <span className="ops-card-action">{starting ? 'Starting…' : visitActionLabel(visit)}</span>
-    </button>
-  );
-}
-
-function AppointmentCard({
-  appointment,
-  onAppointmentCheckedIn,
-  actionLabel = 'Open Patient',
-  tone = 'upcoming',
-}: {
-  appointment: DashboardAppointmentSummary;
-  onAppointmentCheckedIn?: () => void;
-  actionLabel?: string;
-  tone?: 'completed' | 'upcoming';
-}) {
-  const href = appointmentHref(appointment);
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const canCheckIn = Boolean(
-    onAppointmentCheckedIn && appointment.patient && CHECK_IN_STATES.has(appointment.state),
-  );
-
-  async function handleCheckIn() {
-    if (!appointment.patient) return;
-
-    setCheckingIn(true);
-    setError(null);
-
-    try {
-      const arriveResponse = await fetch(`/api/appointments/${appointment.id}/arrive`, {
-        method: 'POST',
-      });
-      const arrivePayload = (await arriveResponse.json()) as { message?: string };
-      if (!arriveResponse.ok) {
-        throw new Error(arrivePayload.message ?? 'Could not check in appointment.');
-      }
-
-      const visitResponse = await fetch('/api/visits', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointmentId: appointment.id }),
-      });
-      const visitPayload = (await visitResponse.json()) as { message?: string };
-      if (!visitResponse.ok) {
-        throw new Error(visitPayload.message ?? 'Could not create visit.');
-      }
-
-      onAppointmentCheckedIn?.();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not check in appointment.');
-    } finally {
-      setCheckingIn(false);
-    }
-  }
-
-  const card = (
-    <>
-      <div className="ops-work-card__topline">
-        <span className="ops-pill">{timeLabel(appointment.scheduledAt)}</span>
-        <span>{appointment.expectedDurationMinutes ?? 30} min</span>
-      </div>
-      <strong>{appointment.patient?.name ?? 'Unlinked patient'}</strong>
-      <dl>
-        <div>
-          <dt>Client</dt>
-          <dd>{clientLabel(appointment.client)}</dd>
-        </div>
-        <div>
-          <dt>State</dt>
-          <dd>{enumLabel(appointment.state)}</dd>
-        </div>
-        <div>
-          <dt>Owner</dt>
-          <dd>{appointment.provider?.displayName ?? 'Unassigned provider'}</dd>
-        </div>
-        <div>
-          <dt>Next</dt>
-          <dd>{appointmentNextAction(appointment)}</dd>
-        </div>
-      </dl>
-      <p>{appointmentTypeLabel(appointment.type)} · {appointment.reason}</p>
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      {canCheckIn ? (
-        <button
-          type="button"
-          className="ops-card-action ops-card-action--button"
-          onClick={() => void handleCheckIn()}
-          disabled={checkingIn}
-        >
-          {checkingIn ? 'Checking In…' : 'Check In'}
-        </button>
-      ) : (
-        <span className="ops-card-action">{href ? actionLabel : 'No Patient Link'}</span>
-      )}
-    </>
-  );
-
-  if (canCheckIn) {
-    return <div className={`ops-work-card ops-work-card--${tone}`}>{card}</div>;
-  }
-
-  return href ? (
-    <Link
-      href={href}
-      className={`ops-work-card ops-work-card--${tone}`}
-      aria-label={`${actionLabel} for ${appointment.patient?.name ?? 'appointment'}`}
-    >
-      {card}
-    </Link>
-  ) : (
-    <div className={`ops-work-card ops-work-card--static ops-work-card--${tone}`}>{card}</div>
-  );
-}
-
-function ProviderContext({ dashboard }: { dashboard: OperationsDashboard }) {
-  const people = useMemo(() => {
-    const records = new Map<
-      string,
-      {
-        person: DashboardPersonSummary;
-        active: number;
-        upcoming: number;
-        nextPatient: string;
-      }
-    >();
-
-    function add(person: DashboardPersonSummary | null, kind: 'active' | 'upcoming', nextPatient: string) {
-      if (!person) return;
-      const existing =
-        records.get(person.id) ??
-        records
-          .set(person.id, { person, active: 0, upcoming: 0, nextPatient })
-          .get(person.id);
-      if (!existing) return;
-      existing[kind] += 1;
-      if (!existing.nextPatient) existing.nextPatient = nextPatient;
-    }
-
-    for (const visit of dashboard.activeVisits) {
-      add(visit.primaryVeterinarian, 'active', visit.patient.name);
-      add(visit.assignedTechnician, 'active', visit.patient.name);
-      add(visit.currentOwner, 'active', visit.patient.name);
-    }
-    for (const appointment of dashboard.upcomingAppointments) {
-      add(appointment.provider, 'upcoming', appointment.patient?.name ?? 'Unlinked patient');
-    }
-
-    return Array.from(records.values()).sort(
-      (a, b) => b.active - a.active || b.upcoming - a.upcoming || a.person.displayName.localeCompare(b.person.displayName),
-    );
-  }, [dashboard]);
-
-  return (
-    <SectionShell title="Provider / Technician Context" count={people.length} tone="rail">
-      {people.length > 0 ? (
-        <div className="ops-provider-list">
-          {people.slice(0, 8).map(({ person, active, upcoming, nextPatient }) => (
-            <div key={person.id} className="ops-provider-row">
-              <div>
-                <strong>{person.displayName}</strong>
-                <span>{personRoleLabel(person)}</span>
-              </div>
-              <div>
-                <strong>{active}</strong>
-                <span>Active</span>
-              </div>
-              <div>
-                <strong>{upcoming}</strong>
-                <span>Upcoming</span>
-              </div>
-              <p>{nextPatient || 'No patient queued'}</p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyQueue label="No provider or technician assignments in the current dashboard snapshot." />
-      )}
-    </SectionShell>
-  );
-}
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppointmentQueue } from './command-center/appointment-queue';
+import { collectStaffRoster, computeClinicHealth, visitMatchesStaff } from './command-center/card-helpers';
+import { CommandCenterHeader } from './command-center/command-center-header';
+import { CommandCenterMetrics } from './command-center/command-center-metrics';
+import { OperationalAlerts } from './command-center/operational-alerts';
+import { PriorityQueue } from './command-center/priority-queue';
+import { SectionShell } from './command-center/section-shell';
+import { EmptyQueue } from './command-center/empty-states';
+import { StaffSnapshot } from './command-center/staff-snapshot';
+import { VisitQueue } from './command-center/visit-queue';
+import { enumLabel } from '../lib/format';
+import { STAFF_FOCUS_STORAGE_KEY } from '../lib/staff-focus';
+import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 
 export function OperationsCommandCenter() {
-  const [dashboard, setDashboard] = useState<OperationsDashboard | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  const isMountedRef = useRef(true);
-  const controllerRef = useRef<AbortController>(new AbortController());
-
-  const loadDashboard = useCallback(async (mode: 'initial' | 'refresh') => {
-    controllerRef.current.abort();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-
-    if (mode === 'refresh') setRefreshing(true);
-
-    try {
-      const response = await fetch('/api/operations/dashboard', { signal: controller.signal });
-      if (!response.ok) throw new Error(`Dashboard failed to load (${response.status})`);
-      const payload = (await response.json()) as OperationsDashboard;
-      if (!isMountedRef.current) return;
-      setDashboard(payload);
-      setLastLoadedAt(new Date());
-      setError(null);
-    } catch (caught: unknown) {
-      if (caught instanceof DOMException && caught.name === 'AbortError') return;
-      if (!isMountedRef.current) return;
-      if (mode === 'initial') setDashboard(null);
-      setError(caught instanceof Error ? caught.message : 'Dashboard failed to load.');
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    }
-  }, []);
+  const { dashboard, loading, refreshing, error, isStale, groups, refresh } = useOperationsDashboard();
+  const [focusStaffId, setFocusStaffId] = useState<string | null>(null);
+  const [mineOnly, setMineOnly] = useState(false);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    void loadDashboard('initial');
-    const refreshInterval = window.setInterval(() => void loadDashboard('refresh'), REFRESH_INTERVAL_MS);
-    const clockInterval = window.setInterval(() => setNow(Date.now()), 5_000);
+    setFocusStaffId(window.localStorage.getItem(STAFF_FOCUS_STORAGE_KEY));
+  }, []);
 
-    return () => {
-      isMountedRef.current = false;
-      controllerRef.current.abort();
-      window.clearInterval(refreshInterval);
-      window.clearInterval(clockInterval);
+  const handleFocusChange = useCallback((staffId: string | null) => {
+    setFocusStaffId(staffId);
+    if (staffId) window.localStorage.setItem(STAFF_FOCUS_STORAGE_KEY, staffId);
+    else window.localStorage.removeItem(STAFF_FOCUS_STORAGE_KEY);
+    if (!staffId) setMineOnly(false);
+  }, []);
+
+  const roster = useMemo(() => collectStaffRoster(dashboard), [dashboard]);
+  const clinicHealth = useMemo(() => computeClinicHealth(groups), [groups]);
+
+  const visibleGroups = useMemo(() => {
+    if (!mineOnly || !focusStaffId) return groups;
+    return {
+      ...groups,
+      waitingVisits: groups.waitingVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
+      examReadyVisits: groups.examReadyVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
+      checkoutVisits: groups.checkoutVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
+      inProgressVisits: groups.inProgressVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
+      upcomingAppointments: groups.upcomingAppointments.filter(
+        (appointment) => appointment.provider?.id === focusStaffId,
+      ),
     };
-  }, [loadDashboard]);
+  }, [groups, mineOnly, focusStaffId]);
 
-  const refreshAfterVisitStarted = useCallback(() => {
-    void loadDashboard('refresh');
-  }, [loadDashboard]);
-
-  const waitingVisits = dashboard?.arrivedOrWaiting ?? [];
-  const examReadyVisits =
-    dashboard?.activeVisits.filter((visit) => visit.state === EXAM_READY_STATE) ?? [];
-  const checkoutVisits =
-    dashboard?.activeVisits.filter((visit) => visit.state === CHECKOUT_READY_STATE) ?? [];
-  const inProgressVisits =
-    dashboard?.activeVisits.filter(
-      (visit) => visit.state !== CHECKOUT_READY_STATE && visit.state !== EXAM_READY_STATE,
-    ) ?? [];
-  const completedAppointments =
-    dashboard?.todaysAppointments.filter((appointment) => appointment.state === 'Completed') ?? [];
-  const upcomingAppointments =
-    dashboard?.upcomingAppointments.filter((appointment) =>
-      UPCOMING_APPOINTMENT_STATES.has(appointment.state),
-    ) ?? [];
-  const isStale = lastLoadedAt ? now - lastLoadedAt.getTime() > STALE_AFTER_MS : false;
+  const emptySuffix = mineOnly ? ' None assigned to you right now.' : '';
 
   return (
     <main className="page page--ops">
-      <header className="command-home-header command-home-header--ops">
-        <span className="app-brand">Sparki</span>
-        <div className="command-home-header__actions">
-          <div className="command-home-header__meta" aria-label="Clinic status">
-            <span>
-              {refreshing ? 'Refreshing' : isStale ? 'Stale' : 'Live'}
-            </span>
-            <strong>{dashboard ? `Updated ${timeLabel(dashboard.generatedAt)}` : 'Loading floor'}</strong>
-          </div>
-          <Link href="/settings" className="settings-link" aria-label="Settings" title="Settings">
-            ⚙
-          </Link>
-        </div>
-      </header>
+      <CommandCenterHeader
+        dashboard={dashboard}
+        refreshing={refreshing}
+        isStale={isStale}
+        clinicHealth={clinicHealth}
+        roster={roster}
+        focusStaffId={focusStaffId}
+        mineOnly={mineOnly}
+        onFocusChange={handleFocusChange}
+        onMineOnlyChange={setMineOnly}
+      />
 
-      <section className="ops-search-console" aria-label="Command lookup">
-        <div className="ops-search-console__header">
-          <div>
-            <p className="eyebrow">Command lookup</p>
-            <h2>Find the visit, client, or patient</h2>
-          </div>
-          <div className="ops-search-console__actions">
-            <Link href="/patients/new" className="button-primary ops-registration-action">
-              Register Client
-            </Link>
-            <span className="ops-search-console__mode">Live records</span>
-          </div>
-        </div>
-        <PatientSearch />
-      </section>
-
-      {loading && (
-        <section className="ops-panel-state" aria-live="polite">
-          Loading clinic operations...
-        </section>
-      )}
-
-      {!loading && error && (
-        <section className="ops-panel-state ops-panel-state--error" role="alert">
-          <strong>Could not load the operations dashboard.</strong>
-          <span>{error}</span>
-        </section>
-      )}
+      <OperationalAlerts loading={loading} error={error} groups={groups} />
 
       {!loading && !error && dashboard && (
         <>
-          <section
-            className={refreshing || isStale ? 'ops-summary-grid ops-summary-grid--updating' : 'ops-summary-grid'}
-            aria-label="Today summary counts"
-          >
-            <div>
-              <span>Scheduled Today</span>
-              <strong>{dashboard.summary.scheduledToday}</strong>
-            </div>
-            <div>
-              <span>Waiting / Arrived</span>
-              <strong>{dashboard.summary.arrived}</strong>
-            </div>
-            <div>
-              <span>Active Visits</span>
-              <strong>{dashboard.summary.active}</strong>
-            </div>
-            <div>
-              <span>Checkout Ready</span>
-              <strong>{dashboard.summary.checkoutReady}</strong>
-            </div>
-            <div>
-              <span>Completed Today</span>
-              <strong>{dashboard.summary.completedToday}</strong>
-            </div>
-            <div>
-              <span>Total Today</span>
-              <strong>{dashboard.summary.totalToday}</strong>
-            </div>
-          </section>
+          <CommandCenterMetrics summary={dashboard.summary} waitingVisits={groups.waitingVisits} updating={refreshing || isStale} />
+
+          <PriorityQueue groups={groups} onVisitStarted={refresh} focusStaffId={focusStaffId} />
 
           <div className="ops-dashboard-grid">
             <div className="ops-dashboard-grid__main">
-              <SectionShell title="Waiting / Arrived" count={waitingVisits.length} tone="waiting">
-                {waitingVisits.length > 0 ? (
-                  <div className="ops-card-grid">
-                    {waitingVisits.map((visit) => (
-                      <VisitCard key={visit.id} visit={visit} onVisitStarted={refreshAfterVisitStarted} />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No arrived patients are waiting on the floor." />
-                )}
-              </SectionShell>
+              <VisitQueue
+                title="Waiting / Arrived"
+                tone="waiting"
+                visits={visibleGroups.waitingVisits}
+                emptyLabel={`No arrived patients are waiting on the floor.${emptySuffix}`}
+                onVisitStarted={refresh}
+                focusStaffId={focusStaffId}
+              />
 
-              <SectionShell
+              <VisitQueue
                 title="Exam Ready / Ready for Doctor"
-                count={examReadyVisits.length}
                 tone="exam"
-              >
-                {examReadyVisits.length > 0 ? (
-                  <div className="ops-card-grid">
-                    {examReadyVisits.map((visit) => (
-                      <ExamReadyVisitCard
-                        key={visit.id}
-                        visit={visit}
-                        onExamStarted={refreshAfterVisitStarted}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No patients are ready for the doctor." />
-                )}
-              </SectionShell>
+                visits={visibleGroups.examReadyVisits}
+                emptyLabel={`No patients are ready for the doctor.${emptySuffix}`}
+                onVisitStarted={refresh}
+                cardVariant="exam-ready"
+                focusStaffId={focusStaffId}
+              />
 
-              <SectionShell
+              <VisitQueue
                 title="In Progress / Active Visits"
-                count={inProgressVisits.length}
                 tone="active"
-              >
-                {inProgressVisits.length > 0 ? (
-                  <div className="ops-card-grid">
-                    {inProgressVisits.map((visit) => (
-                      <VisitCard key={visit.id} visit={visit} onVisitStarted={refreshAfterVisitStarted} />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No active visits are currently in progress." />
-                )}
-              </SectionShell>
+                visits={visibleGroups.inProgressVisits}
+                emptyLabel={`No active visits are currently in progress.${emptySuffix}`}
+                onVisitStarted={refresh}
+                focusStaffId={focusStaffId}
+              />
 
-              <SectionShell title="Ready for Checkout" count={checkoutVisits.length} tone="checkout">
-                {checkoutVisits.length > 0 ? (
-                  <div className="ops-card-grid">
-                    {checkoutVisits.map((visit) => (
-                      <VisitCard key={visit.id} visit={visit} onVisitStarted={refreshAfterVisitStarted} />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No visits are waiting for checkout." />
-                )}
-              </SectionShell>
+              <VisitQueue
+                title="Ready for Checkout"
+                tone="checkout"
+                visits={visibleGroups.checkoutVisits}
+                emptyLabel={`No visits are waiting for checkout.${emptySuffix}`}
+                onVisitStarted={refresh}
+                focusStaffId={focusStaffId}
+              />
 
-              <SectionShell title="Completed Today" count={completedAppointments.length} tone="completed">
-                {completedAppointments.length > 0 ? (
-                  <div className="ops-card-grid">
-                    {completedAppointments.map((appointment) => (
-                      <AppointmentCard
-                        key={appointment.id}
-                        appointment={appointment}
-                        actionLabel="Open Patient"
-                        tone="completed"
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No completed appointments are present in today's snapshot." />
-                )}
-              </SectionShell>
+              <AppointmentQueue
+                title="Completed Today"
+                tone="completed"
+                appointments={groups.completedAppointments}
+                emptyLabel="No completed appointments are present in today's snapshot."
+                cardTone="completed"
+              />
             </div>
 
             <aside className="ops-dashboard-grid__rail" aria-label="Operations context">
-              <SectionShell
+              <AppointmentQueue
                 title="Upcoming Appointments"
-                count={upcomingAppointments.length}
                 tone="upcoming"
-              >
-                {upcomingAppointments.length > 0 ? (
-                  <div className="ops-card-stack">
-                    {upcomingAppointments.slice(0, 8).map((appointment) => (
-                      <AppointmentCard
-                        key={appointment.id}
-                        appointment={appointment}
-                        onAppointmentCheckedIn={refreshAfterVisitStarted}
-                        actionLabel="Open Patient"
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No upcoming appointments are queued." />
-                )}
-              </SectionShell>
+                appointments={visibleGroups.upcomingAppointments}
+                emptyLabel={`No upcoming appointments are queued.${emptySuffix}`}
+                layout="stack"
+                displayLimit={8}
+                onAppointmentCheckedIn={refresh}
+                focusStaffId={focusStaffId}
+              />
 
-              <ProviderContext dashboard={dashboard} />
+              <StaffSnapshot dashboard={dashboard} focusStaffId={focusStaffId} />
 
               <SectionShell title="Visit States" count={dashboard.visitsByState.length} tone="rail">
                 {dashboard.visitsByState.length > 0 ? (

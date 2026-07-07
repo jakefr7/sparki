@@ -593,11 +593,16 @@ export function OperationsCommandCenter() {
     <main className="page page--ops">
       <header className="command-home-header command-home-header--ops">
         <span className="app-brand">Sparki</span>
-        <div className="command-home-header__meta" aria-label="Clinic status">
-          <span>
-            {refreshing ? 'Refreshing' : isStale ? 'Stale' : 'Live'}
-          </span>
-          <strong>{dashboard ? `Updated ${timeLabel(dashboard.generatedAt)}` : 'Loading floor'}</strong>
+        <div className="command-home-header__actions">
+          <div className="command-home-header__meta" aria-label="Clinic status">
+            <span>
+              {refreshing ? 'Refreshing' : isStale ? 'Stale' : 'Live'}
+            </span>
+            <strong>{dashboard ? `Updated ${timeLabel(dashboard.generatedAt)}` : 'Loading floor'}</strong>
+          </div>
+          <Link href="/settings" className="settings-link" aria-label="Settings" title="Settings">
+            ⚙
+          </Link>
         </div>
       </header>
 

@@ -854,4 +854,155 @@ describe('Visits (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+
+  describe('Exam findings', () => {
+    async function createVisit(
+      patientName: string,
+      state:
+        | 'IntakeInProgress'
+        | 'VeterinarianExamReady'
+        | 'VeterinarianExamInProgress'
+        | 'TreatmentPending'
+        | 'Archived' = 'VeterinarianExamInProgress',
+    ) {
+      const patientId = await createPatient(patientName);
+      return prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'WalkIn',
+          reason: 'Exam findings fixture',
+          state,
+          primaryVeterinarianId: DEV_USER_ID,
+        },
+      });
+    }
+
+    it('saves exam findings and returns them on the Visit payload', async () => {
+      const visit = await createVisit('Save Exam Findings Patient');
+
+      const response = await request(app.getHttpServer())
+        .put(`/visits/${visit.id}/exam-findings`)
+        .send({
+          subjective: 'Owner reports lethargy for 2 days.',
+          objective: 'Temp 103.1F, mild dehydration, abdomen tender on palpation.',
+          assessment: 'Suspected gastroenteritis.',
+          plan: 'Start supportive care, recheck in 48 hours.',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        lastUpdatedById: DEV_USER_ID,
+        examFindings: {
+          subjective: 'Owner reports lethargy for 2 days.',
+          objective: 'Temp 103.1F, mild dehydration, abdomen tender on palpation.',
+          assessment: 'Suspected gastroenteritis.',
+          plan: 'Start supportive care, recheck in 48 hours.',
+          completedAt: null,
+        },
+      });
+
+      const saved = await prisma.visitExamFindings.findUniqueOrThrow({
+        where: { visitId: visit.id },
+      });
+      expect(saved.assessment).toBe('Suspected gastroenteritis.');
+    });
+
+    it('overwrites previously saved exam findings on update', async () => {
+      const visit = await createVisit('Update Exam Findings Patient');
+
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/exam-findings`).send({
+        subjective: 'Initial note',
+      });
+
+      const response = await request(app.getHttpServer())
+        .put(`/visits/${visit.id}/exam-findings`)
+        .send({ subjective: 'Revised note' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.examFindings).toMatchObject({
+        subjective: 'Revised note',
+        objective: null,
+      });
+    });
+
+    it('completes the exam by marking findings complete and moving the Visit to treatment-ready', async () => {
+      const visit = await createVisit('Complete Exam Patient');
+
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/exam-findings`).send({
+        subjective: 'Coughing, decreased appetite.',
+        assessment: 'Suspected kennel cough.',
+      });
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/exam/complete`,
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        id: visit.id,
+        state: 'TreatmentPending',
+        lastUpdatedById: DEV_USER_ID,
+        examFindings: {
+          subjective: 'Coughing, decreased appetite.',
+          assessment: 'Suspected kennel cough.',
+        },
+      });
+      expect(response.body.examFindings.completedAt).toEqual(expect.any(String));
+
+      const updatedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      const updatedFindings = await prisma.visitExamFindings.findUniqueOrThrow({
+        where: { visitId: visit.id },
+      });
+      expect(updatedVisit.state).toBe('TreatmentPending');
+      expect(updatedFindings.completedAt).toBeInstanceOf(Date);
+    });
+
+    it('is a safe no-op when completing exam after the Visit has already moved forward', async () => {
+      const visit = await createVisit('Past Exam Complete Patient', 'TreatmentPending');
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/exam/complete`,
+      );
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({ id: visit.id, state: 'TreatmentPending' });
+    });
+
+    it('rejects completing exam for a terminal Visit with 409', async () => {
+      const visit = await createVisit('Terminal Exam Complete Patient', 'Archived');
+
+      const response = await request(app.getHttpServer()).post(
+        `/visits/${visit.id}/exam/complete`,
+      );
+
+      expect(response.status).toBe(409);
+    });
+
+    it('returns 404 when saving exam findings for a Visit in a different organization', async () => {
+      const otherVisit = await prisma.visit.create({
+        data: {
+          organizationId: otherOrganizationId,
+          locationId: (
+            await prisma.location.create({
+              data: { organizationId: otherOrganizationId, name: 'Other Org Exam Location' },
+            })
+          ).id,
+          patientId: otherOrgPatientId,
+          visitType: 'WalkIn',
+          reason: 'Cross org exam findings attempt',
+          state: 'VeterinarianExamInProgress',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .put(`/visits/${otherVisit.id}/exam-findings`)
+        .send({ subjective: 'Should not save' });
+
+      expect(response.status).toBe(404);
+    });
+  });
 });

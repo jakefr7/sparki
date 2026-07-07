@@ -438,6 +438,7 @@ model Visit {
   medicalRecordId     String?
   soapNotes           SoapNote[]
   intake              VisitIntake?
+  examFindings        VisitExamFindings?
 
   @@index([organizationId])
   @@index([patientId])
@@ -460,6 +461,22 @@ model VisitIntake {
   vomiting             Boolean @default(false)
   diarrhea             Boolean @default(false)
   medicationsAllergies String?
+
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+}
+
+model VisitExamFindings {
+  id      String @id @default(cuid())
+  visitId String @unique
+
+  subjective String?
+  objective  String?
+  assessment String?
+  plan       String?
 
   completedAt DateTime?
   createdAt   DateTime  @default(now())

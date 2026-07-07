@@ -8,6 +8,7 @@ import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
+import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import {
   EXAM_IN_PROGRESS_STATE,
@@ -15,6 +16,7 @@ import {
   INTAKE_IN_PROGRESS_STATE,
   STARTABLE_VISIT_STATES,
   TERMINAL_VISIT_STATES,
+  TREATMENT_READY_STATE,
 } from './visit-states';
 
 const visitInclude = {
@@ -25,6 +27,7 @@ const visitInclude = {
   assignedTechnician: true,
   currentOwner: true,
   intake: true,
+  examFindings: true,
 };
 
 /**
@@ -311,6 +314,62 @@ export class VisitsService {
       include: visitInclude,
     });
   }
+
+  async saveExamFindings(
+    id: string,
+    organizationId: string,
+    lastUpdatedById: string,
+    input: SaveExamFindingsInput,
+  ) {
+    await this.findById(id, organizationId);
+
+    await prisma.visitExamFindings.upsert({
+      where: { visitId: id },
+      create: {
+        visitId: id,
+        ...normalizeExamFindingsInput(input),
+      },
+      update: normalizeExamFindingsInput(input),
+    });
+
+    return prisma.visit.update({
+      where: { id },
+      data: { lastUpdatedById },
+      include: visitInclude,
+    });
+  }
+
+  async completeExam(id: string, organizationId: string, lastUpdatedById: string) {
+    const visit = await this.findById(id, organizationId);
+
+    if (TERMINAL_VISIT_STATES.includes(visit.state)) {
+      throw new ConflictException(
+        `Visit ${id} is in a terminal state (${visit.state}) and cannot complete exam`,
+      );
+    }
+
+    if (visit.state !== EXAM_IN_PROGRESS_STATE) {
+      return visit;
+    }
+
+    const completedAt = new Date();
+    return prisma.$transaction(async (tx) => {
+      await tx.visitExamFindings.upsert({
+        where: { visitId: id },
+        create: { visitId: id, completedAt },
+        update: { completedAt },
+      });
+
+      return tx.visit.update({
+        where: { id },
+        data: {
+          state: TREATMENT_READY_STATE,
+          lastUpdatedById,
+        },
+        include: visitInclude,
+      });
+    });
+  }
 }
 
 function normalizeIntakeInput(input: SaveVisitIntakeInput) {
@@ -325,5 +384,14 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
     vomiting: input.vomiting ?? false,
     diarrhea: input.diarrhea ?? false,
     medicationsAllergies: input.medicationsAllergies ?? null,
+  };
+}
+
+function normalizeExamFindingsInput(input: SaveExamFindingsInput) {
+  return {
+    subjective: input.subjective ?? null,
+    objective: input.objective ?? null,
+    assessment: input.assessment ?? null,
+    plan: input.plan ?? null,
   };
 }

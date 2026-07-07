@@ -3,6 +3,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { createVisitSchema, type CreateVisitInput } from './dto/create-visit.schema';
+import { saveExamFindingsSchema, type SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import { saveVisitIntakeSchema, type SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import { VisitsService } from './visits.service';
 
@@ -45,5 +46,19 @@ export class VisitsController {
   @Post(':id/exam/start')
   startExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.visits.startExam(id, user.organizationId, user.id);
+  }
+
+  @Put(':id/exam-findings')
+  saveExamFindings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(saveExamFindingsSchema)) body: SaveExamFindingsInput,
+  ) {
+    return this.visits.saveExamFindings(id, user.organizationId, user.id, body);
+  }
+
+  @Post(':id/exam/complete')
+  completeExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.visits.completeExam(id, user.organizationId, user.id);
   }
 }

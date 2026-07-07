@@ -220,6 +220,14 @@ export interface VisitDetail {
     medicationsAllergies: string | null;
     completedAt: string | null;
   } | null;
+  examFindings: {
+    id: string;
+    subjective: string | null;
+    objective: string | null;
+    assessment: string | null;
+    plan: string | null;
+    completedAt: string | null;
+  } | null;
   primaryVeterinarian: {
     id: string;
     displayName: string | null;

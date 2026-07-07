@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { env } from '../../../lib/env';
@@ -138,6 +139,12 @@ export default async function VisitWorkspacePage({
       </ul>
 
       <VisitIntakePanel visitId={visit.id} state={visit.state} intake={visit.intake} />
+
+      <ExamFindingsPanel
+        visitId={visit.id}
+        state={visit.state}
+        examFindings={visit.examFindings}
+      />
 
       <details className="visit-context-details">
         <summary>Appointment &amp; assignment details</summary>

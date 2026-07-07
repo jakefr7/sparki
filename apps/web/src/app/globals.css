@@ -1,5 +1,48 @@
-:root {
-  color-scheme: light dark;
+/*
+ * Theme layer: semantic custom properties consumed throughout this file
+ * (and by any future component) instead of hardcoded colors. Dark is the
+ * baseline — it matches the app's original look exactly — and is the
+ * default for any element with no `data-theme` attribute (new/existing
+ * users before they ever pick a theme in Settings). ThemeProvider sets
+ * `data-theme` on <html> to switch to `light`.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --background: Canvas;
+  --surface: color-mix(in srgb, Canvas 97%, #64717d 3%);
+  --surface-secondary: color-mix(in srgb, Canvas 86%, white 14%);
+  --surface-hover: color-mix(in srgb, Highlight 7%, Canvas);
+  --text-primary: CanvasText;
+  --text-secondary: color-mix(in srgb, CanvasText 62%, transparent);
+  --border: color-mix(in srgb, CanvasText 13%, transparent);
+  --accent: #4a9bd6;
+  --success: #2b8a5d;
+  --warning: #b8872a;
+  --danger: #c0392b;
+  --focus-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --body-gradient-tint-1: #26313a;
+  --body-gradient-tint-2: #50606f;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --background: #f4f6f8;
+  --surface: #ffffff;
+  --surface-secondary: color-mix(in srgb, Canvas 95%, CanvasText 5%);
+  --surface-hover: color-mix(in srgb, Highlight 10%, Canvas);
+  --text-primary: #1a2229;
+  --text-secondary: #5b6672;
+  --border: #d8dee4;
+  --accent: #2f6fa8;
+  --success: #1f7a4d;
+  --warning: #96690f;
+  --danger: #b23324;
+  --focus-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --body-gradient-tint-1: #dfe6ec;
+  --body-gradient-tint-2: #eef2f5;
 }
 
 * {
@@ -16,13 +59,14 @@ body {
   overflow-x: hidden;
   overscroll-behavior-x: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-primary);
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, Canvas 91%, #26313a 9%) 0,
-      color-mix(in srgb, Canvas 96%, #50606f 4%) 18rem
+      color-mix(in srgb, var(--background) 91%, var(--body-gradient-tint-1) 9%) 0,
+      color-mix(in srgb, var(--background) 96%, var(--body-gradient-tint-2) 4%) 18rem
     ),
-    Canvas;
+    var(--background);
 }
 
 .page {
@@ -71,6 +115,12 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: color-mix(in srgb, CanvasText 62%, transparent);
+}
+
+.command-home-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 
 .command-home-header__meta {
@@ -172,8 +222,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  border-color: color-mix(in srgb, #c0392b 55%, CanvasText 10%);
-  background: color-mix(in srgb, Canvas 93%, #c0392b 7%);
+  border-color: color-mix(in srgb, var(--danger) 55%, CanvasText 10%);
+  background: color-mix(in srgb, Canvas 93%, var(--danger) 7%);
 }
 
 .ops-summary-grid {
@@ -565,11 +615,11 @@ body {
 }
 
 .visit-workflow-step--done {
-  color: color-mix(in srgb, #2b8a5d 82%, CanvasText);
+  color: color-mix(in srgb, var(--success) 82%, CanvasText);
 }
 
 .visit-workflow-step--current {
-  color: #4a9bd6;
+  color: var(--accent);
 }
 
 .visit-workflow-step--current .visit-workflow-step__label {
@@ -648,13 +698,7 @@ body {
   margin-top: 0.75rem;
   padding: 1rem 1.1rem 1.1rem;
   border-radius: 0.6rem;
-  background: color-mix(in srgb, Canvas 95%, CanvasText 5%);
-}
-
-@media (prefers-color-scheme: dark) {
-  .visit-intake-panel {
-    background: color-mix(in srgb, Canvas 86%, white 14%);
-  }
+  background: var(--surface-secondary);
 }
 
 .visit-intake-panel__header,
@@ -694,7 +738,7 @@ body {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, #4a9bd6 70%, CanvasText);
+  color: color-mix(in srgb, var(--accent) 70%, CanvasText);
 }
 
 .visit-intake-form label {
@@ -727,7 +771,7 @@ body {
 .visit-intake-form input:focus-visible,
 .visit-intake-form select:focus-visible,
 .visit-intake-form textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, #4a9bd6 55%, transparent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -844,13 +888,7 @@ body {
   margin-top: 0.9rem;
   padding: 1rem 1.1rem 1.1rem;
   border-radius: 0.6rem;
-  background: color-mix(in srgb, Canvas 95%, CanvasText 5%);
-}
-
-@media (prefers-color-scheme: dark) {
-  .front-desk-panel {
-    background: color-mix(in srgb, Canvas 86%, white 14%);
-  }
+  background: var(--surface-secondary);
 }
 
 .front-desk-form {
@@ -877,7 +915,7 @@ body {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: color-mix(in srgb, #4a9bd6 70%, CanvasText);
+  color: color-mix(in srgb, var(--accent) 70%, CanvasText);
 }
 
 .front-desk-form label {
@@ -908,7 +946,7 @@ body {
 .front-desk-form input:focus-visible,
 .front-desk-form select:focus-visible,
 .front-desk-form textarea:focus-visible {
-  outline: 2px solid color-mix(in srgb, #4a9bd6 55%, transparent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -1643,7 +1681,7 @@ body {
 
 .status-badge--active {
   color: #f7fbf7;
-  background: #246b49;
+  background: var(--success);
 }
 
 .status-badge--scheduled {
@@ -1744,7 +1782,7 @@ body {
 }
 .button-primary:focus-visible,
 .button-secondary:focus-visible {
-  outline: 2px solid color-mix(in srgb, #4a9bd6 55%, transparent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -1969,7 +2007,180 @@ body {
 }
 
 .form-error {
-  color: #c0392b;
+  color: var(--danger);
   font-size: 0.875rem;
   margin: 0.5rem 0 0;
+}
+
+/* Settings entry point (header) */
+
+.settings-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.settings-link:hover,
+.settings-link:focus-visible {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.settings-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Settings page */
+
+.settings-page {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-nav__item {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.375rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.settings-nav__item--active {
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+}
+
+.settings-nav__item--disabled {
+  color: var(--text-secondary);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-nav__item--disabled .settings-nav__soon {
+  margin-left: 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.settings-section {
+  padding: 1.1rem 1.25rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+}
+
+.settings-section h1 {
+  margin: 0 0 0.2rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.settings-section__intro {
+  margin: 0 0 1.25rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.settings-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-group + .settings-group {
+  margin-top: 1.5rem;
+}
+
+.settings-group legend {
+  padding: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-primary));
+}
+
+.settings-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.settings-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.settings-radio:hover {
+  background: var(--surface-hover);
+}
+
+.settings-radio:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.settings-radio input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.settings-radio input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.settings-radio__label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.settings-radio__hint {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .settings-page {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
 }

@@ -45,3 +45,11 @@ export const INTAKE_IN_PROGRESS_STATE: VisitState = 'IntakeInProgress';
 
 export const EXAM_READY_STATE: VisitState = 'VeterinarianExamReady';
 export const EXAM_IN_PROGRESS_STATE: VisitState = 'VeterinarianExamInProgress';
+
+/**
+ * Where `POST /visits/:id/exam/complete` moves a Visit to. This build
+ * doesn't implement the estimate/diagnostics/approval chain between an exam
+ * and treatment, so it jumps straight to the closest existing state that
+ * means "exam is done, patient is ready for treatment/checkout".
+ */
+export const TREATMENT_READY_STATE: VisitState = 'TreatmentPending';

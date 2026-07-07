@@ -1,15 +1,11 @@
-import Link from 'next/link';
+import { DashboardShell } from '../../components/dashboard-shell';
 import { AppearanceSection } from '../../components/settings/appearance-section';
 
 const UPCOMING_SECTIONS = ['Notifications', 'Clinic', 'Users', 'Keyboard Shortcuts', 'About'];
 
 export default function SettingsPage() {
   return (
-    <main className="page">
-      <Link href="/" className="back-link">
-        ← Back to Command Center
-      </Link>
-
+    <DashboardShell activeHref="/settings" eyebrow="Settings" title="Settings">
       <div className="settings-page">
         <nav aria-label="Settings sections">
           <ul className="settings-nav">
@@ -29,6 +25,6 @@ export default function SettingsPage() {
 
         <AppearanceSection />
       </div>
-    </main>
+    </DashboardShell>
   );
 }

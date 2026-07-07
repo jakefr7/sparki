@@ -4,6 +4,7 @@ import {
   StartAppointmentVisitButton,
   StartWalkInVisitForm,
 } from '../../../components/start-visit-actions';
+import { PetPhotoPlaceholder } from '../../../components/pet-photo-placeholder';
 import { env } from '../../../lib/env';
 import { enumLabel, formatAge } from '../../../lib/format';
 import {
@@ -33,21 +34,6 @@ function appointmentTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function PatientPhotoPlaceholder({ name, species }: { name: string; species: string }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
-
-  return (
-    <div className="patient-profile-photo" aria-label={`${name} photo placeholder`}>
-      <span>{initials || species[0]?.toUpperCase() || 'P'}</span>
-    </div>
-  );
 }
 
 export default async function PatientWorkspacePage({
@@ -84,7 +70,11 @@ export default async function PatientWorkspacePage({
       </Link>
 
       <header className="patient-profile-hero">
-        <PatientPhotoPlaceholder name={patient.name} species={patient.species} />
+        <PetPhotoPlaceholder
+          name={patient.name}
+          species={patient.species}
+          className="pet-photo-placeholder patient-profile-photo"
+        />
         <div className="patient-profile-hero__identity">
           <p className="eyebrow">Patient Profile</p>
           <h1>{patient.name}</h1>

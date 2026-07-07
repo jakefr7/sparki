@@ -1,30 +1,158 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
-import {
-  appointmentHref,
-  appointmentNextAction,
-  clientLabel,
-  ownerLabel,
-  visitActionLabel,
-} from './command-center/card-helpers';
+import { useEffect, useMemo, useState } from 'react';
+import { DashboardCard, DashboardShell, type DashboardRoute } from './dashboard-shell';
+import { appointmentHref, clientLabel } from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
-import { enumLabel } from '../lib/format';
+import { PetPhotoPlaceholder } from './pet-photo-placeholder';
+import {
+  DASHBOARD_ROLE_CHANGE_EVENT,
+  DASHBOARD_ROLE_LABELS,
+  DASHBOARD_ROLE_STORAGE_KEY,
+  DEFAULT_DASHBOARD_ROLE,
+  isDashboardRole,
+  type DashboardRole,
+} from '../lib/dashboard-role';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import type { DashboardAppointmentSummary, DashboardVisitSummary } from '../lib/patient-types';
 
-const MOCK_ROLE = {
-  label: 'Front Desk',
-  focus: 'Arrivals, handoffs, and patient flow',
+const ROLE_SUBTITLES: Record<DashboardRole, string> = {
+  receptionist: "Here's what's happening at Sparki Clinic today.",
+  technician: "Here's what needs clinical attention at Sparki Clinic today.",
+  veterinarian: "Here's what needs medical review at Sparki Clinic today.",
 };
 
-const NAV_ITEMS = [
-  { href: '/', label: 'My Dashboard' },
-  { href: '/today', label: "Today's Schedule" },
-  { href: '/scheduler', label: 'Scheduler' },
-  { href: '/patients', label: 'Patients / Clients' },
-] as const;
+const MOCK_USER: { name: string | null } = {
+  name: 'Anna',
+};
+
+const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
+const ENABLE_DEV_ROLE_PREVIEW = process.env.NODE_ENV !== 'production';
+
+type ReceptionStatus =
+  | 'Arrived'
+  | 'In Room'
+  | 'With Technician'
+  | 'Ready for Checkout'
+  | 'Scheduled';
+
+interface ClinicDisplayRow {
+  id: string;
+  patientName: string;
+  species?: string | undefined;
+  clientName: string;
+  location: string;
+  status: ReceptionStatus;
+  href?: string;
+}
+
+interface ScheduleDisplayRow {
+  id: string;
+  time: string;
+  patientName: string;
+  species?: string | undefined;
+  clientName: string;
+  status: ReceptionStatus;
+  location?: string;
+  href?: string;
+}
+
+const DEV_CLINIC_ROWS: ClinicDisplayRow[] = [
+  {
+    id: 'dev-clinic-bella',
+    patientName: 'Bella',
+    species: 'Dog',
+    clientName: 'Sarah Johnson',
+    location: 'Lobby',
+    status: 'Arrived',
+  },
+  {
+    id: 'dev-clinic-max',
+    patientName: 'Max',
+    species: 'Dog',
+    clientName: 'Michael Lee',
+    location: 'Exam Room 2',
+    status: 'In Room',
+  },
+  {
+    id: 'dev-clinic-luna',
+    patientName: 'Luna',
+    species: 'Cat',
+    clientName: 'Emily Davis',
+    location: 'Treatment',
+    status: 'With Technician',
+  },
+  {
+    id: 'dev-clinic-cooper',
+    patientName: 'Cooper',
+    species: 'Dog',
+    clientName: 'David Wilson',
+    location: 'Checkout',
+    status: 'Ready for Checkout',
+  },
+];
+
+const DEV_SCHEDULE_ROWS: ScheduleDisplayRow[] = [
+  {
+    id: 'dev-schedule-bella',
+    time: '9:00 AM',
+    patientName: 'Bella',
+    species: 'Dog',
+    clientName: 'Sarah Johnson',
+    status: 'Scheduled',
+    location: 'Lobby',
+  },
+  {
+    id: 'dev-schedule-max',
+    time: '9:30 AM',
+    patientName: 'Max',
+    species: 'Dog',
+    clientName: 'Michael Lee',
+    status: 'Arrived',
+    location: 'Exam Room 2',
+  },
+  {
+    id: 'dev-schedule-luna',
+    time: '10:15 AM',
+    patientName: 'Luna',
+    species: 'Cat',
+    clientName: 'Emily Davis',
+    status: 'In Room',
+    location: 'Exam Room 3',
+  },
+  {
+    id: 'dev-schedule-cooper',
+    time: '11:00 AM',
+    patientName: 'Cooper',
+    species: 'Dog',
+    clientName: 'David Wilson',
+    status: 'Ready for Checkout',
+    location: 'Checkout',
+  },
+  {
+    id: 'dev-schedule-milo',
+    time: '11:45 AM',
+    patientName: 'Milo',
+    species: 'Cat',
+    clientName: 'Priya Patel',
+    status: 'Scheduled',
+  },
+  {
+    id: 'dev-schedule-daisy',
+    time: '12:30 PM',
+    patientName: 'Daisy',
+    species: 'Dog',
+    clientName: 'Jordan Smith',
+    status: 'Scheduled',
+  },
+];
+
+function greetingForDate(date: Date, name?: string | null) {
+  const hour = date.getHours();
+  const daypart = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  return name ? `Good ${daypart}, ${name}! 👋` : `Good ${daypart}! 👋`;
+}
 
 function patientHref(patientId?: string | null) {
   return patientId ? `/patients/${patientId}` : '/patients';
@@ -34,56 +162,221 @@ function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-type CoreArea = (typeof NAV_ITEMS)[number]['href'];
+function visitLocation(visit: DashboardVisitSummary) {
+  if (
+    ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(
+      visit.state,
+    )
+  ) {
+    return 'Checkout';
+  }
 
-function HomeNavigation({ activeHref }: { activeHref: CoreArea }) {
+  if (
+    [
+      'VeterinarianExamReady',
+      'VeterinarianExamInProgress',
+      'PlanDrafted',
+      'EstimateNeeded',
+      'EstimatePrepared',
+      'ClientApprovalPending',
+      'Approved',
+      'PartiallyApproved',
+      'Declined',
+      'DiagnosticsPending',
+      'DiagnosticsInProgress',
+      'ResultsPending',
+      'ResultsReady',
+      'VeterinarianReviewPending',
+    ].includes(visit.state)
+  ) {
+    return 'Exam Room';
+  }
+
+  if (
+    [
+      'TreatmentPending',
+      'TreatmentInProgress',
+      'TreatmentComplete',
+      'MedicationPending',
+      'ClientCommunicationPending',
+      'FollowUpPending',
+    ].includes(visit.state)
+  ) {
+    return 'Treatment';
+  }
+
+  if (visit.state === 'IntakeInProgress') {
+    return 'Intake';
+  }
+
+  return 'Lobby';
+}
+
+function visitReceptionStatus(visit: DashboardVisitSummary) {
+  if (
+    ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(
+      visit.state,
+    )
+  ) {
+    return 'Ready for Checkout';
+  }
+  if (
+    [
+      'VeterinarianExamReady',
+      'VeterinarianExamInProgress',
+      'PlanDrafted',
+      'EstimateNeeded',
+      'EstimatePrepared',
+      'ClientApprovalPending',
+      'Approved',
+      'PartiallyApproved',
+      'Declined',
+      'DiagnosticsPending',
+      'DiagnosticsInProgress',
+      'ResultsPending',
+      'ResultsReady',
+      'VeterinarianReviewPending',
+    ].includes(visit.state)
+  ) {
+    return 'In Room';
+  }
+  if (
+    [
+      'TreatmentPending',
+      'TreatmentInProgress',
+      'TreatmentComplete',
+      'MedicationPending',
+      'ClientCommunicationPending',
+      'FollowUpPending',
+    ].includes(visit.state)
+  ) {
+    return 'With Technician';
+  }
+  return 'Arrived';
+}
+
+function statusTone(status: ReceptionStatus) {
+  if (status === 'In Room') return 'blue';
+  if (status === 'With Technician') return 'purple';
+  if (status === 'Ready for Checkout') return 'orange';
+  if (status === 'Scheduled') return 'gray';
+  return 'teal';
+}
+
+function appointmentReceptionStatus(appointment: DashboardAppointmentSummary): ReceptionStatus {
+  if (appointment.state === 'Arrived') return 'Arrived';
+  if (appointment.state === 'InRoom') return 'In Room';
+  if (appointment.state === 'CheckoutReady') return 'Ready for Checkout';
+  return 'Scheduled';
+}
+
+function visitToClinicRow(visit: DashboardVisitSummary): ClinicDisplayRow {
+  return {
+    id: visit.id,
+    patientName: visit.patient.name,
+    species: visit.patient.species,
+    clientName: clientLabel(visit.client),
+    location: visitLocation(visit),
+    status: visitReceptionStatus(visit),
+    href: `/visits/${visit.id}`,
+  };
+}
+
+function appointmentToScheduleRow(appointment: DashboardAppointmentSummary): ScheduleDisplayRow {
+  const href = appointmentHref(appointment) ?? patientHref(appointment.patient?.id);
+  return {
+    id: appointment.id,
+    time: formatTime(appointment.scheduledAt),
+    patientName: appointment.patient?.name ?? 'Unlinked patient',
+    species: appointment.patient?.species,
+    clientName: clientLabel(appointment.client),
+    status: appointmentReceptionStatus(appointment),
+    href,
+  };
+}
+
+function StatusChip({ status }: { status: ReceptionStatus }) {
   return (
-    <nav className="home-nav" aria-label="Primary">
-      {NAV_ITEMS.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={
-            item.href === activeHref ? 'home-nav__link home-nav__link--active' : 'home-nav__link'
-          }
-        >
-          {item.label}
-        </Link>
-      ))}
-    </nav>
+    <span className="reception-status-chip" data-tone={statusTone(status)}>
+      {status}
+    </span>
   );
 }
 
-function DashboardHeader({
-  eyebrow,
-  title,
-  refreshing,
-  onRefresh,
+function RowActionsButton({ label }: { label: string }) {
+  return (
+    <button type="button" className="row-actions-button" aria-label={label}>
+      <span aria-hidden="true">...</span>
+    </button>
+  );
+}
+
+function PatientClientCell({
+  patientName,
+  species,
+  clientName,
+  href,
 }: {
-  eyebrow: string;
-  title: string;
-  refreshing: boolean;
-  onRefresh: () => void;
+  patientName: string;
+  species?: string | undefined;
+  clientName: string;
+  href?: string | undefined;
 }) {
-  return (
-    <header className="dashboard-home__header">
-      <div>
-        <p className="eyebrow">{eyebrow}</p>
-        <h1>{title}</h1>
-        <p className="dashboard-home__subtitle">
-          {MOCK_ROLE.label} view · {MOCK_ROLE.focus}
-        </p>
-      </div>
-      <button type="button" className="button-secondary" onClick={onRefresh} disabled={refreshing}>
-        {refreshing ? 'Refreshing...' : 'Refresh'}
-      </button>
-    </header>
+  const content = (
+    <>
+      <PetPhotoPlaceholder
+        name={patientName}
+        species={species}
+        className="pet-photo-placeholder patient-avatar"
+      />
+      <span className="patient-client-cell__text">
+        <strong>{patientName}</strong>
+        <span>{clientName}</span>
+      </span>
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="patient-client-cell">
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className="patient-client-cell">{content}</div>;
 }
 
-function QuickActions() {
+function QuickActionsWidget() {
+  const actions = [
+    {
+      href: '/scheduler',
+      label: 'New Appointment',
+      description: 'Schedule a visit.',
+      tone: 'teal',
+    },
+    {
+      href: '/patients',
+      label: 'Find Patient',
+      description: 'Open a profile.',
+      tone: 'purple',
+    },
+    {
+      href: '/patients/new',
+      label: 'New Client',
+      description: 'Start intake.',
+      tone: 'blue',
+    },
+    {
+      href: '/patients',
+      label: 'New Call',
+      description: 'Look up caller.',
+      tone: 'orange',
+    },
+  ] as const;
+
   return (
-    <section className="home-widget home-widget--actions" aria-labelledby="quick-actions-heading">
+    <DashboardCard className="home-widget--actions" aria-labelledby="quick-actions-heading">
       <div className="home-widget__header">
         <div>
           <p className="eyebrow">Role-aware</p>
@@ -91,24 +384,23 @@ function QuickActions() {
         </div>
       </div>
       <div className="quick-action-grid">
-        <Link href="/patients/new" className="quick-action">
-          <strong>New Intake</strong>
-          <span>Create a patient/client and start today&apos;s visit.</span>
-        </Link>
-        <Link href="/patients" className="quick-action">
-          <strong>Find Patient</strong>
-          <span>Open a patient profile or resume active work.</span>
-        </Link>
-        <Link href="/scheduler" className="quick-action">
-          <strong>Set Appointment</strong>
-          <span>Place follow-up scheduling work in one place.</span>
-        </Link>
+        {actions.map((action) => (
+          <Link
+            key={action.label}
+            href={action.href}
+            className="quick-action"
+            data-tone={action.tone}
+          >
+            <strong>{action.label}</strong>
+            <span>{action.description}</span>
+          </Link>
+        ))}
       </div>
-    </section>
+    </DashboardCard>
   );
 }
 
-function TodaySnapshot({
+function TodaySnapshotWidget({
   dashboard,
 }: {
   dashboard: NonNullable<ReturnType<typeof useOperationsDashboard>['dashboard']>;
@@ -121,13 +413,13 @@ function TodaySnapshot({
   ];
 
   return (
-    <section className="home-widget" aria-labelledby="today-snapshot-heading">
+    <DashboardCard aria-labelledby="today-snapshot-heading">
       <div className="home-widget__header">
         <div>
           <p className="eyebrow">Clinic flow</p>
           <h2 id="today-snapshot-heading">Today Snapshot</h2>
         </div>
-        <span className="home-widget__meta">Updated {formatTime(dashboard.generatedAt)}</span>
+        <span className="dashboard-live-status">Live · Updated {formatTime(dashboard.generatedAt)}</span>
       </div>
       <div className="snapshot-grid">
         {items.map((item) => (
@@ -137,126 +429,182 @@ function TodaySnapshot({
           </div>
         ))}
       </div>
-    </section>
+    </DashboardCard>
   );
 }
 
-function ActiveVisitRow({ visit }: { visit: DashboardVisitSummary }) {
+function ClinicVisitRow({ row }: { row: ClinicDisplayRow }) {
   return (
-    <Link href={`/visits/${visit.id}`} className="home-list-row">
-      <div className="home-list-row__main">
-        <strong>{visit.patient.name}</strong>
-        <span>
-          {enumLabel(visit.state)} · {visit.reason}
-        </span>
-        <span>{clientLabel(visit.client)} · {ownerLabel(visit.currentOwner)}</span>
-      </div>
-      <div className="home-list-row__action">
-        <span>{visit.elapsedMinutes}m</span>
-        <strong>{visitActionLabel(visit)}</strong>
-      </div>
-    </Link>
+    <div className="clinic-table__row">
+      <PatientClientCell
+        patientName={row.patientName}
+        species={row.species}
+        clientName={row.clientName}
+        href={row.href}
+      />
+      <span className="clinic-table__location">{row.location}</span>
+      <StatusChip status={row.status} />
+      <RowActionsButton label={`Open actions for ${row.patientName}`} />
+    </div>
   );
 }
 
-function AppointmentRow({ appointment }: { appointment: DashboardAppointmentSummary }) {
-  const href = appointmentHref(appointment) ?? patientHref(appointment.patient?.id);
+function AppointmentRow({ row }: { row: ScheduleDisplayRow }) {
   return (
-    <Link href={href} className="home-list-row">
-      <div className="home-list-row__main">
-        <strong>{appointment.patient?.name ?? 'Unlinked patient'}</strong>
-        <span>
-          {formatTime(appointment.scheduledAt)} · {appointment.reason || enumLabel(appointment.type)}
-        </span>
-        <span>{clientLabel(appointment.client)} · {ownerLabel(appointment.provider)}</span>
+    <div className="schedule-row">
+      <span className="schedule-row__time">{row.time}</span>
+      <PatientClientCell
+        patientName={row.patientName}
+        species={row.species}
+        clientName={row.clientName}
+        href={row.href}
+      />
+      <StatusChip status={row.status} />
+      <span className="schedule-row__location">{row.location ?? 'Unassigned'}</span>
+      <div className="schedule-row__actions">
+        <RowActionsButton label={`Open actions for ${row.patientName}`} />
       </div>
-      <div className="home-list-row__action">
-        <span>{enumLabel(appointment.state)}</span>
-        <strong>{appointmentNextAction(appointment)}</strong>
-      </div>
-    </Link>
+    </div>
   );
 }
 
-function CheckedInVisits({ visits }: { visits: DashboardVisitSummary[] }) {
-  const displayVisits = visits.slice(0, 5);
+function CurrentlyInClinicWidget({ visits }: { visits: DashboardVisitSummary[] }) {
+  const realRows = visits.map(visitToClinicRow);
+  const displayRows = realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_CLINIC_ROWS : [];
+  const hasVisits = displayRows.length > 0;
 
   return (
-    <section className="home-widget home-widget--wide" aria-labelledby="active-visits-heading">
+    <DashboardCard
+      className={hasVisits ? 'dashboard-widget--primary' : undefined}
+      aria-labelledby="active-visits-heading"
+    >
       <div className="home-widget__header">
         <div>
           <p className="eyebrow">Patient flow</p>
-          <h2 id="active-visits-heading">Checked-In / Active Visits</h2>
+          <h2 id="active-visits-heading">Currently in Clinic</h2>
         </div>
         <Link href="/today" className="home-widget__link">
           View schedule
         </Link>
       </div>
-      <div className="home-list">
-        {displayVisits.length > 0 ? (
-          displayVisits.map((visit) => <ActiveVisitRow key={visit.id} visit={visit} />)
+      <div className="clinic-table" role="table" aria-label="Currently in clinic">
+        {hasVisits ? (
+          <div className="clinic-table__body">
+            {displayRows.map((row) => (
+              <ClinicVisitRow key={row.id} row={row} />
+            ))}
+          </div>
         ) : (
-          <EmptyQueue label="No patients are checked in or active right now." />
+          <EmptyQueue label="No patients are currently in clinic." />
         )}
       </div>
-    </section>
+    </DashboardCard>
   );
 }
 
-function UpcomingAppointments({ appointments }: { appointments: DashboardAppointmentSummary[] }) {
-  const displayAppointments = appointments.slice(0, 4);
+function TodaySchedulePreviewWidget({
+  appointments,
+}: {
+  appointments: DashboardAppointmentSummary[];
+}) {
+  const realRows = appointments.map(appointmentToScheduleRow);
+  const displayRows =
+    realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_SCHEDULE_ROWS : [];
+  const hasOverflow = displayRows.length > 5;
+  const hasAppointments = displayRows.length > 0;
 
   return (
-    <section className="home-widget" aria-labelledby="upcoming-heading">
+    <DashboardCard
+      className={hasAppointments ? 'dashboard-widget--primary' : undefined}
+      aria-labelledby="upcoming-heading"
+    >
       <div className="home-widget__header">
         <div>
           <p className="eyebrow">Next up</p>
           <h2 id="upcoming-heading">Today&apos;s Schedule</h2>
         </div>
+        <Link href="/today" className="home-widget__link home-widget__link--primary">
+          View full schedule
+        </Link>
       </div>
-      <div className="home-list home-list--compact">
-        {displayAppointments.length > 0 ? (
-          displayAppointments.map((appointment) => (
-            <AppointmentRow key={appointment.id} appointment={appointment} />
+      <div className={hasOverflow ? 'home-list home-list--scroll' : 'home-list'}>
+        {hasAppointments ? (
+          displayRows.map((row) => (
+            <AppointmentRow key={row.id} row={row} />
           ))
         ) : (
-          <EmptyQueue label="No upcoming appointments are queued." />
+          <EmptyQueue label="No appointments are coming up." />
         )}
       </div>
-    </section>
+    </DashboardCard>
   );
 }
 
-function InternalNotesPlaceholder() {
+function TasksNotesWidget() {
   return (
-    <section className="home-widget" aria-labelledby="notes-heading">
+    <DashboardCard aria-labelledby="notes-heading">
       <div className="home-widget__header">
         <div>
-          <p className="eyebrow">Placeholder</p>
           <h2 id="notes-heading">Tasks / Internal Notes</h2>
         </div>
       </div>
       <div className="notes-placeholder">
-        <strong>Team notes will live here.</strong>
-        <p>
-          This widget is reserved for role-specific tasks and internal handoffs in a follow-up
-          phase.
-        </p>
+        <span className="ops-empty-state__mark" aria-hidden="true">
+          ✓
+        </span>
+        <strong>No open tasks yet.</strong>
       </div>
-    </section>
+    </DashboardCard>
   );
 }
 
-export function OperationsCommandCenter({
-  activeHref = '/',
-  eyebrow = 'My Dashboard',
-  title = 'Today at Sparki Clinic',
+function RoleDashboardPlaceholder({
+  title,
+  description,
+  labels,
 }: {
-  activeHref?: CoreArea;
-  eyebrow?: string;
-  title?: string;
+  title: string;
+  description: string;
+  labels: string[];
 }) {
-  const { dashboard, loading, refreshing, error, groups, refresh } = useOperationsDashboard();
+  return (
+    <div className="dashboard-widget-grid">
+      <DashboardCard className="role-placeholder-card" aria-labelledby="role-placeholder-heading">
+        <p className="eyebrow">Role dashboard</p>
+        <h2 id="role-placeholder-heading">{title}</h2>
+        <p>{description}</p>
+        <div className="role-placeholder-preview" aria-label="Preview focus areas">
+          {labels.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+      </DashboardCard>
+    </div>
+  );
+}
+
+function TechnicianDashboardPlaceholder() {
+  return (
+    <RoleDashboardPlaceholder
+      title="Technician dashboard coming next"
+      description="Focused on intake, vitals, treatment handoffs, and doctor-ready patients."
+      labels={['Intake Needed', 'Vitals Pending', 'Doctor Ready', 'In Treatment']}
+    />
+  );
+}
+
+function VeterinarianDashboardPlaceholder() {
+  return (
+    <RoleDashboardPlaceholder
+      title="Veterinarian dashboard coming next"
+      description="Focused on assigned visits, exams, diagnostics, SOAP notes, and discharges."
+      labels={['Ready for Exam', 'My Active Visits', 'Diagnostics Pending', 'Records to Finish']}
+    />
+  );
+}
+
+function ReceptionistDashboard() {
+  const { dashboard, loading, error, groups } = useOperationsDashboard();
 
   const activeVisits = useMemo(
     () => [
@@ -269,10 +617,7 @@ export function OperationsCommandCenter({
   );
 
   return (
-    <main className="page page--ops dashboard-home">
-      <HomeNavigation activeHref={activeHref} />
-      <DashboardHeader eyebrow={eyebrow} title={title} refreshing={refreshing} onRefresh={refresh} />
-
+    <>
       {loading && (
         <div className="ops-panel-state ops-panel-state--loading">
           <span className="ops-status-badge__dot" aria-hidden="true" />
@@ -289,13 +634,101 @@ export function OperationsCommandCenter({
 
       {!loading && !error && dashboard && (
         <div className="dashboard-widget-grid">
-          <QuickActions />
-          <TodaySnapshot dashboard={dashboard} />
-          <CheckedInVisits visits={activeVisits} />
-          <UpcomingAppointments appointments={groups.upcomingAppointments} />
-          <InternalNotesPlaceholder />
+          <QuickActionsWidget />
+          <TodaySnapshotWidget dashboard={dashboard} />
+          <CurrentlyInClinicWidget visits={activeVisits} />
+          <TodaySchedulePreviewWidget appointments={groups.upcomingAppointments} />
+          <TasksNotesWidget />
+          <SecondaryNotesWidget />
         </div>
       )}
-    </main>
+    </>
+  );
+}
+
+function RoleDashboardSwitcher({ role }: { role: DashboardRole }) {
+  switch (role) {
+    case 'technician':
+      return <TechnicianDashboardPlaceholder />;
+    case 'veterinarian':
+      return <VeterinarianDashboardPlaceholder />;
+    default:
+      return <ReceptionistDashboard />;
+  }
+}
+
+function SecondaryNotesWidget() {
+  return (
+    <DashboardCard aria-labelledby="secondary-notes-heading">
+      <div className="home-widget__header">
+        <div>
+          <h2 id="secondary-notes-heading">Sticky Notes</h2>
+        </div>
+      </div>
+      <div className="notes-placeholder notes-placeholder--secondary">
+        <span className="ops-empty-state__mark" aria-hidden="true">
+          ✓
+        </span>
+        <strong>No sticky notes yet.</strong>
+      </div>
+    </DashboardCard>
+  );
+}
+
+export function OperationsCommandCenter({
+  activeHref = '/',
+  eyebrow = 'My Dashboard',
+}: {
+  activeHref?: DashboardRoute;
+  eyebrow?: string;
+  title?: string;
+}) {
+  const [selectedRole, setSelectedRole] = useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
+  const [greeting, setGreeting] = useState(() => greetingForDate(new Date(), MOCK_USER.name));
+
+  useEffect(() => {
+    setGreeting(greetingForDate(new Date(), MOCK_USER.name));
+  }, []);
+
+  useEffect(() => {
+    if (!ENABLE_DEV_ROLE_PREVIEW) {
+      setSelectedRole(DEFAULT_DASHBOARD_ROLE);
+      return;
+    }
+
+    const storedRole = window.localStorage.getItem(DASHBOARD_ROLE_STORAGE_KEY);
+    if (isDashboardRole(storedRole)) {
+      setSelectedRole(storedRole);
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== DASHBOARD_ROLE_STORAGE_KEY) return;
+      setSelectedRole(isDashboardRole(event.newValue) ? event.newValue : DEFAULT_DASHBOARD_ROLE);
+    };
+
+    const handleRoleChange = (event: Event) => {
+      const nextRole = (event as CustomEvent<unknown>).detail;
+      setSelectedRole(isDashboardRole(nextRole) ? nextRole : DEFAULT_DASHBOARD_ROLE);
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(DASHBOARD_ROLE_CHANGE_EVENT, handleRoleChange);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(DASHBOARD_ROLE_CHANGE_EVENT, handleRoleChange);
+    };
+  }, []);
+
+  return (
+    <DashboardShell
+      activeHref={activeHref}
+      eyebrow={eyebrow}
+      title={greeting}
+      subtitle={ROLE_SUBTITLES[selectedRole]}
+      userName={MOCK_USER.name ?? 'Clinic Team'}
+      roleLabel={DASHBOARD_ROLE_LABELS[selectedRole]}
+    >
+      <RoleDashboardSwitcher role={selectedRole} />
+    </DashboardShell>
   );
 }

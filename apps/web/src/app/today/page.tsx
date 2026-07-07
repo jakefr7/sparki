@@ -1,11 +1,5 @@
-import { OperationsCommandCenter } from '../../components/operations-command-center';
+import { TodayOperationsPage } from '../../components/today-operations-page';
 
 export default function TodaysSchedulePage() {
-  return (
-    <OperationsCommandCenter
-      activeHref="/today"
-      eyebrow="Today's Schedule"
-      title="Today's Schedule"
-    />
-  );
+  return <TodayOperationsPage />;
 }

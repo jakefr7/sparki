@@ -77,7 +77,11 @@ function clientContact(result: PatientSearchResult): string {
   return result.primaryClient.phone ?? result.primaryClient.email ?? 'No contact on file';
 }
 
-export function PatientSearch() {
+export function PatientSearch({
+  placeholder = 'Client, pet, phone, or email',
+}: {
+  placeholder?: string;
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
@@ -173,7 +177,7 @@ export function PatientSearch() {
         aria-controls="patient-search-results"
         aria-activedescendant={results[activeIndex] ? `patient-result-${activeIndex}` : undefined}
         autoComplete="off"
-        placeholder="Client, pet, phone, or email"
+        placeholder={placeholder}
         className="patient-search__input"
         value={query}
         onChange={(event) => setQuery(event.target.value)}

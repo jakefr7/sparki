@@ -113,8 +113,9 @@ async function main() {
   if (!workos || !clientId) {
     console.warn(
       '\nWORKOS_API_KEY / WORKOS_CLIENT_ID not set — skipping WorkOS user creation.\n' +
-        'Sparki DB rows below will still be upserted, but with no workosUserId, so\n' +
-        'login will fail until they are linked. To fix:\n' +
+        'Sparki DB rows below will still be upserted. Local development login\n' +
+        'can use these rows directly; real WorkOS login will fail until they\n' +
+        'are linked. To fix WorkOS login:\n' +
         '  1. In the WorkOS dashboard, go to User Management -> Users -> Create User\n' +
         '     for each address below, with password SparkiTest123! and "Email verified" checked.\n' +
         '  2. Set WORKOS_API_KEY and WORKOS_CLIENT_ID in .env.\n' +

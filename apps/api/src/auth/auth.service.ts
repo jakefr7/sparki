@@ -9,6 +9,9 @@ import { prisma, type User } from '@sparki/db';
 import { AppConfigService } from '../config/app-config.service';
 import type { AuthenticatedUser } from './types';
 
+const DEVELOPMENT_LOGIN_PASSWORD = 'SparkiTest123!';
+const DEVELOPMENT_SESSION_PREFIX = 'dev:';
+
 export interface LoginResult {
   sealedSession: string;
   user: AuthenticatedUser;
@@ -62,6 +65,10 @@ export class AuthService {
   }
 
   async login(email: string, password: string): Promise<LoginResult> {
+    if (!this.isConfigured && this.config.nodeEnv !== 'production') {
+      return this.loginDevelopmentUser(email, password);
+    }
+
     const { workos, clientId, cookiePassword } = this.requireConfigured();
 
     let authResponse;
@@ -85,6 +92,10 @@ export class AuthService {
   }
 
   async verifySession(sealedSession: string | undefined): Promise<SessionResult> {
+    if (!this.isConfigured && this.config.nodeEnv !== 'production') {
+      return this.verifyDevelopmentSession(sealedSession);
+    }
+
     const { workos, cookiePassword } = this.requireConfigured();
     if (!sealedSession) {
       throw new UnauthorizedException('Not authenticated');
@@ -139,6 +150,36 @@ export class AuthService {
     }
 
     return this.resolveMembership(user);
+  }
+
+  private async loginDevelopmentUser(email: string, password: string): Promise<LoginResult> {
+    if (password !== DEVELOPMENT_LOGIN_PASSWORD) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    return {
+      sealedSession: `${DEVELOPMENT_SESSION_PREFIX}${user.id}`,
+      user: await this.resolveMembership(user),
+    };
+  }
+
+  private async verifyDevelopmentSession(sealedSession: string | undefined): Promise<SessionResult> {
+    if (!sealedSession?.startsWith(DEVELOPMENT_SESSION_PREFIX)) {
+      throw new UnauthorizedException('Not authenticated');
+    }
+
+    const userId = sealedSession.slice(DEVELOPMENT_SESSION_PREFIX.length);
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('No active Sparki account is linked to this login.');
+    }
+
+    return { user: await this.resolveMembership(user) };
   }
 
   /**

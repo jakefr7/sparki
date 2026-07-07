@@ -35,7 +35,7 @@ import { DevelopmentUserService } from './development-user.service';
       ) =>
         config.nodeEnv === 'production' || authService.isConfigured
           ? new AuthGuard(reflector, authService, config)
-          : new DevelopmentAuthGuard(reflector, config, developmentUser),
+          : new DevelopmentAuthGuard(reflector, config, developmentUser, authService),
       inject: [Reflector, AppConfigService, AuthService, DevelopmentUserService],
     },
   ],

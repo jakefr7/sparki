@@ -2,8 +2,10 @@ import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/com
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
+import { AuthService } from './auth.service';
 import { DevelopmentUserService } from './development-user.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { readSessionCookie } from './session-cookie';
 import type { AuthenticatedUser } from './types';
 
 /**
@@ -21,6 +23,7 @@ export class DevelopmentAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     config: AppConfigService,
     private readonly developmentUser: DevelopmentUserService,
+    private readonly authService: AuthService,
   ) {
     if (config.nodeEnv === 'production') {
       throw new Error('DevelopmentAuthGuard must never be used when NODE_ENV=production');
@@ -37,6 +40,17 @@ export class DevelopmentAuthGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
+    const sealedSession = readSessionCookie(request);
+    if (sealedSession) {
+      try {
+        const { user } = await this.authService.verifySession(sealedSession);
+        request.user = user;
+        return true;
+      } catch {
+        // Ignore stale local cookies and fall back to the fixed development user.
+      }
+    }
+
     request.user = await this.developmentUser.getUser();
     return true;
   }

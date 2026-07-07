@@ -5,7 +5,7 @@ import {
   StartWalkInVisitForm,
 } from '../../../components/start-visit-actions';
 import { env } from '../../../lib/env';
-import { formatAge } from '../../../lib/format';
+import { enumLabel, formatAge } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -25,18 +25,29 @@ async function getWorkspace(id: string): Promise<PatientWorkspace | null> {
   return response.json() as Promise<PatientWorkspace>;
 }
 
-const SECTION_LABELS = {
-  workItems: 'Open Work',
-  timeline: 'Recent Timeline',
-  communication: 'Communication',
-  financial: 'Financial',
-  attachments: 'Attachments',
-} as const;
+function appointmentTime(value: string) {
+  return new Date(value).toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
-function appointmentSummary(appointment: PatientWorkspace['upcomingAppointments'][number]) {
-  return `${appointmentTypeLabel(appointment.type)} · ${new Date(
-    appointment.scheduledAt,
-  ).toLocaleString()}`;
+function PatientPhotoPlaceholder({ name, species }: { name: string; species: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+
+  return (
+    <div className="patient-profile-photo" aria-label={`${name} photo placeholder`}>
+      <span>{initials || species[0]?.toUpperCase() || 'P'}</span>
+    </div>
+  );
 }
 
 export default async function PatientWorkspacePage({
@@ -51,206 +62,170 @@ export default async function PatientWorkspacePage({
   }
 
   const { patient, clients, upcomingAppointments, sections } = workspace;
-  const age = formatAge(patient.dateOfBirth);
   const primaryClient = clients.find((client) => client.isPrimary);
   const secondaryClients = clients.filter((client) => !client.isPrimary);
-  const currentVisitSection = sections.currentVisit;
-  const activeVisit = currentVisitSection.status === 'available' ? currentVisitSection.visit : null;
+  const currentVisit = sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
   const nextAppointment = upcomingAppointments[0] ?? null;
+  const identityLine = [
+    patient.species,
+    patient.breed,
+    patient.sex,
+    formatAge(patient.dateOfBirth),
+    patient.color,
+    patient.weight ? `${patient.weight} lb` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <main className="page page--wide">
-      <Link href="/" className="back-link">
-        ← Back to search
+    <main className="page page--wide patient-profile-hub">
+      <Link href="/patients" className="back-link">
+        Back to Patients / Clients
       </Link>
 
-      <div className="command-center">
-        <div className="command-center__main">
-          <header className="patient-header patient-header--command">
-            <div>
-              <p className="eyebrow">Patient Command Center</p>
-              <h1>{patient.name}</h1>
-              <p className="patient-header__subtitle">
-                {[
-                  patient.species,
-                  patient.breed,
-                  patient.sex,
-                  age,
-                  patient.color,
-                  patient.weight ? `${patient.weight} lb` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            </div>
-            <div className="patient-header__status">
-              <span className={`patient-status patient-status--${patient.status.toLowerCase()}`}>
-                {patient.status}
-              </span>
-              {patient.sourceSystem && (
-                <span className="source-label">
-                  Imported from {patient.sourceSystem}
-                  {patient.sourceConfidence !== null
-                    ? ` (${Math.round(patient.sourceConfidence * 100)}% confidence)`
-                    : ''}
-                </span>
-              )}
-            </div>
-          </header>
-
-          <section className="current-visit-panel" aria-labelledby="current-visit-heading">
-            <div className="current-visit-panel__header">
-              <div>
-                <p className="eyebrow">Now</p>
-                <h2 id="current-visit-heading">Current Visit</h2>
-              </div>
-              {activeVisit ? (
-                <span className="status-badge status-badge--active">In Visit</span>
-              ) : nextAppointment ? (
-                <span className="status-badge status-badge--scheduled">Scheduled</span>
-              ) : (
-                <span className="status-badge status-badge--idle">No Visit Today</span>
-              )}
-            </div>
-
-            {activeVisit ? (
-              <div className="current-visit-panel__body">
-                <div>
-                  <strong>{activeVisit.state}</strong>
-                  <p>{activeVisit.reason}</p>
-                  <p className="muted">
-                    {activeVisit.visitType}
-                    {activeVisit.client ? ` · ${clientDisplayName(activeVisit.client)}` : ''}
-                  </p>
-                  <p className="muted">
-                    Started {new Date(activeVisit.createdAt).toLocaleString()}
-                  </p>
-                  {activeVisit.appointment && (
-                    <p className="muted">
-                      Appointment: {appointmentTypeLabel(activeVisit.appointment.type)} at{' '}
-                      {new Date(activeVisit.appointment.scheduledAt).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-                <Link href={`/visits/${activeVisit.id}`} className="button-primary">
-                  Resume Visit
-                </Link>
-              </div>
-            ) : nextAppointment ? (
-              <div className="current-visit-panel__body">
-                <div>
-                  <strong>{appointmentSummary(nextAppointment)}</strong>
-                  <p>{nextAppointment.reason}</p>
-                  <p className="muted">State: {nextAppointment.state}</p>
-                </div>
-                <StartAppointmentVisitButton
-                  appointmentId={nextAppointment.id}
-                  appointmentState={nextAppointment.state}
-                  className="button-primary"
-                />
-              </div>
-            ) : (
-              <div className="current-visit-panel__body">
-                <div>
-                  <strong>No appointment or active visit on deck</strong>
-                  <p className="muted">
-                    {currentVisitSection.status === 'unavailable'
-                      ? currentVisitSection.reason
-                      : 'No active visit.'}
-                  </p>
-                </div>
-                <StartWalkInVisitForm patientId={patient.id} compact />
-              </div>
-            )}
-          </section>
-        </div>
-
-        <aside className="context-rail" aria-label="Patient context">
-          <section>
-            <div className="context-rail__heading">Client</div>
-            {clients.length === 0 && <p className="empty-state">No client on file.</p>}
-            {primaryClient && (
-              <div className="client-card client-card--primary">
-                <strong>{clientDisplayName(primaryClient)}</strong>
-                <span className="client-card__badge">Primary</span>
-                <div>{primaryClient.phone ?? primaryClient.email ?? 'No contact info on file'}</div>
-              </div>
-            )}
-            {secondaryClients.map((client) => (
-              <div className="client-card" key={client.id}>
-                <strong>{clientDisplayName(client)}</strong>
-                <div>{client.phone ?? client.email ?? 'No contact info on file'}</div>
-              </div>
-            ))}
-          </section>
-
-          <section>
-            <div className="context-rail__heading">Appointment Context</div>
-            {nextAppointment ? (
-              <div className="rail-fact">
-                <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
-                <span>{new Date(nextAppointment.scheduledAt).toLocaleString()}</span>
-                <span>{nextAppointment.reason}</span>
-              </div>
-            ) : (
-              <p className="empty-state">No upcoming appointment.</p>
-            )}
-            <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
-              Schedule Appointment
-            </Link>
-          </section>
-
-          <section>
-            <div className="context-rail__heading">Alerts</div>
-            <p className="empty-state">No alerts on file.</p>
-          </section>
-        </aside>
-      </div>
-
-      <section aria-labelledby="upcoming-appointments-heading">
-        <h2 id="upcoming-appointments-heading">Upcoming Appointments</h2>
-        {upcomingAppointments.length === 0 && (
-          <p className="empty-state">No upcoming appointments.</p>
-        )}
-        {upcomingAppointments.map((appointment) => (
-          <div className="appointment-card" key={appointment.id}>
-            <strong>{appointmentTypeLabel(appointment.type)}</strong>
-            <span className="appointment-card__state">{appointment.state}</span>
-            <div>{appointment.reason}</div>
-            <div className="appointment-card__time">
-              {new Date(appointment.scheduledAt).toLocaleString()}
-              {appointment.expectedDurationMinutes
-                ? ` · ${appointment.expectedDurationMinutes} min`
-                : ''}
-            </div>
-            {!activeVisit &&
-              appointment.state !== 'VisitCreated' &&
-              appointment.id !== nextAppointment?.id && (
-                <StartAppointmentVisitButton
-                  appointmentId={appointment.id}
-                  appointmentState={appointment.state}
-                />
-              )}
-            {activeVisit && (
-              <p className="appointment-card__note">
-                Active visit already started for this patient.
-              </p>
+      <header className="patient-profile-hero">
+        <PatientPhotoPlaceholder name={patient.name} species={patient.species} />
+        <div className="patient-profile-hero__identity">
+          <p className="eyebrow">Patient Profile</p>
+          <h1>{patient.name}</h1>
+          <p>{identityLine || 'Patient details not yet captured'}</p>
+          <div className="patient-profile-hero__badges">
+            <span className={`patient-status patient-status--${patient.status.toLowerCase()}`}>
+              {patient.status}
+            </span>
+            {currentVisit && <span className="status-badge status-badge--active">Active Visit</span>}
+            {!currentVisit && nextAppointment && (
+              <span className="status-badge status-badge--scheduled">Upcoming Appointment</span>
             )}
           </div>
-        ))}
-      </section>
-
-      <section aria-labelledby="workspace-sections-heading">
-        <h2 id="workspace-sections-heading">Workspace</h2>
-        <div className="section-grid">
-          {(Object.keys(SECTION_LABELS) as (keyof typeof SECTION_LABELS)[]).map((key) => (
-            <div className="section-card section-card--unavailable" key={key}>
-              <h3>{SECTION_LABELS[key]}</h3>
-              <p>{sections[key].reason}</p>
-            </div>
-          ))}
         </div>
-      </section>
+        <div className="patient-profile-actions" aria-label="Patient quick actions">
+          <Link href="/patients/new" className="button-secondary">
+            New Intake
+          </Link>
+          {currentVisit ? (
+            <Link href={`/visits/${currentVisit.id}`} className="button-primary">
+              New Medical Record
+            </Link>
+          ) : (
+            <button type="button" className="button-secondary" disabled>
+              New Medical Record
+            </button>
+          )}
+          <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
+            Set Appointment
+          </Link>
+          {!currentVisit && nextAppointment && (
+            <StartAppointmentVisitButton
+              appointmentId={nextAppointment.id}
+              appointmentState={nextAppointment.state}
+              className="button-secondary"
+            />
+          )}
+        </div>
+      </header>
+
+      <div className="patient-profile-grid">
+        <section className="profile-card" aria-labelledby="client-info-heading">
+          <div className="profile-card__header">
+            <p className="eyebrow">Relationship</p>
+            <h2 id="client-info-heading">Client Info</h2>
+          </div>
+          {primaryClient ? (
+            <div className="profile-fact-list">
+              <div>
+                <span>Primary client</span>
+                <strong>{clientDisplayName(primaryClient)}</strong>
+              </div>
+              <div>
+                <span>Contact</span>
+                <strong>{primaryClient.phone ?? primaryClient.email ?? 'No contact on file'}</strong>
+              </div>
+              <div>
+                <span>Preference</span>
+                <strong>{primaryClient.preferredContactMethod ?? 'Not set'}</strong>
+              </div>
+            </div>
+          ) : (
+            <p className="empty-state">No client is linked to this patient.</p>
+          )}
+          {secondaryClients.length > 0 && (
+            <div className="profile-secondary-list">
+              {secondaryClients.map((client) => (
+                <span key={client.id}>
+                  {clientDisplayName(client)} · {client.phone ?? client.email ?? 'No contact'}
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="profile-card" aria-labelledby="upcoming-appointment-heading">
+          <div className="profile-card__header">
+            <p className="eyebrow">Next care moment</p>
+            <h2 id="upcoming-appointment-heading">Upcoming Appointment</h2>
+          </div>
+          {nextAppointment ? (
+            <div className="profile-callout">
+              <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
+              <span>{appointmentTime(nextAppointment.scheduledAt)}</span>
+              <p>{nextAppointment.reason}</p>
+              <span className="status-badge status-badge--scheduled">
+                {enumLabel(nextAppointment.state)}
+              </span>
+            </div>
+          ) : (
+            <div className="profile-empty-action">
+              <p className="empty-state">No upcoming appointment.</p>
+              <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
+                Set Appointment
+              </Link>
+            </div>
+          )}
+        </section>
+
+        <section className="profile-card profile-card--wide" aria-labelledby="active-visit-heading">
+          <div className="profile-card__header">
+            <p className="eyebrow">Today</p>
+            <h2 id="active-visit-heading">Active Visit</h2>
+          </div>
+          {currentVisit ? (
+            <div className="profile-visit-row">
+              <div>
+                <strong>{enumLabel(currentVisit.state)}</strong>
+                <span>{currentVisit.reason}</span>
+                <span>
+                  {currentVisit.visitType}
+                  {currentVisit.client ? ` · ${clientDisplayName(currentVisit.client)}` : ''}
+                </span>
+              </div>
+              <Link href={`/visits/${currentVisit.id}`} className="button-primary">
+                Resume Visit
+              </Link>
+            </div>
+          ) : (
+            <div className="profile-empty-action">
+              <p className="empty-state">
+                {sections.currentVisit.status === 'unavailable'
+                  ? sections.currentVisit.reason
+                  : 'No active visit.'}
+              </p>
+              <StartWalkInVisitForm patientId={patient.id} compact />
+            </div>
+          )}
+        </section>
+
+        <section className="profile-card profile-card--wide" aria-labelledby="visit-history-heading">
+          <div className="profile-card__header">
+            <p className="eyebrow">Clinical context</p>
+            <h2 id="visit-history-heading">Visit History</h2>
+          </div>
+          <div className="profile-history-placeholder">
+            <strong>Visit history skeleton</strong>
+            <p>{sections.timeline.reason}</p>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

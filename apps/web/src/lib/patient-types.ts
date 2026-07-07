@@ -246,6 +246,7 @@ export interface VisitDetail {
     temperature: number | null;
     heartRate: number | null;
     respiratoryRate: number | null;
+    crtSeconds: number | null;
     appetite: string | null;
     vomiting: boolean;
     diarrhea: boolean;

@@ -1,0 +1,1 @@
+ALTER TABLE "VisitIntake" ADD COLUMN "crtSeconds" DOUBLE PRECISION;

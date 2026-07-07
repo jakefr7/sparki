@@ -17,6 +17,7 @@ interface IntakePayload {
   temperature?: number | null;
   heartRate?: number | null;
   respiratoryRate?: number | null;
+  crtSeconds?: number | null;
   appetite?: string | null;
   vomiting?: boolean;
   diarrhea?: boolean;
@@ -48,6 +49,7 @@ function intakePayload(formData: FormData): IntakePayload {
     temperature: numberOrNull(formData, 'temperature'),
     heartRate: numberOrNull(formData, 'heartRate'),
     respiratoryRate: numberOrNull(formData, 'respiratoryRate'),
+    crtSeconds: numberOrNull(formData, 'crtSeconds'),
     appetite: textOrNull(formData, 'appetite'),
     vomiting: yesNo(formData, 'vomiting'),
     diarrhea: yesNo(formData, 'diarrhea'),
@@ -89,6 +91,7 @@ function IntakeSummary({ intake }: { intake: VisitIntake }) {
     intake.temperature ? `${intake.temperature} F` : null,
     intake.heartRate ? `${intake.heartRate} bpm` : null,
     intake.respiratoryRate ? `${intake.respiratoryRate} rpm` : null,
+    intake.crtSeconds ? `CRT ${intake.crtSeconds} sec` : null,
   ].filter(Boolean);
 
   return (
@@ -257,6 +260,15 @@ export function VisitIntakePanel({
                   name="respiratoryRate"
                   type="number"
                   defaultValue={intake?.respiratoryRate ?? ''}
+                />
+              </label>
+              <label>
+                CRT (seconds)
+                <input
+                  name="crtSeconds"
+                  type="number"
+                  step="0.1"
+                  defaultValue={intake?.crtSeconds ?? ''}
                 />
               </label>
             </div>

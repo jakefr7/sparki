@@ -457,6 +457,7 @@ model VisitIntake {
   temperature          Float?
   heartRate            Int?
   respiratoryRate      Int?
+  crtSeconds           Float?
   appetite             String?
   vomiting             Boolean @default(false)
   diarrhea             Boolean @default(false)

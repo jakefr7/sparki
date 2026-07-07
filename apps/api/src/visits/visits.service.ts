@@ -366,6 +366,7 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
     temperature: input.temperature ?? null,
     heartRate: input.heartRate ?? null,
     respiratoryRate: input.respiratoryRate ?? null,
+    crtSeconds: input.crtSeconds ?? null,
     appetite: input.appetite ?? null,
     vomiting: input.vomiting ?? false,
     diarrhea: input.diarrhea ?? false,

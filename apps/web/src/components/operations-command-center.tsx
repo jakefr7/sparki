@@ -1,156 +1,300 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppointmentQueue } from './command-center/appointment-queue';
-import { collectStaffRoster, computeClinicHealth, visitMatchesStaff } from './command-center/card-helpers';
-import { CommandCenterHeader } from './command-center/command-center-header';
-import { CommandCenterMetrics } from './command-center/command-center-metrics';
-import { OperationalAlerts } from './command-center/operational-alerts';
-import { PriorityQueue } from './command-center/priority-queue';
-import { SectionShell } from './command-center/section-shell';
+import Link from 'next/link';
+import { useMemo } from 'react';
+import {
+  appointmentHref,
+  appointmentNextAction,
+  clientLabel,
+  ownerLabel,
+  visitActionLabel,
+} from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
-import { StaffSnapshot } from './command-center/staff-snapshot';
-import { VisitQueue } from './command-center/visit-queue';
 import { enumLabel } from '../lib/format';
-import { STAFF_FOCUS_STORAGE_KEY } from '../lib/staff-focus';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
+import type { DashboardAppointmentSummary, DashboardVisitSummary } from '../lib/patient-types';
 
-export function OperationsCommandCenter() {
-  const { dashboard, loading, refreshing, error, isStale, groups, refresh } = useOperationsDashboard();
-  const [focusStaffId, setFocusStaffId] = useState<string | null>(null);
-  const [mineOnly, setMineOnly] = useState(false);
+const MOCK_ROLE = {
+  label: 'Front Desk',
+  focus: 'Arrivals, handoffs, and patient flow',
+};
 
-  useEffect(() => {
-    setFocusStaffId(window.localStorage.getItem(STAFF_FOCUS_STORAGE_KEY));
-  }, []);
+const NAV_ITEMS = [
+  { href: '/', label: 'My Dashboard' },
+  { href: '/today', label: "Today's Schedule" },
+  { href: '/scheduler', label: 'Scheduler' },
+  { href: '/patients', label: 'Patients / Clients' },
+] as const;
 
-  const handleFocusChange = useCallback((staffId: string | null) => {
-    setFocusStaffId(staffId);
-    if (staffId) window.localStorage.setItem(STAFF_FOCUS_STORAGE_KEY, staffId);
-    else window.localStorage.removeItem(STAFF_FOCUS_STORAGE_KEY);
-    if (!staffId) setMineOnly(false);
-  }, []);
+function patientHref(patientId?: string | null) {
+  return patientId ? `/patients/${patientId}` : '/patients';
+}
 
-  const roster = useMemo(() => collectStaffRoster(dashboard), [dashboard]);
-  const clinicHealth = useMemo(() => computeClinicHealth(groups), [groups]);
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
 
-  const visibleGroups = useMemo(() => {
-    if (!mineOnly || !focusStaffId) return groups;
-    return {
-      ...groups,
-      waitingVisits: groups.waitingVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
-      examReadyVisits: groups.examReadyVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
-      checkoutVisits: groups.checkoutVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
-      inProgressVisits: groups.inProgressVisits.filter((visit) => visitMatchesStaff(visit, focusStaffId)),
-      upcomingAppointments: groups.upcomingAppointments.filter(
-        (appointment) => appointment.provider?.id === focusStaffId,
-      ),
-    };
-  }, [groups, mineOnly, focusStaffId]);
+type CoreArea = (typeof NAV_ITEMS)[number]['href'];
 
-  const emptySuffix = mineOnly ? ' None assigned to you right now.' : '';
+function HomeNavigation({ activeHref }: { activeHref: CoreArea }) {
+  return (
+    <nav className="home-nav" aria-label="Primary">
+      {NAV_ITEMS.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={
+            item.href === activeHref ? 'home-nav__link home-nav__link--active' : 'home-nav__link'
+          }
+        >
+          {item.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function DashboardHeader({
+  eyebrow,
+  title,
+  refreshing,
+  onRefresh,
+}: {
+  eyebrow: string;
+  title: string;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <header className="dashboard-home__header">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h1>{title}</h1>
+        <p className="dashboard-home__subtitle">
+          {MOCK_ROLE.label} view · {MOCK_ROLE.focus}
+        </p>
+      </div>
+      <button type="button" className="button-secondary" onClick={onRefresh} disabled={refreshing}>
+        {refreshing ? 'Refreshing...' : 'Refresh'}
+      </button>
+    </header>
+  );
+}
+
+function QuickActions() {
+  return (
+    <section className="home-widget home-widget--actions" aria-labelledby="quick-actions-heading">
+      <div className="home-widget__header">
+        <div>
+          <p className="eyebrow">Role-aware</p>
+          <h2 id="quick-actions-heading">Quick Actions</h2>
+        </div>
+      </div>
+      <div className="quick-action-grid">
+        <Link href="/patients/new" className="quick-action">
+          <strong>New Intake</strong>
+          <span>Create a patient/client and start today&apos;s visit.</span>
+        </Link>
+        <Link href="/patients" className="quick-action">
+          <strong>Find Patient</strong>
+          <span>Open a patient profile or resume active work.</span>
+        </Link>
+        <Link href="/scheduler" className="quick-action">
+          <strong>Set Appointment</strong>
+          <span>Place follow-up scheduling work in one place.</span>
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function TodaySnapshot({
+  dashboard,
+}: {
+  dashboard: NonNullable<ReturnType<typeof useOperationsDashboard>['dashboard']>;
+}) {
+  const items = [
+    { label: 'Scheduled', value: dashboard.summary.scheduledToday },
+    { label: 'Checked in', value: dashboard.summary.arrived },
+    { label: 'Active visits', value: dashboard.summary.active },
+    { label: 'Checkout ready', value: dashboard.summary.checkoutReady },
+  ];
 
   return (
-    <main className="page page--ops">
-      <CommandCenterHeader
-        dashboard={dashboard}
-        refreshing={refreshing}
-        isStale={isStale}
-        clinicHealth={clinicHealth}
-        roster={roster}
-        focusStaffId={focusStaffId}
-        mineOnly={mineOnly}
-        onFocusChange={handleFocusChange}
-        onMineOnlyChange={setMineOnly}
-      />
+    <section className="home-widget" aria-labelledby="today-snapshot-heading">
+      <div className="home-widget__header">
+        <div>
+          <p className="eyebrow">Clinic flow</p>
+          <h2 id="today-snapshot-heading">Today Snapshot</h2>
+        </div>
+        <span className="home-widget__meta">Updated {formatTime(dashboard.generatedAt)}</span>
+      </div>
+      <div className="snapshot-grid">
+        {items.map((item) => (
+          <div className="snapshot-tile" key={item.label}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-      <OperationalAlerts loading={loading} error={error} groups={groups} />
+function ActiveVisitRow({ visit }: { visit: DashboardVisitSummary }) {
+  return (
+    <Link href={`/visits/${visit.id}`} className="home-list-row">
+      <div className="home-list-row__main">
+        <strong>{visit.patient.name}</strong>
+        <span>
+          {enumLabel(visit.state)} · {visit.reason}
+        </span>
+        <span>{clientLabel(visit.client)} · {ownerLabel(visit.currentOwner)}</span>
+      </div>
+      <div className="home-list-row__action">
+        <span>{visit.elapsedMinutes}m</span>
+        <strong>{visitActionLabel(visit)}</strong>
+      </div>
+    </Link>
+  );
+}
+
+function AppointmentRow({ appointment }: { appointment: DashboardAppointmentSummary }) {
+  const href = appointmentHref(appointment) ?? patientHref(appointment.patient?.id);
+  return (
+    <Link href={href} className="home-list-row">
+      <div className="home-list-row__main">
+        <strong>{appointment.patient?.name ?? 'Unlinked patient'}</strong>
+        <span>
+          {formatTime(appointment.scheduledAt)} · {appointment.reason || enumLabel(appointment.type)}
+        </span>
+        <span>{clientLabel(appointment.client)} · {ownerLabel(appointment.provider)}</span>
+      </div>
+      <div className="home-list-row__action">
+        <span>{enumLabel(appointment.state)}</span>
+        <strong>{appointmentNextAction(appointment)}</strong>
+      </div>
+    </Link>
+  );
+}
+
+function CheckedInVisits({ visits }: { visits: DashboardVisitSummary[] }) {
+  const displayVisits = visits.slice(0, 5);
+
+  return (
+    <section className="home-widget home-widget--wide" aria-labelledby="active-visits-heading">
+      <div className="home-widget__header">
+        <div>
+          <p className="eyebrow">Patient flow</p>
+          <h2 id="active-visits-heading">Checked-In / Active Visits</h2>
+        </div>
+        <Link href="/today" className="home-widget__link">
+          View schedule
+        </Link>
+      </div>
+      <div className="home-list">
+        {displayVisits.length > 0 ? (
+          displayVisits.map((visit) => <ActiveVisitRow key={visit.id} visit={visit} />)
+        ) : (
+          <EmptyQueue label="No patients are checked in or active right now." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function UpcomingAppointments({ appointments }: { appointments: DashboardAppointmentSummary[] }) {
+  const displayAppointments = appointments.slice(0, 4);
+
+  return (
+    <section className="home-widget" aria-labelledby="upcoming-heading">
+      <div className="home-widget__header">
+        <div>
+          <p className="eyebrow">Next up</p>
+          <h2 id="upcoming-heading">Today&apos;s Schedule</h2>
+        </div>
+      </div>
+      <div className="home-list home-list--compact">
+        {displayAppointments.length > 0 ? (
+          displayAppointments.map((appointment) => (
+            <AppointmentRow key={appointment.id} appointment={appointment} />
+          ))
+        ) : (
+          <EmptyQueue label="No upcoming appointments are queued." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function InternalNotesPlaceholder() {
+  return (
+    <section className="home-widget" aria-labelledby="notes-heading">
+      <div className="home-widget__header">
+        <div>
+          <p className="eyebrow">Placeholder</p>
+          <h2 id="notes-heading">Tasks / Internal Notes</h2>
+        </div>
+      </div>
+      <div className="notes-placeholder">
+        <strong>Team notes will live here.</strong>
+        <p>
+          This widget is reserved for role-specific tasks and internal handoffs in a follow-up
+          phase.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+export function OperationsCommandCenter({
+  activeHref = '/',
+  eyebrow = 'My Dashboard',
+  title = 'Today at Sparki Clinic',
+}: {
+  activeHref?: CoreArea;
+  eyebrow?: string;
+  title?: string;
+}) {
+  const { dashboard, loading, refreshing, error, groups, refresh } = useOperationsDashboard();
+
+  const activeVisits = useMemo(
+    () => [
+      ...groups.waitingVisits,
+      ...groups.examReadyVisits,
+      ...groups.inProgressVisits,
+      ...groups.checkoutVisits,
+    ],
+    [groups],
+  );
+
+  return (
+    <main className="page page--ops dashboard-home">
+      <HomeNavigation activeHref={activeHref} />
+      <DashboardHeader eyebrow={eyebrow} title={title} refreshing={refreshing} onRefresh={refresh} />
+
+      {loading && (
+        <div className="ops-panel-state ops-panel-state--loading">
+          <span className="ops-status-badge__dot" aria-hidden="true" />
+          Loading dashboard...
+        </div>
+      )}
+
+      {error && (
+        <div className="ops-panel-state ops-panel-state--error" role="alert">
+          <strong>Dashboard could not load.</strong>
+          <span>{error}</span>
+        </div>
+      )}
 
       {!loading && !error && dashboard && (
-        <>
-          <CommandCenterMetrics summary={dashboard.summary} waitingVisits={groups.waitingVisits} updating={refreshing || isStale} />
-
-          <PriorityQueue groups={groups} onVisitStarted={refresh} focusStaffId={focusStaffId} />
-
-          <div className="ops-dashboard-grid">
-            <div className="ops-dashboard-grid__main">
-              <VisitQueue
-                title="Waiting / Arrived"
-                tone="waiting"
-                visits={visibleGroups.waitingVisits}
-                emptyLabel={`No arrived patients are waiting on the floor.${emptySuffix}`}
-                onVisitStarted={refresh}
-                focusStaffId={focusStaffId}
-              />
-
-              <VisitQueue
-                title="Exam Ready / Ready for Doctor"
-                tone="exam"
-                visits={visibleGroups.examReadyVisits}
-                emptyLabel={`No patients are ready for the doctor.${emptySuffix}`}
-                onVisitStarted={refresh}
-                cardVariant="exam-ready"
-                focusStaffId={focusStaffId}
-              />
-
-              <VisitQueue
-                title="In Progress / Active Visits"
-                tone="active"
-                visits={visibleGroups.inProgressVisits}
-                emptyLabel={`No active visits are currently in progress.${emptySuffix}`}
-                onVisitStarted={refresh}
-                focusStaffId={focusStaffId}
-              />
-
-              <VisitQueue
-                title="Ready for Checkout"
-                tone="checkout"
-                visits={visibleGroups.checkoutVisits}
-                emptyLabel={`No visits are waiting for checkout.${emptySuffix}`}
-                onVisitStarted={refresh}
-                focusStaffId={focusStaffId}
-              />
-
-              <AppointmentQueue
-                title="Completed Today"
-                tone="completed"
-                appointments={groups.completedAppointments}
-                emptyLabel="No completed appointments are present in today's snapshot."
-                cardTone="completed"
-              />
-            </div>
-
-            <aside className="ops-dashboard-grid__rail" aria-label="Operations context">
-              <AppointmentQueue
-                title="Upcoming Appointments"
-                tone="upcoming"
-                appointments={visibleGroups.upcomingAppointments}
-                emptyLabel={`No upcoming appointments are queued.${emptySuffix}`}
-                layout="stack"
-                displayLimit={8}
-                onAppointmentCheckedIn={refresh}
-                focusStaffId={focusStaffId}
-              />
-
-              <StaffSnapshot dashboard={dashboard} focusStaffId={focusStaffId} />
-
-              <SectionShell title="Visit States" count={dashboard.visitsByState.length} tone="rail">
-                {dashboard.visitsByState.length > 0 ? (
-                  <div className="ops-state-list">
-                    {dashboard.visitsByState.map((state) => (
-                      <div key={state.state}>
-                        <span>{enumLabel(state.state)}</span>
-                        <strong>{state.count}</strong>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyQueue label="No open visit states in the current snapshot." />
-                )}
-              </SectionShell>
-            </aside>
-          </div>
-        </>
+        <div className="dashboard-widget-grid">
+          <QuickActions />
+          <TodaySnapshot dashboard={dashboard} />
+          <CheckedInVisits visits={activeVisits} />
+          <UpcomingAppointments appointments={groups.upcomingAppointments} />
+          <InternalNotesPlaceholder />
+        </div>
       )}
     </main>
   );

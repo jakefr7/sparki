@@ -15,16 +15,13 @@ import {
   type DashboardRole,
 } from '../lib/dashboard-role';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
+import { useCurrentUser } from '../lib/use-current-user';
 import type { DashboardAppointmentSummary, DashboardVisitSummary } from '../lib/patient-types';
 
 const ROLE_SUBTITLES: Record<DashboardRole, string> = {
   receptionist: "Here's what's happening at Sparki Clinic today.",
   technician: "Here's what needs clinical attention at Sparki Clinic today.",
   veterinarian: "Here's what needs medical review at Sparki Clinic today.",
-};
-
-const MOCK_USER: { name: string | null } = {
-  name: 'Anna',
 };
 
 const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
@@ -683,12 +680,14 @@ export function OperationsCommandCenter({
   eyebrow?: string;
   title?: string;
 }) {
+  const { user: currentUser } = useCurrentUser();
+  const firstName = currentUser?.name?.split(' ')[0];
   const [selectedRole, setSelectedRole] = useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
-  const [greeting, setGreeting] = useState(() => greetingForDate(new Date(), MOCK_USER.name));
+  const [greeting, setGreeting] = useState(() => greetingForDate(new Date(), firstName));
 
   useEffect(() => {
-    setGreeting(greetingForDate(new Date(), MOCK_USER.name));
-  }, []);
+    setGreeting(greetingForDate(new Date(), firstName));
+  }, [firstName]);
 
   useEffect(() => {
     if (!ENABLE_DEV_ROLE_PREVIEW) {
@@ -725,7 +724,7 @@ export function OperationsCommandCenter({
       eyebrow={eyebrow}
       title={greeting}
       subtitle={ROLE_SUBTITLES[selectedRole]}
-      userName={MOCK_USER.name ?? 'Clinic Team'}
+      userName={firstName}
       roleLabel={DASHBOARD_ROLE_LABELS[selectedRole]}
     >
       <RoleDashboardSwitcher role={selectedRole} />

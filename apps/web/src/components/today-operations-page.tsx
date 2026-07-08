@@ -318,8 +318,6 @@ export function TodayOperationsPage() {
       eyebrow="Today"
       title="Today's Schedule"
       subtitle="Appointments, arrivals, rooms, and checkout flow for today."
-      userName="Anna"
-      roleLabel="Receptionist"
     >
       {loading && (
         <div className="ops-panel-state ops-panel-state--loading">

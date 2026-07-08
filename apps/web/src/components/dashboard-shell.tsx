@@ -198,7 +198,7 @@ export function DashboardShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user: currentUser } = useCurrentUser();
 
-  const resolvedUserName = userName ?? currentUser?.name;
+  const resolvedUserName = userName ?? currentUser?.name?.split(' ')[0];
   const resolvedRoleLabel =
     roleLabel ?? (currentUser ? (ROLE_DISPLAY_LABELS[currentUser.role] ?? currentUser.role) : undefined);
 

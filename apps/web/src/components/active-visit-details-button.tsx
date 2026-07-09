@@ -69,18 +69,14 @@ function ActiveVisitDetailsModal({
         </div>
 
         <div className="active-visit-details">
+          {/* Status and Reason are already shown prominently in the header
+           * above (title + subtitle) — repeating them here as list rows was
+           * pure duplication, so this list covers only what the header
+           * doesn't. */}
           <dl className="active-visit-details__list">
-            <div>
-              <dt>Status</dt>
-              <dd>{visitStateLabel(visit.state)}</dd>
-            </div>
             <div>
               <dt>Visit type</dt>
               <dd>{visit.visitType}</dd>
-            </div>
-            <div>
-              <dt>Reason</dt>
-              <dd>{visit.reason}</dd>
             </div>
             <div>
               <dt>Client</dt>

@@ -106,6 +106,7 @@ export class PatientsService {
           weight: input.weight ?? null,
           color: input.color ?? null,
           imageUrl: input.imageUrl ?? null,
+          alerts: input.alerts ?? null,
         },
       });
 
@@ -331,6 +332,7 @@ export class PatientsService {
         color: patient.color,
         imageUrl: patient.imageUrl,
         status: patient.status,
+        alerts: patient.alerts,
         sourceSystem: patient.sourceSystem,
         sourceConfidence: patient.sourceConfidence,
       },

@@ -34,7 +34,7 @@ import {
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import { useCurrentUser } from '../lib/use-current-user';
 import { useDashboardStatusColors, type DashboardStatusKey } from '../lib/use-dashboard-status-colors';
-import type { DashboardAppointmentSummary, DashboardVisitSummary } from '../lib/patient-types';
+import type { DashboardAppointmentSummary, DashboardVisitSummary, StaffMember } from '../lib/patient-types';
 
 const ROLE_SUBTITLES: Record<DashboardRole, string> = {
   receptionist: "Here's what's happening at Sparki Clinic today.",
@@ -163,7 +163,9 @@ interface StickyNote {
   updatedAt: string;
 }
 
-type TaskState = 'overdue' | 'pending' | 'completed';
+/** Matches the API's derived effectiveStatus (see TasksService.effectiveTaskStatus)
+ *  — "Overdue" is never stored, just computed from a Pending task's dueAt. */
+type TaskState = 'Overdue' | 'Pending' | 'Completed';
 
 interface ClinicTask {
   id: string;
@@ -171,75 +173,19 @@ interface ClinicTask {
   createdAt: string;
   assignedBy: string;
   assignee: string;
-  status: TaskState;
-  dueAt?: string;
+  assigneeId: string | null;
+  createdById: string;
+  status: 'Pending' | 'Completed';
+  effectiveStatus: TaskState;
+  dueAt?: string | null;
 }
 
 interface TaskDraft {
   title: string;
-  assignee: string;
-  dueAt: string;
-  assignedBy: string;
+  assigneeId: string;
+  dueDate: string;
+  dueTime: string;
 }
-
-const DEV_STICKY_NOTES: StickyNote[] = [
-  {
-    id: 'dev-note-callbacks',
-    body: 'Three lab-result callbacks before lunch. Keep front desk clear after 11.',
-    updatedAt: new Date('2026-07-08T08:20:00').toISOString(),
-  },
-  {
-    id: 'dev-note-surgery',
-    body: 'Room 2 reserved for post-op checks until noon.',
-    updatedAt: new Date('2026-07-08T08:45:00').toISOString(),
-  },
-];
-
-const DEV_TASKS: ClinicTask[] = [
-  {
-    id: 'dev-task-overdue',
-    title: 'Call Davis about Luna estimate approval',
-    createdAt: new Date('2026-07-08T07:55:00').toISOString(),
-    assignedBy: 'Mia Chen',
-    assignee: 'Front Desk',
-    status: 'overdue',
-    dueAt: new Date('2026-07-08T09:00:00').toISOString(),
-  },
-  {
-    id: 'dev-task-pending',
-    title: 'Prep checkout packet for Cooper',
-    createdAt: new Date('2026-07-08T09:10:00').toISOString(),
-    assignedBy: 'Dr. Patel',
-    assignee: 'Sam Rivera',
-    status: 'pending',
-    dueAt: new Date('2026-07-08T11:30:00').toISOString(),
-  },
-  {
-    id: 'dev-task-pending-2',
-    title: 'Room 1 turnover before 10:30 appointment',
-    createdAt: new Date('2026-07-08T09:18:00').toISOString(),
-    assignedBy: 'Front Desk',
-    assignee: 'Care Team',
-    status: 'pending',
-    dueAt: new Date('2026-07-08T10:20:00').toISOString(),
-  },
-  {
-    id: 'dev-task-pending-3',
-    title: 'Print discharge instructions for Cooper',
-    createdAt: new Date('2026-07-08T09:28:00').toISOString(),
-    assignedBy: 'Dr. Patel',
-    assignee: 'Front Desk',
-    status: 'pending',
-  },
-  {
-    id: 'dev-task-completed',
-    title: 'Confirm Bella vaccine records',
-    createdAt: new Date('2026-07-08T08:35:00').toISOString(),
-    assignedBy: 'Front Desk',
-    assignee: 'Mia Chen',
-    status: 'completed',
-  },
-];
 
 function greetingForDate(date: Date, name?: string | null) {
   const hour = date.getHours();
@@ -256,15 +202,16 @@ function formatDateTime(value: string) {
   });
 }
 
-function toDateTimeInputValue(value: string) {
-  const date = new Date(value);
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
+function todayDateInputValue() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset();
+  return new Date(now.getTime() - offset * 60 * 1000).toISOString().slice(0, 10);
 }
 
-function fromDateTimeInputValue(value: string) {
-  return value ? new Date(value).toISOString() : undefined;
+function combineDateAndTime(date: string, time: string): string | undefined {
+  if (!date) return undefined;
+  const parsed = new Date(`${date}T${time || '00:00'}`);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
 function PlusIcon() {
@@ -594,38 +541,75 @@ function TodaySchedulePreviewWidget({
 }
 
 function StickyNotesWidget() {
-  const [notes, setNotes] = useState<StickyNote[]>(DEV_STICKY_NOTES);
+  const [notes, setNotes] = useState<StickyNote[]>([]);
+  const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [isComposing, setIsComposing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
 
-  function createNote() {
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/notes', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<StickyNote[]>) : []))
+      .then((data) => {
+        if (!cancelled) setNotes(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load notes.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function createNote() {
     const body = draft.trim();
     if (!body) return;
-    // TODO: Persist shift notes through the dashboard API once a ShiftNote model exists.
-    setNotes((current) => [
-      { id: `note-${Date.now()}`, body, updatedAt: new Date().toISOString() },
-      ...current,
-    ]);
-    setDraft('');
-    setIsComposing(false);
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      });
+      if (!response.ok) throw new Error('note create failed');
+      const created = (await response.json()) as StickyNote;
+      setNotes((current) => [created, ...current]);
+      setDraft('');
+      setIsComposing(false);
+    } catch {
+      setError('Could not save this note. Please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function cancelNote() {
     setDraft('');
     setIsComposing(false);
+    setError(null);
   }
 
-  function deleteNote(note: StickyNote) {
+  async function deleteNote(note: StickyNote) {
     const shouldConfirm = note.body.trim().length > 120;
-    if (shouldConfirm && !window.confirm('Delete this shift note?')) return;
-    // TODO: Delete persisted shift notes through the dashboard API once backend support exists.
+    if (shouldConfirm && !window.confirm('Delete this note?')) return;
+    const previous = notes;
     setNotes((current) => current.filter((item) => item.id !== note.id));
+    const response = await fetch(`/api/notes/${note.id}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setNotes(previous);
+      setError('Could not delete this note. Please try again.');
+    }
   }
 
   function moveNote(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
-    // TODO: Persist shift note sort order when backend support is added.
     setNotes((current) => {
       const sourceIndex = current.findIndex((note) => note.id === sourceId);
       const targetIndex = current.findIndex((note) => note.id === targetId);
@@ -634,6 +618,11 @@ function StickyNotesWidget() {
       const [moved] = next.splice(sourceIndex, 1);
       if (!moved) return current;
       next.splice(targetIndex, 0, moved);
+      void fetch('/api/notes/reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: next.map((note) => note.id) }),
+      });
       return next;
     });
   }
@@ -656,7 +645,7 @@ function StickyNotesWidget() {
     }
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
-      createNote();
+      void createNote();
     }
   }
 
@@ -664,16 +653,16 @@ function StickyNotesWidget() {
     <DashboardCard className="sticky-notes-widget" aria-labelledby="sticky-notes-heading">
       <div className="home-widget__header">
         <div>
-          <p className="eyebrow">SHIFT MEMORY</p>
-          <h2 id="sticky-notes-heading">Shift Notes</h2>
-          <p className="home-widget__helper">Handoff notes for today&apos;s team.</p>
+          <p className="eyebrow">PERSONAL</p>
+          <h2 id="sticky-notes-heading">Notes</h2>
+          <p className="home-widget__helper">Only visible to you — stick around as long as you need.</p>
         </div>
         <button
           type="button"
           className="dashboard-icon-button"
           onClick={() => setIsComposing(true)}
-          aria-label="Add shift note"
-          title="Add shift note"
+          aria-label="Add note"
+          title="Add note"
         >
           <PlusIcon />
         </button>
@@ -684,20 +673,26 @@ function StickyNotesWidget() {
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
-            placeholder="Leave a handoff note..."
-            aria-label="New shift note"
+            placeholder="Write a note..."
+            aria-label="New note"
             autoFocus
           />
           <div className="sticky-note-composer__actions">
-            <button type="button" className="button-secondary" onClick={cancelNote}>
+            <button type="button" className="button-secondary" onClick={cancelNote} disabled={saving}>
               Cancel
             </button>
-            <button type="button" className="button-primary" onClick={createNote} disabled={!draft.trim()}>
-              Save
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => void createNote()}
+              disabled={!draft.trim() || saving}
+            >
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </div>
       )}
+      {error && <p className="form-error">{error}</p>}
       <div className="sticky-note-grid">
         {notes.map((note) => (
           <article
@@ -722,9 +717,9 @@ function StickyNotesWidget() {
               <button
                 type="button"
                 className="sticky-note-card__delete"
-                onClick={() => deleteNote(note)}
-                aria-label="Delete shift note"
-                title="Delete shift note"
+                onClick={() => void deleteNote(note)}
+                aria-label="Delete note"
+                title="Delete note"
               >
                 <TrashIcon />
               </button>
@@ -733,7 +728,7 @@ function StickyNotesWidget() {
             <time dateTime={note.updatedAt}>Updated {formatDateTime(note.updatedAt)}</time>
           </article>
         ))}
-        {notes.length === 0 && <EmptyQueue label="No shift notes yet." />}
+        {!loading && notes.length === 0 && <EmptyQueue label="No notes yet." />}
       </div>
     </DashboardCard>
   );
@@ -741,43 +736,139 @@ function StickyNotesWidget() {
 
 function TasksWidget() {
   const { user: currentUser } = useCurrentUser();
-  const [filter, setFilter] = useState<TaskState>('pending');
-  const [tasks, setTasks] = useState<ClinicTask[]>(DEV_TASKS);
+  const [filter, setFilter] = useState<TaskState>('Pending');
+  const [tasks, setTasks] = useState<ClinicTask[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const assignedByDefault = currentUser?.name ?? 'Reception';
-  const assigneeOptions = useMemo(
-    () => Array.from(new Set(['Front Desk', 'Care Team', ...tasks.map((task) => task.assignee)])).sort(),
-    [tasks],
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/tasks', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<ClinicTask[]>) : []))
+      .then((data) => {
+        if (!cancelled) setTasks(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load tasks.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/staff', { cache: 'no-store' })
+      .then((response) => (response.ok ? (response.json() as Promise<StaffMember[]>) : []))
+      .then((data) => {
+        if (!cancelled) setStaff(data);
+      })
+      .catch(() => {
+        if (!cancelled) setStaff([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const staffOptions = useMemo(
+    () => [...staff].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+    [staff],
   );
-  const filteredTasks = tasks.filter((task) => task.status === filter);
+  const filteredTasks = tasks.filter((task) => task.effectiveStatus === filter);
+  function canCompleteTask(task: ClinicTask) {
+    if (!currentUser) return false;
+    return task.assigneeId === currentUser.id || task.createdById === currentUser.id;
+  }
   const taskCounts = tasks.reduce<Record<TaskState, number>>(
-    (counts, task) => ({ ...counts, [task.status]: counts[task.status] + 1 }),
-    { overdue: 0, pending: 0, completed: 0 },
+    (counts, task) => ({ ...counts, [task.effectiveStatus]: counts[task.effectiveStatus] + 1 }),
+    { Overdue: 0, Pending: 0, Completed: 0 },
   );
   const filters: { label: string; value: TaskState; count: number }[] = [
-    { label: 'Overdue', value: 'overdue', count: taskCounts.overdue },
-    { label: 'Pending', value: 'pending', count: taskCounts.pending },
-    { label: 'Completed', value: 'completed', count: taskCounts.completed },
+    { label: 'Overdue', value: 'Overdue', count: taskCounts.Overdue },
+    { label: 'Pending', value: 'Pending', count: taskCounts.Pending },
+    { label: 'Completed', value: 'Completed', count: taskCounts.Completed },
   ];
 
-  function createTask(draft: TaskDraft) {
+  async function createTask(draft: TaskDraft) {
     const title = draft.title.trim();
-    const assignee = draft.assignee.trim();
-    if (!title || !assignee) return;
-    const dueAt = fromDateTimeInputValue(draft.dueAt);
-    const task: ClinicTask = {
-      id: `task-${Date.now()}`,
-      title,
-      assignee,
-      assignedBy: draft.assignedBy.trim() || assignedByDefault,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-      ...(dueAt ? { dueAt } : {}),
-    };
-    // TODO: Persist dashboard tasks through the operations dashboard API once a Task model exists.
-    setTasks((current) => [task, ...current]);
-    setFilter('pending');
-    setIsCreatingTask(false);
+    const assigneeMember = staff.find((member) => member.id === draft.assigneeId);
+    if (!title || !assigneeMember) return;
+    const dueAt = combineDateAndTime(draft.dueDate, draft.dueTime);
+    setError(null);
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          assignee: assigneeMember.displayName,
+          assigneeId: assigneeMember.id,
+          assignedBy: assignedByDefault,
+          ...(dueAt ? { dueAt } : {}),
+        }),
+      });
+      if (!response.ok) throw new Error('task create failed');
+      const created = (await response.json()) as ClinicTask;
+      setTasks((current) => [created, ...current]);
+      setFilter('Pending');
+      setIsCreatingTask(false);
+    } catch {
+      setError('Could not create this task. Please try again.');
+    }
+  }
+
+  async function toggleTaskComplete(task: ClinicTask) {
+    const nextStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
+    const previous = tasks;
+    setTasks((current) =>
+      current.map((item) =>
+        item.id === task.id
+          ? {
+              ...item,
+              status: nextStatus,
+              // Optimistic guess — the PATCH response (below) overwrites this
+              // with the server's real Overdue/Pending distinction.
+              effectiveStatus:
+                nextStatus === 'Completed'
+                  ? 'Completed'
+                  : item.dueAt && new Date(item.dueAt).getTime() < Date.now()
+                    ? 'Overdue'
+                    : 'Pending',
+            }
+          : item,
+      ),
+    );
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!response.ok) throw new Error('task update failed');
+      const updated = (await response.json()) as ClinicTask;
+      setTasks((current) => current.map((item) => (item.id === task.id ? updated : item)));
+    } catch {
+      setTasks(previous);
+      setError('Could not update this task. Please try again.');
+    }
+  }
+
+  async function deleteTask(task: ClinicTask) {
+    if (!window.confirm('Delete this task?')) return;
+    const previous = tasks;
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+    const response = await fetch(`/api/tasks/${task.id}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setTasks(previous);
+      setError('Could not delete this task. Please try again.');
+    }
   }
 
   return (
@@ -789,13 +880,12 @@ function TasksWidget() {
         </div>
         <button
           type="button"
-          className="button-primary task-create-button"
+          className="dashboard-icon-button"
           onClick={() => setIsCreatingTask(true)}
           aria-label="Create task"
           title="Create task"
         >
           <PlusIcon />
-          <span>Task</span>
         </button>
       </div>
       <div className="task-filter-tabs" role="tablist" aria-label="Task filters">
@@ -812,14 +902,37 @@ function TasksWidget() {
           </button>
         ))}
       </div>
+      {error && <p className="form-error">{error}</p>}
       <div className="task-line-list">
         {filteredTasks.map((task) => (
-          <article className="task-line-item" data-state={task.status} key={task.id}>
-            <div className="task-line-item__main">
-              <div>
+          <article className="task-line-item" data-state={task.effectiveStatus.toLowerCase()} key={task.id}>
+            <div className="task-line-item__top">
+              <input
+                type="checkbox"
+                className="task-line-item__checkbox"
+                checked={task.status === 'Completed'}
+                onChange={() => void toggleTaskComplete(task)}
+                disabled={!canCompleteTask(task)}
+                aria-label={task.status === 'Completed' ? 'Mark task pending' : 'Mark task complete'}
+                title={
+                  canCompleteTask(task)
+                    ? undefined
+                    : `Only ${task.assignee} or whoever created this task can mark it complete.`
+                }
+              />
+              <div className="task-line-item__main">
                 <strong>{task.title}</strong>
                 <span>Created {formatDateTime(task.createdAt)}</span>
               </div>
+              <button
+                type="button"
+                className="task-line-item__delete"
+                onClick={() => void deleteTask(task)}
+                aria-label="Delete task"
+                title="Delete task"
+              >
+                <TrashIcon />
+              </button>
             </div>
             <p className="task-line-item__meta">
               <span>{task.assignee}</span>
@@ -828,14 +941,14 @@ function TasksWidget() {
             </p>
           </article>
         ))}
-        {filteredTasks.length === 0 && <EmptyQueue label={`No ${filter} tasks.`} />}
+        {!loading && filteredTasks.length === 0 && <EmptyQueue label={`No ${filter.toLowerCase()} tasks.`} />}
       </div>
       {isCreatingTask && (
         <TaskCreateDialog
           assignedByDefault={assignedByDefault}
-          assigneeOptions={assigneeOptions}
+          staffOptions={staffOptions}
           onCancel={() => setIsCreatingTask(false)}
-          onCreate={createTask}
+          onCreate={(draft) => void createTask(draft)}
         />
       )}
     </DashboardCard>
@@ -844,20 +957,20 @@ function TasksWidget() {
 
 function TaskCreateDialog({
   assignedByDefault,
-  assigneeOptions,
+  staffOptions,
   onCancel,
   onCreate,
 }: {
   assignedByDefault: string;
-  assigneeOptions: string[];
+  staffOptions: StaffMember[];
   onCancel: () => void;
   onCreate: (draft: TaskDraft) => void;
 }) {
   const [draft, setDraft] = useState<TaskDraft>({
     title: '',
-    assignee: assigneeOptions[0] ?? '',
-    dueAt: '',
-    assignedBy: assignedByDefault,
+    assigneeId: staffOptions[0]?.id ?? '',
+    dueDate: '',
+    dueTime: '',
   });
 
   useEffect(() => {
@@ -908,42 +1021,48 @@ function TaskCreateDialog({
           />
         </label>
         <label>
-          <span>Assignee</span>
-          <input
-            value={draft.assignee}
-            onChange={(event) => setDraft((current) => ({ ...current, assignee: event.target.value }))}
-            list="dashboard-task-assignees"
-            required
-          />
+          <span>Assign to</span>
+          {staffOptions.length > 0 ? (
+            <select
+              value={draft.assigneeId}
+              onChange={(event) => setDraft((current) => ({ ...current, assigneeId: event.target.value }))}
+              required
+            >
+              {staffOptions.map((member) => (
+                <option value={member.id} key={member.id}>
+                  {member.displayName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input value="Loading team..." disabled readOnly />
+          )}
         </label>
-        <datalist id="dashboard-task-assignees">
-          {assigneeOptions.map((assignee) => (
-            <option value={assignee} key={assignee} />
-          ))}
-        </datalist>
-        <div className="task-create-dialog__split">
-          <label>
-            <span>Due</span>
+        <label>
+          <span>Due date &amp; time</span>
+          <div className="task-create-dialog__datetime">
             <input
-              type="datetime-local"
-              value={draft.dueAt}
-              min={toDateTimeInputValue(new Date().toISOString())}
-              onChange={(event) => setDraft((current) => ({ ...current, dueAt: event.target.value }))}
+              type="date"
+              value={draft.dueDate}
+              min={todayDateInputValue()}
+              onChange={(event) => setDraft((current) => ({ ...current, dueDate: event.target.value }))}
+              aria-label="Due date"
             />
-          </label>
-          <label>
-            <span>Assigned by</span>
             <input
-              value={draft.assignedBy}
-              onChange={(event) => setDraft((current) => ({ ...current, assignedBy: event.target.value }))}
+              type="time"
+              value={draft.dueTime}
+              onChange={(event) => setDraft((current) => ({ ...current, dueTime: event.target.value }))}
+              aria-label="Due time"
+              disabled={!draft.dueDate}
             />
-          </label>
-        </div>
+          </div>
+        </label>
+        <p className="task-create-dialog__assigned-by">Assigned by {assignedByDefault}</p>
         <div className="task-create-dialog__actions">
           <button type="button" className="button-secondary" onClick={onCancel}>
             Cancel
           </button>
-          <button type="submit" className="button-primary" disabled={!draft.title.trim() || !draft.assignee.trim()}>
+          <button type="submit" className="button-primary" disabled={!draft.title.trim() || !draft.assigneeId}>
             Create
           </button>
         </div>

@@ -2203,6 +2203,11 @@ body {
   background: color-mix(in srgb, CanvasText 12%, Canvas);
 }
 
+.status-badge--alert {
+  color: #101820;
+  background: var(--warning);
+}
+
 .source-label {
   font-size: 0.8rem;
   opacity: 0.6;
@@ -3033,14 +3038,22 @@ body {
   min-height: 14.5rem;
 }
 
-.sticky-notes-widget {
-  min-height: 17.5rem;
+.sticky-notes-widget,
+.tasks-widget {
+  display: flex;
+  height: 21.2rem;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tasks-widget {
-  min-height: 17.5rem;
   border-color: rgba(47, 111, 168, 0.2);
   background: linear-gradient(180deg, rgba(47, 111, 168, 0.045), transparent 38%), var(--surface);
+}
+
+.sticky-notes-widget > *,
+.tasks-widget > * {
+  flex-shrink: 0;
 }
 
 .role-placeholder-card {
@@ -3732,7 +3745,8 @@ img.pet-photo-placeholder {
 .dashboard-icon-button svg,
 .button-primary svg,
 .sticky-note-card__grip svg,
-.sticky-note-card__delete svg {
+.sticky-note-card__delete svg,
+.task-line-item__delete svg {
   width: 1rem;
   height: 1rem;
   fill: none;
@@ -3782,7 +3796,8 @@ img.pet-photo-placeholder {
 }
 
 .sticky-note-composer textarea:focus-visible,
-.task-create-dialog input:focus-visible {
+.task-create-dialog input:focus-visible,
+.task-create-dialog select:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -3795,8 +3810,14 @@ img.pet-photo-placeholder {
 
 .sticky-note-grid {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: min-content;
   gap: 0.55rem;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+  scroll-padding-bottom: 0.35rem;
 }
 
 .sticky-note-card {
@@ -3930,16 +3951,12 @@ img.pet-photo-placeholder {
   outline-offset: 1px;
 }
 
-.task-create-button {
-  gap: 0.28rem;
-  min-height: 2rem;
-  padding: 0.4rem 0.68rem;
-}
-
 .task-line-list {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: min-content;
   gap: 0.42rem;
-  max-height: 13.2rem;
   overflow-y: auto;
   padding-right: 0.15rem;
   scroll-padding-bottom: 0.35rem;
@@ -3992,9 +4009,48 @@ img.pet-photo-placeholder {
   background: #f8fbf8;
 }
 
+.task-line-item__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.task-line-item__checkbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.task-line-item__checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.task-line-item__delete {
+  display: inline-grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: rgba(100, 113, 125, 0.75);
+  cursor: pointer;
+}
+
+.task-line-item__delete:hover {
+  background: rgba(178, 51, 36, 0.1);
+  color: #b23324;
+}
+
 .task-line-item__main {
   display: grid;
   min-width: 0;
+  flex: 1 1 auto;
   gap: 0.18rem;
 }
 
@@ -4083,7 +4139,8 @@ img.pet-photo-placeholder {
   text-transform: uppercase;
 }
 
-.task-create-dialog input {
+.task-create-dialog input,
+.task-create-dialog select {
   width: 100%;
   min-width: 0;
   min-height: 2.3rem;
@@ -4093,12 +4150,28 @@ img.pet-photo-placeholder {
   background: #ffffff;
   color: var(--text-primary);
   font: inherit;
+  color-scheme: light;
 }
 
-.task-create-dialog__split {
+.task-create-dialog select {
+  cursor: pointer;
+}
+
+.task-create-dialog input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.task-create-dialog__datetime {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
+}
+
+.task-create-dialog__assigned-by {
+  margin: -0.15rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
 }
 
 .task-create-dialog__actions {
@@ -7367,12 +7440,12 @@ body:has(.patient-profile-hub) {
 }
 
 .active-visit-details-modal {
-  width: min(34rem, calc(100vw - 2rem));
+  width: min(30rem, calc(100vw - 2rem));
 }
 
 .active-visit-details {
   display: grid;
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 .active-visit-details__list {
@@ -7383,7 +7456,7 @@ body:has(.patient-profile-hub) {
 
 .active-visit-details__list div {
   display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
   gap: 0.75rem;
   align-items: baseline;
   padding-bottom: 0.65rem;
@@ -7838,6 +7911,32 @@ body:has(.patient-profile-hub) {
   line-height: 1.35;
 }
 
+.profile-compact-empty button {
+  justify-self: start;
+  margin-top: 0.4rem;
+}
+
+.patient-alerts-current {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 32%, rgba(211, 225, 227, 0.8));
+  border-radius: 0.72rem;
+  background: color-mix(in srgb, var(--warning) 10%, #ffffff);
+}
+
+.patient-alerts-current p {
+  margin: 0;
+  color: #172633;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.patient-alerts-current button {
+  justify-self: start;
+}
+
 .profile-quick-actions {
   display: grid;
   gap: 0.45rem;
@@ -8031,7 +8130,7 @@ body:has(.patient-profile-hub) {
   }
 
   .sticky-note-grid,
-  .task-create-dialog__split {
+  .task-create-dialog__datetime {
     grid-template-columns: 1fr;
   }
 

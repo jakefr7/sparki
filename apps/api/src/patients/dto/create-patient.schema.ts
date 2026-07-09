@@ -16,6 +16,7 @@ export const createPatientSchema = z
     weight: z.coerce.number().positive().optional(),
     color: z.string().min(1).max(200).optional(),
     imageUrl: z.string().url().max(2000).optional(),
+    alerts: z.string().min(1).max(2000).optional(),
     // Patient<->Client is many-to-many with a primary flag (PatientClient),
     // per docs/specs/modules/01-patient-workspace-mvp.md's "Client Context".
     clients: z.array(clientLinkSchema).min(1),

@@ -11,6 +11,7 @@ export const updatePatientSchema = z
     weight: z.coerce.number().positive().nullable().optional(),
     color: z.string().min(1).max(200).nullable().optional(),
     imageUrl: z.string().url().max(2000).nullable().optional(),
+    alerts: z.string().min(1).max(2000).nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',

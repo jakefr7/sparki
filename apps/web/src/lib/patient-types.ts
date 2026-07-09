@@ -231,6 +231,7 @@ export interface PatientWorkspace {
     color: string | null;
     imageUrl: string | null;
     status: string;
+    alerts: string | null;
     sourceSystem: string | null;
     sourceConfidence: number | null;
   };

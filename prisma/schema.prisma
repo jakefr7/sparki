@@ -61,6 +61,8 @@ model Organization {
   schedulerSettings       SchedulerSettings[]
   schedulerSlotTemplates  SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
+  notes Note[]
+  tasks Task[]
 
   memberships     OrganizationMembership[]
   locationAccess  ClinicLocationAccess[]
@@ -81,6 +83,7 @@ model Location {
   schedulerSettings       SchedulerSettings?
   schedulerSlotTemplates  SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
+  tasks Task[]
 
   locationAccess ClinicLocationAccess[]
 
@@ -148,6 +151,10 @@ model User {
 
   authoredSoapNotes SoapNote[] @relation("SoapNoteAuthor")
   signedSoapNotes   SoapNote[] @relation("SoapNoteVeterinarian")
+
+  notes        Note[]
+  createdTasks  Task[]
+  assignedTasks Task[] @relation("TaskAssignee")
 
   @@index([organizationId])
   @@index([organizationId, role])
@@ -304,6 +311,10 @@ model Patient {
   color          String?
   imageUrl       String?
   status         PatientStatus @default(Active)
+  // Free-text clinical caution (allergies, handling notes, care cautions),
+  // entered from the profile's Alerts tab — surfaced as a small badge next
+  // to the patient's status pills and in the alert strip below the header.
+  alerts         String?
 
   // Migration/provenance (see schema-level note above). Set only by a future
   // migration workflow; nullable because native (non-imported) records have
@@ -476,6 +487,62 @@ model DashboardStatusColorSetting {
 
   @@unique([locationId, status])
   @@index([organizationId])
+}
+
+// Dashboard "Notes" widget — personal to the signed-in user, never shared
+// with teammates, and kept indefinitely (no shift/expiry concept) until the
+// user deletes it. sortOrder persists the widget's drag-to-reorder.
+model Note {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  body           String
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, userId, sortOrder])
+}
+
+enum TaskStatus {
+  Pending
+  Completed
+}
+
+// Dashboard "Tasks" work queue — org/location shared (unlike Note above).
+// "Overdue" is deliberately not a stored status: it's derived at read time
+// from a Pending task whose dueAt has passed, so a task can't get stuck in
+// a stale Overdue state after its due date is edited.
+model Task {
+  id             String     @id @default(cuid())
+  organizationId String
+  locationId     String
+  title          String
+  // Denormalized display-name snapshot (avoids a join for the common case
+  // of just rendering the task list) — assigneeId below is the source of
+  // truth for "who is allowed to complete this task" (see TasksService).
+  assignee       String
+  // Nullable only so a pre-assigneeId row (created before this column
+  // existed) doesn't break; every task created through the current UI
+  // always sets it, since assignment now comes from a real staff picker.
+  assigneeId     String?
+  assignedBy     String
+  dueAt          DateTime?
+  status         TaskStatus @default(Pending)
+  createdById    String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  assigneeUser User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  @@index([organizationId, locationId, status])
+  @@index([assigneeId])
 }
 
 model SchedulerSettings {

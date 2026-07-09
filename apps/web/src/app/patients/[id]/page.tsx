@@ -6,6 +6,7 @@ import {
 } from '../../../components/start-visit-actions';
 import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
 import { BackButton } from '../../../components/back-button';
+import { PatientAlertsPanel } from '../../../components/patient-alerts-panel';
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
@@ -154,6 +155,7 @@ export default async function PatientWorkspacePage({
             {!currentVisit && nextAppointment && (
               <span className="status-badge status-badge--scheduled">Upcoming Appointment</span>
             )}
+            {patient.alerts && <span className="status-badge status-badge--alert">⚠ Alert</span>}
           </div>
         </div>
         <div className="patient-profile-actions" aria-label="Patient care actions">
@@ -246,7 +248,7 @@ export default async function PatientWorkspacePage({
         </div>
         <div className="patient-alert-strip__item">
           <span>Allergies / Alerts</span>
-          <strong>No alerts on file.</strong>
+          <strong>{patient.alerts ?? 'No alerts on file.'}</strong>
         </div>
         <div className="patient-alert-strip__item">
           <span>Visit status</span>
@@ -379,17 +381,6 @@ export default async function PatientWorkspacePage({
                     )}
                   </section>
 
-                  <section className="profile-card profile-card--compact" aria-labelledby="care-flags-heading">
-                    <div className="profile-card__header">
-                      <p className="eyebrow">Care flags</p>
-                      <h2 id="care-flags-heading">Alerts Summary</h2>
-                    </div>
-                    <div className="profile-compact-empty">
-                      <strong>No alerts on file.</strong>
-                      <span>Allergies, handling notes, and care cautions can be highlighted here when available.</span>
-                    </div>
-                  </section>
-
                   <section className="profile-card profile-card--compact" aria-labelledby="profile-quick-actions-heading">
                     <div className="profile-card__header">
                       <p className="eyebrow">Shortcuts</p>
@@ -410,6 +401,11 @@ export default async function PatientWorkspacePage({
                 </aside>
               </div>
             ),
+          },
+          {
+            id: 'alerts',
+            label: 'Alerts',
+            panel: <PatientAlertsPanel patientId={patient.id} alerts={patient.alerts} />,
           },
           {
             id: 'records',

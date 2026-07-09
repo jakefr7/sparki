@@ -432,6 +432,8 @@ function NewPatientPatientSection({
   onExactDateChange,
   estimatedAge,
   onEstimatedAgeChange,
+  alerts,
+  onAlertsChange,
   patientDuplicateHint,
 }: {
   patientNameRef: React.RefObject<HTMLInputElement>;
@@ -453,6 +455,8 @@ function NewPatientPatientSection({
   onExactDateChange: (value: string) => void;
   estimatedAge: string;
   onEstimatedAgeChange: (value: string) => void;
+  alerts: string;
+  onAlertsChange: (value: string) => void;
   patientDuplicateHint: string | null;
 }) {
   return (
@@ -597,6 +601,18 @@ function NewPatientPatientSection({
         </div>
       </fieldset>
 
+      <label htmlFor="new-patient-alerts">
+        Allergies / Alerts
+        <textarea
+          id="new-patient-alerts"
+          value={alerts}
+          onChange={(event) => onAlertsChange(event.target.value)}
+          placeholder="Optional — e.g. Allergic to penicillin. Muzzle for nail trims."
+          maxLength={2000}
+          rows={3}
+        />
+      </label>
+
       {patientDuplicateHint && (
         <p className="form-hint">Possible existing pet for this owner: {patientDuplicateHint}</p>
       )}
@@ -666,6 +682,7 @@ const INITIAL_STATE = {
   dobMode: 'exact' as DobMode,
   exactDate: '',
   estimatedAge: '',
+  alerts: '',
 };
 
 export function NewPatientModal({
@@ -715,6 +732,7 @@ export function NewPatientModal({
   const [dobMode, setDobMode] = useState<DobMode>(INITIAL_STATE.dobMode);
   const [exactDate, setExactDate] = useState(INITIAL_STATE.exactDate);
   const [estimatedAge, setEstimatedAge] = useState(INITIAL_STATE.estimatedAge);
+  const [alerts, setAlerts] = useState(INITIAL_STATE.alerts);
   const [patientDuplicateHint, setPatientDuplicateHint] = useState<string | null>(null);
 
   function resetForm() {
@@ -741,6 +759,7 @@ export function NewPatientModal({
     setDobMode(INITIAL_STATE.dobMode);
     setExactDate(INITIAL_STATE.exactDate);
     setEstimatedAge(INITIAL_STATE.estimatedAge);
+    setAlerts(INITIAL_STATE.alerts);
     setPatientDuplicateHint(null);
     setError(null);
   }
@@ -763,7 +782,8 @@ export function NewPatientModal({
     color.trim() !== '' ||
     draftPhotoFile !== null ||
     exactDate.trim() !== '' ||
-    estimatedAge.trim() !== '';
+    estimatedAge.trim() !== '' ||
+    alerts.trim() !== '';
 
   function requestClose() {
     if (step === 'form' && isDirty) {
@@ -937,6 +957,7 @@ export function NewPatientModal({
           color: color.trim() || undefined,
           dateOfBirth: dobMode === 'exact' ? exactDate || undefined : undefined,
           estimatedAge: dobMode === 'estimated' ? estimatedAge.trim() || undefined : undefined,
+          alerts: alerts.trim() || undefined,
           clients: [{ clientId, isPrimary: true }],
         }),
       });
@@ -1082,6 +1103,8 @@ export function NewPatientModal({
                 onExactDateChange={setExactDate}
                 estimatedAge={estimatedAge}
                 onEstimatedAgeChange={setEstimatedAge}
+                alerts={alerts}
+                onAlertsChange={setAlerts}
                 patientDuplicateHint={patientDuplicateHint}
               />
               {error && (

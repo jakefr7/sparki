@@ -53,7 +53,7 @@ const STAFF = [
     firstName: 'Marcus',
     lastName: 'Nguyen',
     email: 'marcus.nguyen@sparkidemo.vet',
-    role: 'FRONT_DESK',
+    role: 'RECEPTIONIST',
     jobTitle: 'Front Desk Coordinator',
     canReceiveAppointments: false,
     canOwnVisits: true,

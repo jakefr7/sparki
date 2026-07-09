@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { clientDisplayName, SEX_OPTIONS, SPECIES_OPTIONS, type ClientSearchResult, type PatientSearchResult } from '../lib/patient-types';
 
 const DEBOUNCE_MS = 200;
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
 /** What a successful create produces — enough for the parent directory page
  *  to update its list and to navigate straight to the new Patient Profile
@@ -32,6 +34,168 @@ type DobMode = 'exact' | 'estimated';
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function DraftPatientPhotoActions({
+  name,
+  species,
+  file,
+  onFileChange,
+}: {
+  name: string;
+  species: string;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const avatarButtonRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  function updateMenuPosition() {
+    const button = avatarButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 280;
+    const margin = 12;
+    const left = Math.min(
+      Math.max(margin, rect.left + rect.width / 2 - menuWidth / 2),
+      window.innerWidth - menuWidth - margin,
+    );
+    setMenuPosition({ top: rect.bottom + 12, left });
+  }
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+    function handleReposition() {
+      updateMenuPosition();
+    }
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || avatarButtonRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  function handleLocalFile(nextFile: File | undefined) {
+    if (!nextFile) return;
+    if (nextFile.size > MAX_FILE_BYTES) {
+      setMessage('Image is too large. Max size is 8MB.');
+      return;
+    }
+    onFileChange(nextFile);
+    setMessage('Photo will be added when the patient is created.');
+    setOpen(false);
+  }
+
+  return (
+    <div className="patient-photo-control new-patient-photo-control">
+      <button
+        ref={avatarButtonRef}
+        type="button"
+        className="patient-photo-control__avatar-button"
+        onClick={() => setOpen((current) => !current)}
+        aria-label={file ? 'Change patient photo' : 'Add patient photo'}
+      >
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={previewUrl} alt={name} className="pet-photo-placeholder patient-profile-photo" />
+        ) : (
+          <PetPhotoPlaceholder
+            name={name}
+            species={species}
+            className="pet-photo-placeholder patient-profile-photo"
+          />
+        )}
+        <span className="patient-photo-control__badge" aria-hidden="true">
+          +
+        </span>
+      </button>
+      {open &&
+        menuPosition &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="patient-photo-menu patient-photo-menu--portal"
+            role="dialog"
+            aria-label="Patient photo options"
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+          >
+            <div className="patient-photo-menu__header">
+              <strong>{file ? 'Change photo' : 'Add photo'}</strong>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close photo options">
+                ×
+              </button>
+            </div>
+            <div className="patient-photo-menu__actions">
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                Upload image
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(event) => {
+                  handleLocalFile(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+                hidden
+              />
+              <button type="button" disabled>
+                Use webcam <span>Coming soon</span>
+              </button>
+              {file && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFileChange(null);
+                    setMessage(null);
+                    setOpen(false);
+                  }}
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+            {message && <p>{message}</p>}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
 }
 
 function NewPatientClientSection({
@@ -262,8 +426,6 @@ function NewPatientPatientSection({
   onSexChange,
   color,
   onColorChange,
-  imageUrl,
-  onImageUrlChange,
   dobMode,
   onDobModeChange,
   exactDate,
@@ -285,8 +447,6 @@ function NewPatientPatientSection({
   onSexChange: (value: string) => void;
   color: string;
   onColorChange: (value: string) => void;
-  imageUrl: string;
-  onImageUrlChange: (value: string) => void;
   dobMode: DobMode;
   onDobModeChange: (mode: DobMode) => void;
   exactDate: string;
@@ -437,45 +597,6 @@ function NewPatientPatientSection({
         </div>
       </fieldset>
 
-      <div className="new-patient-photo-card">
-        <div className="new-patient-photo-card__preview">
-          {imageUrl.trim() ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl.trim()} alt="" />
-          ) : (
-            <PetPhotoPlaceholder
-              name={patientName.trim() || 'New patient'}
-              species={species === 'Other' ? otherSpecies : species}
-              className="pet-photo-placeholder"
-            />
-          )}
-        </div>
-        <div className="new-patient-photo-card__content">
-          <div className="new-patient-photo-card__header">
-            <div>
-              <span>Patient photo</span>
-              <p>Optional image for quick recognition.</p>
-            </div>
-            {imageUrl.trim() && (
-              <button type="button" onClick={() => onImageUrlChange('')}>
-                Clear
-              </button>
-            )}
-          </div>
-          <label htmlFor="new-patient-image-url">
-            Image link
-            <input
-              id="new-patient-image-url"
-              type="url"
-              value={imageUrl}
-              onChange={(event) => onImageUrlChange(event.target.value)}
-              placeholder="Paste image URL"
-              autoComplete="new-password"
-            />
-          </label>
-        </div>
-      </div>
-
       {patientDuplicateHint && (
         <p className="form-hint">Possible existing pet for this owner: {patientDuplicateHint}</p>
       )}
@@ -542,7 +663,6 @@ const INITIAL_STATE = {
   breed: '',
   sex: '',
   color: '',
-  imageUrl: '',
   dobMode: 'exact' as DobMode,
   exactDate: '',
   estimatedAge: '',
@@ -591,7 +711,7 @@ export function NewPatientModal({
   const [breed, setBreed] = useState(INITIAL_STATE.breed);
   const [sex, setSex] = useState(INITIAL_STATE.sex);
   const [color, setColor] = useState(INITIAL_STATE.color);
-  const [imageUrl, setImageUrl] = useState(INITIAL_STATE.imageUrl);
+  const [draftPhotoFile, setDraftPhotoFile] = useState<File | null>(null);
   const [dobMode, setDobMode] = useState<DobMode>(INITIAL_STATE.dobMode);
   const [exactDate, setExactDate] = useState(INITIAL_STATE.exactDate);
   const [estimatedAge, setEstimatedAge] = useState(INITIAL_STATE.estimatedAge);
@@ -617,7 +737,7 @@ export function NewPatientModal({
     setBreed(INITIAL_STATE.breed);
     setSex(INITIAL_STATE.sex);
     setColor(INITIAL_STATE.color);
-    setImageUrl(INITIAL_STATE.imageUrl);
+    setDraftPhotoFile(null);
     setDobMode(INITIAL_STATE.dobMode);
     setExactDate(INITIAL_STATE.exactDate);
     setEstimatedAge(INITIAL_STATE.estimatedAge);
@@ -641,7 +761,7 @@ export function NewPatientModal({
     breed.trim() !== '' ||
     otherSpecies.trim() !== '' ||
     color.trim() !== '' ||
-    imageUrl.trim() !== '' ||
+    draftPhotoFile !== null ||
     exactDate.trim() !== '' ||
     estimatedAge.trim() !== '';
 
@@ -815,7 +935,6 @@ export function NewPatientModal({
           breed: breed.trim() || undefined,
           sex: sex || undefined,
           color: color.trim() || undefined,
-          imageUrl: imageUrl.trim() || undefined,
           dateOfBirth: dobMode === 'exact' ? exactDate || undefined : undefined,
           estimatedAge: dobMode === 'estimated' ? estimatedAge.trim() || undefined : undefined,
           clients: [{ clientId, isPrimary: true }],
@@ -832,6 +951,21 @@ export function NewPatientModal({
         sex: string | null;
         dateOfBirth: string | null;
       } = await patientResponse.json();
+      let uploadedImageUrl: string | null = null;
+
+      if (draftPhotoFile) {
+        const body = new FormData();
+        body.append('file', draftPhotoFile);
+        const photoResponse = await fetch(`/api/patients/${patient.id}/photo`, {
+          method: 'POST',
+          body,
+        });
+        if (!photoResponse.ok) {
+          throw new Error('photo');
+        }
+        const updatedPatient = (await photoResponse.json()) as { imageUrl: string | null };
+        uploadedImageUrl = updatedPatient.imageUrl;
+      }
 
       const result: NewPatientCreationResult = {
         id: patient.id,
@@ -840,7 +974,7 @@ export function NewPatientModal({
         breed: patient.breed,
         sex: patient.sex,
         dateOfBirth: patient.dateOfBirth,
-        imageUrl: imageUrl.trim() || null,
+        imageUrl: uploadedImageUrl,
         clientId,
         clientFirstName,
         clientLastName,
@@ -880,10 +1014,11 @@ export function NewPatientModal({
             <span aria-hidden="true">×</span>
           </button>
           {step === 'form' && (
-            <PetPhotoPlaceholder
+            <DraftPatientPhotoActions
               name={patientName.trim() || 'New patient'}
               species={species === 'Other' ? otherSpecies : species}
-              className="pet-photo-placeholder patient-profile-modal-header__avatar"
+              file={draftPhotoFile}
+              onFileChange={setDraftPhotoFile}
             />
           )}
           <h2 id="new-patient-modal-heading">New Patient</h2>
@@ -941,8 +1076,6 @@ export function NewPatientModal({
                 onSexChange={setSex}
                 color={color}
                 onColorChange={setColor}
-                imageUrl={imageUrl}
-                onImageUrlChange={setImageUrl}
                 dobMode={dobMode}
                 onDobModeChange={setDobMode}
                 exactDate={exactDate}

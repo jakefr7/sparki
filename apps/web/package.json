@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "dotenv -e ../../.env -- sh -c 'next dev --port ${WEB_PORT:-3000}'",
+    "dev": "dotenv -e ../../.env -- node ../../scripts/dev-web.mjs",
     "start": "dotenv -e ../../.env -- next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

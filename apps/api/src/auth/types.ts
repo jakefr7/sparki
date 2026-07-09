@@ -12,4 +12,7 @@ export interface AuthenticatedUser {
   locationId: string;
   /** Identity only (User.role) — no permission framework yet. */
   role: UserRole;
+  /** Standalone per-user grant (User.canManageAdminSettings), deliberately
+   *  not derived from role — see permissions.ts. */
+  canManageAdminSettings: boolean;
 }

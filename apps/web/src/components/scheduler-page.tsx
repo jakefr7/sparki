@@ -7,18 +7,20 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-  type FormEvent,
   type ReactNode,
 } from 'react';
 import { DashboardShell } from './dashboard-shell';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
+import {
+  NewAppointmentModal,
+  type NewAppointmentCreatedSummary,
+} from './new-appointment-modal';
 import {
   appointmentTypeLabel,
   clientDisplayName,
   type DashboardAppointmentSummary,
   type AppointmentTypeValue,
   type OperationsDashboard,
-  type PatientSearchResult,
   type StaffMember,
 } from '../lib/patient-types';
 
@@ -62,17 +64,6 @@ interface SchedulerConfig {
   appointmentTypes: AppointmentTypeSetting[];
   slotTemplates: SchedulerSlotTemplate[];
   canManage: boolean;
-}
-
-interface CreatedAppointmentResponse {
-  id: string;
-  type: string;
-  reason: string;
-  state: string;
-  scheduledAt: string;
-  expectedDurationMinutes: number | null;
-  colorKey: string | null;
-  providerId: string | null;
 }
 
 const CLINIC_START_HOUR = 7;
@@ -516,6 +507,18 @@ function slotTemplateStyle(template: SchedulerSlotTemplate): CSSProperties {
   };
 }
 
+function slotTemplateOverlayStyle(template: SchedulerSlotTemplate): CSSProperties {
+  const start = minutesFromTime(template.startTime) - CLINIC_START_HOUR * 60;
+  const end = minutesFromTime(template.endTime) - CLINIC_START_HOUR * 60;
+  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+  return {
+    top: `${(Math.max(0, start) / total) * 100}%`,
+    height: `${((Math.min(total, end) - Math.max(0, start)) / total) * 100}%`,
+    color: template.color,
+    borderColor: colorWithAlpha(template.color, 'a8'),
+  };
+}
+
 function slotTemplatesForDay(
   templates: SchedulerSlotTemplate[],
   day: Date,
@@ -778,14 +781,22 @@ export function SchedulerPage() {
         ) : null}
       </div>
       {selectedSlot && (
-        <NewAppointmentSlotModal
-          slot={selectedSlot}
+        <NewAppointmentModal
+          initialDate={selectedSlot.startsAt}
+          initialStartTime={selectedSlot.startsAt}
+          initialDurationMinutes={Math.max(
+            15,
+            Math.round((selectedSlot.endsAt.getTime() - selectedSlot.startsAt.getTime()) / 60_000),
+          )}
+          initialProviderId={providerFilter === 'all' ? null : providerFilter}
           providers={providers}
           appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => setSelectedSlot(null)}
           onCreated={(appointment) => {
             setSelectedSlot(null);
-            setAppointments((current) => uniqueAppointments([...current, appointment]));
+            setAppointments((current) =>
+              uniqueAppointments([...current, toSchedulerCreatedAppointment(appointment)]),
+            );
             setGeneratedAt(new Date().toISOString());
           }}
         />
@@ -799,6 +810,12 @@ export function SchedulerPage() {
       )}
     </DashboardShell>
   );
+}
+
+function toSchedulerCreatedAppointment(
+  appointment: NewAppointmentCreatedSummary,
+): SchedulerAppointment {
+  return appointment;
 }
 
 function SchedulerToolbar({
@@ -1075,6 +1092,7 @@ function CurrentTimeIndicator({
 
   const segmentWidth = 100 / columnCount;
   const segmentLeft = todayIndex * segmentWidth;
+  const currentTimeLabel = formatTime(currentTime);
 
   return (
     <div
@@ -1089,6 +1107,7 @@ function CurrentTimeIndicator({
       }
       aria-hidden="true"
     >
+      <span className="scheduler-now-indicator__label">{currentTimeLabel}</span>
       <span className="scheduler-now-indicator__line" />
       <span className="scheduler-now-indicator__today-segment" />
       <span className="scheduler-now-indicator__dot" />
@@ -1143,13 +1162,10 @@ function SchedulerDayColumn({
       {slotTemplates.map((template) => (
         <div
           key={template.id}
-          className="scheduler-slot-template"
+          className="scheduler-slot-template scheduler-slot-template--wash"
           style={slotTemplateStyle(template)}
           aria-hidden="true"
-        >
-          <span>{template.label}</span>
-          {template.room ? <small>{template.room}</small> : null}
-        </div>
+        />
       ))}
       <div
         className="scheduler-day-column__slots"
@@ -1202,6 +1218,17 @@ function SchedulerDayColumn({
           style={appointmentStyle(appointment)}
           onClick={() => onAppointmentClick(appointment)}
         />
+      ))}
+      {slotTemplates.map((template) => (
+        <div
+          key={`${template.id}-overlay`}
+          className="scheduler-slot-template scheduler-slot-template--overlay"
+          style={slotTemplateOverlayStyle(template)}
+          aria-hidden="true"
+        >
+          <span>{template.label}</span>
+          {template.room ? <small>{template.room}</small> : null}
+        </div>
       ))}
     </div>
   );
@@ -1298,396 +1325,6 @@ function ModalFrame({
         {children}
       </section>
     </div>
-  );
-}
-
-function NewAppointmentSlotModal({
-  slot,
-  providers,
-  appointmentTypes,
-  onClose,
-  onCreated,
-}: {
-  slot: SelectedSlot;
-  providers: StaffMember[];
-  appointmentTypes: AppointmentTypeSetting[];
-  onClose: () => void;
-  onCreated: (appointment: SchedulerAppointment) => void;
-}) {
-  const activeAppointmentTypes = useMemo(
-    () =>
-      appointmentTypes
-        .filter((setting) => setting.isActive && setting.appointmentType)
-        .sort((a, b) => a.sortOrder - b.sortOrder),
-    [appointmentTypes],
-  );
-  const defaultAppointmentType =
-    activeAppointmentTypes[0]?.appointmentType ?? 'WellnessPreventiveCare';
-  const [patientQuery, setPatientQuery] = useState('');
-  const [patientResults, setPatientResults] = useState<PatientSearchResult[]>([]);
-  const [selectedPatient, setSelectedPatient] = useState<PatientSearchResult | null>(null);
-  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
-  const [appointmentType, setAppointmentType] =
-    useState<AppointmentTypeValue>(defaultAppointmentType);
-  const [visitReason, setVisitReason] = useState(
-    configuredAppointmentTypeLabel(defaultAppointmentType, appointmentTypes),
-  );
-  const [durationMinutes, setDurationMinutes] = useState(
-    String(Math.max(15, Math.round((slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000))),
-  );
-  const [assignedProviderId, setAssignedProviderId] = useState(
-    providers.length === 1 ? providers[0]!.id : '',
-  );
-  const [manualColorOverride, setManualColorOverride] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (providers.length === 1) {
-      setAssignedProviderId(providers[0]!.id);
-    }
-  }, [providers]);
-
-  useEffect(() => {
-    const trimmed = patientQuery.trim();
-    if (trimmed.length < 2) {
-      setPatientResults([]);
-      setPatientSearchLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setPatientSearchLoading(true);
-    const timeout = window.setTimeout(() => {
-      fetch(`/api/patients/search?query=${encodeURIComponent(trimmed)}&limit=6`, {
-        signal: controller.signal,
-      })
-        .then((response) =>
-          response.ok ? (response.json() as Promise<PatientSearchResult[]>) : [],
-        )
-        .then(setPatientResults)
-        .catch((caught) => {
-          if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
-            setPatientResults([]);
-          }
-        })
-        .finally(() => setPatientSearchLoading(false));
-    }, 220);
-
-    return () => {
-      window.clearTimeout(timeout);
-      controller.abort();
-    };
-  }, [patientQuery]);
-
-  function handleAppointmentTypeChange(value: AppointmentTypeValue) {
-    setAppointmentType(value);
-    setVisitReason((current) =>
-      current.trim() ? current : configuredAppointmentTypeLabel(value, appointmentTypes),
-    );
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedPatient) {
-      setError('Choose an existing patient before creating the appointment.');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patientId: selectedPatient.id,
-          clientId: selectedPatient.primaryClient?.id,
-          appointmentType,
-          visitReason: visitReason.trim() || appointmentTypeLabel(appointmentType),
-          startTime: slot.startsAt.toISOString(),
-          expectedDurationMinutes: Number(durationMinutes),
-          assignedProviderId: assignedProviderId || undefined,
-          colorKey: manualColorOverride ?? undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        setError('Could not create the appointment. Check the fields and try again.');
-        return;
-      }
-
-      const created = (await response.json()) as CreatedAppointmentResponse;
-      const selectedProvider =
-        providers.find((provider) => provider.id === (created.providerId ?? assignedProviderId)) ??
-        null;
-
-      onCreated({
-        id: created.id,
-        type: created.type,
-        reason: created.reason,
-        state: created.state,
-        scheduledAt: created.scheduledAt,
-        expectedDurationMinutes: created.expectedDurationMinutes,
-        colorKey: created.colorKey,
-        patient: {
-          id: selectedPatient.id,
-          name: selectedPatient.name,
-          species: selectedPatient.species,
-        },
-        client: selectedPatient.primaryClient
-          ? {
-              id: selectedPatient.primaryClient.id,
-              firstName: selectedPatient.primaryClient.firstName,
-              lastName: selectedPatient.primaryClient.lastName,
-            }
-          : null,
-        provider: selectedProvider
-          ? {
-              id: selectedProvider.id,
-              displayName: selectedProvider.displayName,
-              role: selectedProvider.role,
-            }
-          : null,
-        room: null,
-      });
-    } catch {
-      setError('Could not reach the server. Try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const endTime = new Date(slot.startsAt.getTime() + Number(durationMinutes) * 60_000);
-  const newPatientHref = `/patients/new?scheduledAt=${encodeURIComponent(slot.startsAt.toISOString())}`;
-  const selectedTypeSetting = appointmentTypes.find(
-    (setting) => setting.appointmentType === appointmentType,
-  );
-  const previewColor =
-    manualColorOverride ?? selectedTypeSetting?.color ?? FALLBACK_APPOINTMENT_COLOR;
-
-  return (
-    <ModalFrame
-      title="New Appointment"
-      subtitle={`Schedule a patient visit for ${slot.startsAt.toLocaleDateString([], {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-      })} at ${formatTime(slot.startsAt)}.`}
-      onClose={onClose}
-    >
-      <form className="scheduler-booking-form" onSubmit={handleSubmit}>
-        <div className="scheduler-booking-form__summary">
-          <div>
-            <span>Date</span>
-            <strong>
-              {slot.startsAt.toLocaleDateString([], {
-                weekday: 'long',
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </strong>
-          </div>
-          <div>
-            <span>Time</span>
-            <strong>
-              {formatTime(slot.startsAt)} - {formatTime(endTime)}
-            </strong>
-          </div>
-        </div>
-
-        <fieldset className="scheduler-booking-fieldset">
-          <legend>Patient</legend>
-          <label htmlFor="scheduler-patient-search">Existing patient</label>
-          <input
-            id="scheduler-patient-search"
-            type="search"
-            value={patientQuery}
-            onChange={(event) => {
-              setPatientQuery(event.target.value);
-              setSelectedPatient(null);
-            }}
-            placeholder="Search pet, owner, phone, or email"
-            autoFocus
-          />
-          {patientSearchLoading ? <p className="scheduler-modal__hint">Searching...</p> : null}
-          {patientResults.length > 0 ? (
-            <div className="scheduler-patient-results">
-              {patientResults.map((patient) => (
-                <button
-                  key={patient.id}
-                  type="button"
-                  className={
-                    selectedPatient?.id === patient.id
-                      ? 'scheduler-patient-result scheduler-patient-result--selected'
-                      : 'scheduler-patient-result'
-                  }
-                  onClick={() => {
-                    setSelectedPatient(patient);
-                    setPatientQuery(patient.name);
-                  }}
-                >
-                  <strong>{patient.name}</strong>
-                  <span>
-                    {patient.species}
-                    {patient.primaryClient ? ` · ${clientDisplayName(patient.primaryClient)}` : ''}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {selectedPatient ? (
-            <div className="scheduler-selected-patient">
-              <strong>{selectedPatient.name}</strong>
-              <span>
-                {selectedPatient.primaryClient
-                  ? `${clientDisplayName(selectedPatient.primaryClient)}${
-                      selectedPatient.primaryClient.phone
-                        ? ` · ${selectedPatient.primaryClient.phone}`
-                        : ''
-                    }`
-                  : 'No owner linked'}
-              </span>
-            </div>
-          ) : null}
-          <Link href={newPatientHref} className="scheduler-inline-link" onClick={onClose}>
-            Create New Patient
-          </Link>
-        </fieldset>
-
-        <div className="scheduler-booking-grid">
-          <label>
-            <span>Appointment type</span>
-            <select
-              value={appointmentType}
-              onChange={(event) =>
-                handleAppointmentTypeChange(event.target.value as AppointmentTypeValue)
-              }
-              required
-            >
-              {(activeAppointmentTypes.length > 0
-                ? activeAppointmentTypes
-                : DEFAULT_APPOINTMENT_TYPE_SETTINGS
-              )
-                .filter(
-                  (
-                    setting,
-                  ): setting is AppointmentTypeSetting & {
-                    appointmentType: AppointmentTypeValue;
-                  } => Boolean(setting.appointmentType),
-                )
-                .map((setting) => (
-                  <option key={setting.appointmentType} value={setting.appointmentType}>
-                    {setting.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label>
-            <span>Duration</span>
-            <select
-              value={durationMinutes}
-              onChange={(event) => setDurationMinutes(event.target.value)}
-              required
-            >
-              {[15, 30, 45, 60, 90, 120].map((minutes) => (
-                <option key={minutes} value={minutes}>
-                  {minutes} minutes
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Doctor / Provider</span>
-            <select
-              value={assignedProviderId}
-              onChange={(event) => setAssignedProviderId(event.target.value)}
-              disabled={providers.length === 0}
-            >
-              {providers.length === 0 ? (
-                <option value="">Provider not connected yet</option>
-              ) : (
-                <>
-                  <option value="">Unassigned</option>
-                  {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.displayName}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-          </label>
-          <label>
-            <span>Visit reason</span>
-            <input
-              type="text"
-              value={visitReason}
-              onChange={(event) => setVisitReason(event.target.value)}
-              maxLength={500}
-              required
-            />
-          </label>
-        </div>
-
-        <fieldset className="scheduler-color-picker">
-          <legend>Color preview</legend>
-          <p>Defaults to the configured appointment type color.</p>
-          <div className="scheduler-color-preview">
-            <span style={{ backgroundColor: previewColor }} aria-hidden="true" />
-            <strong>
-              {manualColorOverride
-                ? 'Manual override'
-                : (selectedTypeSetting?.name ?? 'Type color')}
-            </strong>
-          </div>
-          <details className="scheduler-color-override">
-            <summary>Manual color override</summary>
-            <div className="scheduler-color-picker__chips">
-              {APPOINTMENT_COLOR_OPTIONS.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={
-                    manualColorOverride === LEGACY_COLOR_HEX[option.key]
-                      ? `scheduler-color-chip scheduler-color-chip--selected scheduler-color-chip--${option.key}`
-                      : `scheduler-color-chip scheduler-color-chip--${option.key}`
-                  }
-                  aria-pressed={manualColorOverride === LEGACY_COLOR_HEX[option.key]}
-                  onClick={() => setManualColorOverride(LEGACY_COLOR_HEX[option.key])}
-                >
-                  <span aria-hidden="true" />
-                  {option.label}
-                </button>
-              ))}
-              {manualColorOverride ? (
-                <button
-                  type="button"
-                  className="scheduler-color-chip"
-                  onClick={() => setManualColorOverride(null)}
-                >
-                  Use type color
-                </button>
-              ) : null}
-            </div>
-          </details>
-        </fieldset>
-
-        {error ? (
-          <p className="scheduler-modal__error" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className="scheduler-modal__actions">
-          <button type="submit" className="scheduler-primary-action" disabled={submitting}>
-            {submitting ? 'Creating...' : 'Create appointment'}
-          </button>
-        </div>
-      </form>
-    </ModalFrame>
   );
 }
 

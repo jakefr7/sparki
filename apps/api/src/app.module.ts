@@ -4,6 +4,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientsModule } from './clients/clients.module';
+import { DashboardStatusColorsModule } from './dashboard-status-colors/dashboard-status-colors.module';
 import { HealthModule } from './health/health.module';
 import { OperationsModule } from './operations/operations.module';
 import { PatientsModule } from './patients/patients.module';
@@ -20,6 +21,7 @@ import { VisitsModule } from './visits/visits.module';
     AppointmentsModule,
     PatientsModule,
     SchedulerConfigModule,
+    DashboardStatusColorsModule,
     StaffModule,
     VisitsModule,
     OperationsModule,

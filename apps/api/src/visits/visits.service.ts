@@ -4,14 +4,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { prisma, type AppointmentType, type VisitType } from '@sparki/db';
+import { prisma, type AppointmentType, type VisitState, type VisitType } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
 import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
+import type { SetDashboardStatusInput } from './dto/set-dashboard-status.schema';
 import {
+  CHECKOUT_READY_STATE,
+  COMPLETED_STATE,
+  dashboardStatusForVisitState,
   EXAM_IN_PROGRESS_STATE,
   EXAM_READY_STATE,
   INTAKE_IN_PROGRESS_STATE,
@@ -19,6 +23,27 @@ import {
   TERMINAL_VISIT_STATES,
   TREATMENT_READY_STATE,
 } from './visit-states';
+
+/**
+ * The Command Center dashboard shows a coarse 5-status view (Upcoming,
+ * Checked In, In Room, Ready for Checkout, Completed) over the Visit's much
+ * finer-grained workflow state. `setDashboardStatus` lets reception move a
+ * Visit exactly one coarse step forward or backward without forcing it
+ * through the fine-grained intake/exam endpoints above — this map is the
+ * only place that defines what "one step" means at the coarse level, keyed
+ * by `${currentBucket}->${requestedBucket}`. Deliberately excludes
+ * `Upcoming` (that's an Appointment-level, not Visit-level, concept) and any
+ * transition out of `Completed` (Completed maps to the terminal `Archived`
+ * state, so a Completed Visit already dropped out of the active list this
+ * endpoint operates on — see `findById` below).
+ */
+const DASHBOARD_TRANSITIONS: Record<string, VisitState> = {
+  'Checked In->In Room': INTAKE_IN_PROGRESS_STATE,
+  'In Room->Checked In': 'Arrived',
+  'In Room->Ready for Checkout': CHECKOUT_READY_STATE,
+  'Ready for Checkout->In Room': TREATMENT_READY_STATE,
+  'Ready for Checkout->Completed': COMPLETED_STATE,
+};
 
 const visitInclude = {
   patient: true,
@@ -354,6 +379,43 @@ export class VisitsService {
         },
         include: visitInclude,
       });
+    });
+  }
+
+  /**
+   * Moves a Visit exactly one coarse dashboard status forward or backward
+   * (see `DASHBOARD_TRANSITIONS`). Used by the Command Center's status pill
+   * — a manual override distinct from the fine-grained intake/exam flow
+   * above, so it re-derives the Visit's current coarse bucket from its raw
+   * state rather than trusting the caller's idea of "current status".
+   */
+  async setDashboardStatus(
+    id: string,
+    organizationId: string,
+    lastUpdatedById: string,
+    target: SetDashboardStatusInput['status'],
+  ) {
+    const visit = await this.findById(id, organizationId);
+
+    if (TERMINAL_VISIT_STATES.includes(visit.state)) {
+      throw new ConflictException(
+        `Visit ${id} is in a terminal state (${visit.state}) and has no dashboard status to change`,
+      );
+    }
+
+    const current = dashboardStatusForVisitState(visit.state);
+    const nextState = DASHBOARD_TRANSITIONS[`${current}->${target}`];
+
+    if (!nextState) {
+      throw new ConflictException(
+        `Visit ${id} cannot move from dashboard status "${current}" directly to "${target}" — only one adjacent step is allowed`,
+      );
+    }
+
+    return prisma.visit.update({
+      where: { id },
+      data: { state: nextState, lastUpdatedById },
+      include: visitInclude,
     });
   }
 }

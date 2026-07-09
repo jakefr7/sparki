@@ -6,7 +6,7 @@ import { useCurrentUser } from '../../lib/use-current-user';
 const ROLE_DISPLAY_LABELS: Record<string, string> = {
   OWNER: 'Owner',
   PRACTICE_MANAGER: 'Practice Manager',
-  FRONT_DESK: 'Receptionist',
+  RECEPTIONIST: 'Receptionist',
   VETERINARIAN: 'Veterinarian',
   TECHNICIAN: 'Technician',
   ASSISTANT: 'Assistant',

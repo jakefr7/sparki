@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTheme } from '../theme-provider';
 import {
   DASHBOARD_ROLE_CHANGE_EVENT,
   DASHBOARD_ROLE_LABELS,
@@ -11,17 +10,10 @@ import {
   isDashboardRole,
   type DashboardRole,
 } from '../../lib/dashboard-role';
-import type { Theme } from '../../lib/theme';
-
-const THEME_OPTIONS: { value: Theme; label: string; hint: string }[] = [
-  { value: 'light', label: 'Light', hint: 'Bright surfaces, dark text.' },
-  { value: 'dark', label: 'Dark', hint: 'Dark surfaces, light text. Default.' },
-];
 
 const SHOW_DEV_MODE = process.env.NODE_ENV !== 'production';
 
 export function AppearanceSection() {
-  const { theme, setTheme } = useTheme();
   const [dashboardRole, setDashboardRoleState] =
     useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
 
@@ -42,27 +34,6 @@ export function AppearanceSection() {
     <section className="settings-section" aria-labelledby="settings-appearance-heading">
       <h1 id="settings-appearance-heading">Appearance</h1>
       <p className="settings-section__intro">Choose how Sparki looks on this device.</p>
-
-      <fieldset className="settings-group">
-        <legend>Theme</legend>
-        <div className="settings-radio-group" role="radiogroup" aria-label="Theme">
-          {THEME_OPTIONS.map((option) => (
-            <label key={option.value} className="settings-radio">
-              <input
-                type="radio"
-                name="theme"
-                value={option.value}
-                checked={theme === option.value}
-                onChange={() => setTheme(option.value)}
-              />
-              <span className="settings-radio__label">
-                {option.label}
-                <span className="settings-radio__hint">{option.hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
 
       {SHOW_DEV_MODE && (
         <fieldset className="settings-group">

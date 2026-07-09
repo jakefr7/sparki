@@ -5,6 +5,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { loginSchema, type LoginInput } from './dto/login.schema';
+import { MANAGE_ADMIN_SETTINGS } from './permissions';
 import { Public } from './public.decorator';
 import { ROLE_PERMISSIONS } from './role-permissions';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from './session-cookie';
@@ -16,7 +17,11 @@ function toMeResponse(user: AuthenticatedUser) {
     email: user.email,
     name: user.name,
     role: user.role,
-    permissions: ROLE_PERMISSIONS[user.role],
+    // MANAGE_ADMIN_SETTINGS is a per-user grant, not role-derived — appended
+    // here rather than living in ROLE_PERMISSIONS (see role-permissions.ts).
+    permissions: user.canManageAdminSettings
+      ? [...ROLE_PERMISSIONS[user.role], MANAGE_ADMIN_SETTINGS]
+      : ROLE_PERMISSIONS[user.role],
   };
 }
 

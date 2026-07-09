@@ -28,7 +28,20 @@ pnpm dev                       # runs apps/api and apps/web together
 ```
 
 - API: http://localhost:4000 (health check at `/health/live`, `/health/ready`)
-- Web: http://localhost:3000
+- Web: http://localhost:3001
+
+### Local Web Port Safety
+
+Sparki web runs on http://localhost:3001 by default. Port 3000 is reserved for
+other local stacks, especially CRO auth/consent login, and Sparki's dev script
+will refuse to start on port 3000 unless you explicitly opt in.
+
+To intentionally run Sparki on port 3000, use the override only when you are
+sure nothing else depends on that port:
+
+```bash
+WEB_PORT=3000 SPARKI_ALLOW_PORT_3000=true pnpm --filter @sparki/web dev
+```
 
 ### Database
 

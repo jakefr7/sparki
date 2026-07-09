@@ -53,3 +53,61 @@ export const EXAM_IN_PROGRESS_STATE: VisitState = 'VeterinarianExamInProgress';
  * means "exam is done, patient is ready for treatment/checkout".
  */
 export const TREATMENT_READY_STATE: VisitState = 'TreatmentPending';
+
+/** Representative state for the dashboard's coarse "Ready for Checkout" bucket. */
+export const CHECKOUT_READY_STATE: VisitState = 'CheckoutReady';
+
+/**
+ * Representative state for the dashboard's coarse "Completed" bucket. Reuses
+ * the existing `Archived` terminal state rather than adding a new one — a
+ * Visit marked Completed from the dashboard is, in workflow terms, a closed
+ * episode of care per docs/specs/modules/02-visit-lifecycle-mvp.md.
+ */
+export const COMPLETED_STATE: VisitState = 'Archived';
+
+/**
+ * The Command Center's Currently-in-Clinic card only ever renders one of
+ * three coarse statuses for an active Visit (Completed/Archived visits are
+ * filtered out of the active list — see `listActiveForOrganization` — so
+ * they never appear as a row to click "back" from). These buckets mirror
+ * `visitReceptionStatus` in apps/web's operations-command-center.tsx; keep
+ * the two in sync if either changes.
+ */
+export const CHECKOUT_BUCKET_STATES: VisitState[] = [
+  'CheckoutReady',
+  'CheckoutInProgress',
+  'PaymentPending',
+  'PaymentComplete',
+];
+
+export const IN_ROOM_BUCKET_STATES: VisitState[] = [
+  'IntakeInProgress',
+  'VeterinarianExamReady',
+  'VeterinarianExamInProgress',
+  'PlanDrafted',
+  'EstimateNeeded',
+  'EstimatePrepared',
+  'ClientApprovalPending',
+  'Approved',
+  'PartiallyApproved',
+  'Declined',
+  'DiagnosticsPending',
+  'DiagnosticsInProgress',
+  'ResultsPending',
+  'ResultsReady',
+  'VeterinarianReviewPending',
+  'TreatmentPending',
+  'TreatmentInProgress',
+  'TreatmentComplete',
+  'MedicationPending',
+  'ClientCommunicationPending',
+  'FollowUpPending',
+];
+
+export type DashboardVisitStatus = 'Checked In' | 'In Room' | 'Ready for Checkout';
+
+export function dashboardStatusForVisitState(state: VisitState): DashboardVisitStatus {
+  if (CHECKOUT_BUCKET_STATES.includes(state)) return 'Ready for Checkout';
+  if (IN_ROOM_BUCKET_STATES.includes(state)) return 'In Room';
+  return 'Checked In';
+}

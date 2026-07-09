@@ -231,6 +231,7 @@ export class AuthService {
       organizationId: membership.organizationId,
       locationId: locationAccess.clinicLocationId,
       role: membership.role,
+      canManageAdminSettings: user.canManageAdminSettings,
     };
   }
 }

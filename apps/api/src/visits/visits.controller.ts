@@ -6,6 +6,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { createVisitSchema, type CreateVisitInput } from './dto/create-visit.schema';
 import { saveExamFindingsSchema, type SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import { saveVisitIntakeSchema, type SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
+import { setDashboardStatusSchema, type SetDashboardStatusInput } from './dto/set-dashboard-status.schema';
 import { VisitsService } from './visits.service';
 
 @Controller('visits')
@@ -28,6 +29,15 @@ export class VisitsController {
   @Post(':id/start')
   start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.visits.start(id, user.organizationId, user.id);
+  }
+
+  @Post(':id/dashboard-status')
+  setDashboardStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setDashboardStatusSchema)) body: SetDashboardStatusInput,
+  ) {
+    return this.visits.setDashboardStatus(id, user.organizationId, user.id, body.status);
   }
 
   @Put(':id/intake')

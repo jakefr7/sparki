@@ -5,13 +5,20 @@ import { useMemo, useState } from 'react';
 import { DashboardCard, DashboardShell } from './dashboard-shell';
 import { appointmentHref, clientLabel } from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
+import { NewAppointmentAction } from './new-appointment-action';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
+import { StatusTransitionMenu } from './status-transition-menu';
+import {
+  visitToClinicRow,
+  type ReceptionStatus,
+} from '../lib/dashboard-status';
 import {
   appointmentTypeLabel,
   type DashboardAppointmentSummary,
   type DashboardVisitSummary,
 } from '../lib/patient-types';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
+import { useDashboardStatusColors, type DashboardStatusKey } from '../lib/use-dashboard-status-colors';
 
 const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
 
@@ -36,6 +43,13 @@ interface TodayAppointmentRow {
   clientName: string;
   appointmentType: string;
   status: TodayStatus;
+  /** Raw AppointmentState (or a dev-fixture stand-in) — feeds the shared
+   *  status-transition menu, which needs it to decide whether "Checked In"
+   *  is currently reachable (see dashboardStatusAction in lib/dashboard-status). */
+  state: string;
+  /** 'dev' for SHOW_DEV_FALLBACK_ROWS fixtures, so the status menu shows a
+   *  non-persisting demo preview instead of calling a real mutation. */
+  kind: 'appointment' | 'dev';
   location?: string | undefined;
   doctor?: string | undefined;
   href?: string | undefined;
@@ -59,6 +73,8 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'Sarah Johnson',
     appointmentType: 'Wellness',
     status: 'Upcoming',
+    state: 'Scheduled',
+    kind: 'dev',
     location: 'Lobby',
     doctor: 'Dr. Patel',
   },
@@ -70,6 +86,8 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'Michael Lee',
     appointmentType: 'Exam',
     status: 'Checked In',
+    state: 'Arrived',
+    kind: 'dev',
     location: 'Exam Room 2',
     doctor: 'Dr. Nguyen',
   },
@@ -81,6 +99,8 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'Emily Davis',
     appointmentType: 'Recheck',
     status: 'In Room',
+    state: 'VeterinarianExamReady',
+    kind: 'dev',
     location: 'Exam Room 3',
     doctor: 'Dr. Patel',
   },
@@ -92,6 +112,8 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'David Wilson',
     appointmentType: 'Dental',
     status: 'Ready for Checkout',
+    state: 'CheckoutReady',
+    kind: 'dev',
     location: 'Checkout',
     doctor: 'Dr. Ramos',
   },
@@ -103,6 +125,8 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'Priya Patel',
     appointmentType: 'Vaccines',
     status: 'Upcoming',
+    state: 'Scheduled',
+    kind: 'dev',
     doctor: 'Unassigned',
   },
   {
@@ -113,20 +137,14 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     clientName: 'Jordan Smith',
     appointmentType: 'Follow-up',
     status: 'Upcoming',
+    state: 'Scheduled',
+    kind: 'dev',
     doctor: 'Dr. Nguyen',
   },
 ];
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
-function statusTone(status: TodayStatus) {
-  if (['In Room', 'With Doctor', 'Checked In'].includes(status)) return 'blue';
-  if (['With Technician', 'Treatment'].includes(status)) return 'purple';
-  if (status === 'Ready for Checkout') return 'orange';
-  if (['Completed', 'Cancelled'].includes(status)) return 'gray';
-  return 'teal';
 }
 
 /**
@@ -163,6 +181,8 @@ function appointmentToRow(appointment: DashboardAppointmentSummary): TodayAppoin
     clientName: clientLabel(appointment.client),
     appointmentType: appointmentTypeLabel(appointment.type),
     status,
+    state: appointment.state,
+    kind: 'appointment',
     location: appointmentLocation(status),
     doctor: appointment.provider?.displayName,
     href: appointmentHref(appointment) ?? undefined,
@@ -178,14 +198,6 @@ function filterRow(row: TodayAppointmentRow, filter: TodayFilter) {
   }
   if (filter === 'checkout') return row.status === 'Ready for Checkout';
   return row.status === 'Completed';
-}
-
-function PatientStatusChip({ status }: { status: TodayStatus }) {
-  return (
-    <span className="reception-status-chip" data-tone={statusTone(status)}>
-      {status}
-    </span>
-  );
 }
 
 function RowActionsButton({ label }: { label: string }) {
@@ -230,7 +242,15 @@ function PetClientCell({
   );
 }
 
-function TodayAppointmentRowView({ row }: { row: TodayAppointmentRow }) {
+function TodayAppointmentRowView({
+  row,
+  onStatusChanged,
+  statusColors,
+}: {
+  row: TodayAppointmentRow;
+  onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+}) {
   return (
     <div className="today-appointment-row">
       <span className="schedule-row__time">{row.time}</span>
@@ -241,7 +261,21 @@ function TodayAppointmentRowView({ row }: { row: TodayAppointmentRow }) {
         href={row.href}
       />
       <span className="today-appointment-row__type">{row.appointmentType}</span>
-      <PatientStatusChip status={row.status} />
+      <StatusTransitionMenu
+        row={{
+          id: row.id,
+          kind: row.kind,
+          state: row.state,
+          // TodayStatus is a superset of ReceptionStatus (adds Cancelled and a
+          // few fixture-only values never produced by real data — see
+          // appointmentStatus above). getAdjacentDashboardStatusActions treats
+          // any status outside DASHBOARD_STATUS_ORDER as having no adjacent
+          // move, which is the correct "no transition" outcome for those.
+          status: row.status as ReceptionStatus,
+        }}
+        onChanged={onStatusChanged}
+        statusColors={statusColors}
+      />
       <span className="today-appointment-row__meta">{row.location ?? 'Unassigned'}</span>
       <span className="today-appointment-row__meta">{row.doctor ?? 'Unassigned'}</span>
       <RowActionsButton label={`Open actions for ${row.patientName}`} />
@@ -249,7 +283,7 @@ function TodayAppointmentRowView({ row }: { row: TodayAppointmentRow }) {
   );
 }
 
-function QuickActionsRail() {
+function QuickActionsRail({ onAppointmentCreated }: { onAppointmentCreated?: () => void }) {
   return (
     <DashboardCard aria-labelledby="today-quick-actions-heading">
       <div className="home-widget__header">
@@ -258,7 +292,9 @@ function QuickActionsRail() {
         </div>
       </div>
       <div className="today-quick-actions">
-        <Link href="/scheduler">New Appointment</Link>
+        <NewAppointmentAction onCreated={onAppointmentCreated}>
+          New Appointment
+        </NewAppointmentAction>
         <Link href="/patients">Find Patient</Link>
         <Link href="/patients/new">New Client</Link>
         <Link href="/patients">New Call</Link>
@@ -267,7 +303,17 @@ function QuickActionsRail() {
   );
 }
 
-function CurrentlyInClinicSummary({ visits }: { visits: DashboardVisitSummary[] }) {
+function CurrentlyInClinicSummary({
+  visits,
+  onStatusChanged,
+  statusColors,
+}: {
+  visits: DashboardVisitSummary[];
+  onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+}) {
+  const rows = visits.slice(0, 4).map(visitToClinicRow);
+
   return (
     <DashboardCard aria-labelledby="today-clinic-summary-heading">
       <div className="home-widget__header">
@@ -276,11 +322,14 @@ function CurrentlyInClinicSummary({ visits }: { visits: DashboardVisitSummary[] 
         </div>
       </div>
       <div className="today-summary-list">
-        {visits.length > 0 ? (
-          visits.slice(0, 4).map((visit) => (
-            <div key={visit.id}>
-              <strong>{visit.patient.name}</strong>
-              <span>{clientLabel(visit.client)}</span>
+        {rows.length > 0 ? (
+          rows.map((row) => (
+            <div key={row.id}>
+              <span className="today-summary-list__info">
+                <strong>{row.patientName}</strong>
+                <span>{row.clientName}</span>
+              </span>
+              <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
             </div>
           ))
         ) : (
@@ -292,7 +341,8 @@ function CurrentlyInClinicSummary({ visits }: { visits: DashboardVisitSummary[] 
 }
 
 export function TodayOperationsPage() {
-  const { dashboard, loading, error, groups } = useOperationsDashboard();
+  const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
+  const { colorMap: statusColors } = useDashboardStatusColors();
   const [activeFilter, setActiveFilter] = useState<TodayFilter>('all');
 
   const activeVisits = useMemo(
@@ -357,7 +407,14 @@ export function TodayOperationsPage() {
             </div>
             <div className="today-appointment-list">
               {filteredRows.length > 0 ? (
-                filteredRows.map((row) => <TodayAppointmentRowView key={row.id} row={row} />)
+                filteredRows.map((row) => (
+                  <TodayAppointmentRowView
+                    key={row.id}
+                    row={row}
+                    onStatusChanged={refresh}
+                    statusColors={statusColors}
+                  />
+                ))
               ) : (
                 <EmptyQueue label="No appointments match this filter." />
               )}
@@ -365,7 +422,7 @@ export function TodayOperationsPage() {
           </section>
 
           <aside className="today-rail" aria-label="Today overview">
-            <CurrentlyInClinicSummary visits={activeVisits} />
+            <CurrentlyInClinicSummary visits={activeVisits} onStatusChanged={refresh} statusColors={statusColors} />
             <DashboardCard aria-labelledby="today-overview-heading">
               <div className="home-widget__header">
                 <div>
@@ -391,7 +448,7 @@ export function TodayOperationsPage() {
                 </div>
               </div>
             </DashboardCard>
-            <QuickActionsRail />
+            <QuickActionsRail onAppointmentCreated={refresh} />
           </aside>
         </div>
       )}

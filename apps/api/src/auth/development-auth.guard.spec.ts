@@ -85,7 +85,7 @@ describe('DevelopmentAuthGuard', () => {
       email: 'testrecept@gmail.com',
       organizationId: 'dev-organization',
       locationId: 'dev-location',
-      role: 'FRONT_DESK',
+      role: 'RECEPTIONIST',
     };
     const developmentUser = { getUser: vi.fn() } as unknown as DevelopmentUserService;
     const authService = {

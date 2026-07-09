@@ -2,12 +2,20 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import { DashboardCard, DashboardShell, type DashboardRoute } from './dashboard-shell';
+import { NewAppointmentAction } from './new-appointment-action';
 import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
-import { appointmentHref, clientLabel } from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
+import { StatusTransitionMenu } from './status-transition-menu';
 import {
   DASHBOARD_ROLE_CHANGE_EVENT,
   DASHBOARD_ROLE_LABELS,
@@ -16,8 +24,16 @@ import {
   isDashboardRole,
   type DashboardRole,
 } from '../lib/dashboard-role';
+import {
+  appointmentToScheduleRow,
+  formatTime,
+  visitToClinicRow,
+  type ClinicDisplayRow,
+  type ScheduleDisplayRow,
+} from '../lib/dashboard-status';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import { useCurrentUser } from '../lib/use-current-user';
+import { useDashboardStatusColors, type DashboardStatusKey } from '../lib/use-dashboard-status-colors';
 import type { DashboardAppointmentSummary, DashboardVisitSummary } from '../lib/patient-types';
 
 const ROLE_SUBTITLES: Record<DashboardRole, string> = {
@@ -28,48 +44,6 @@ const ROLE_SUBTITLES: Record<DashboardRole, string> = {
 
 const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
 const ENABLE_DEV_ROLE_PREVIEW = process.env.NODE_ENV !== 'production';
-
-type ReceptionStatus =
-  | 'Upcoming'
-  | 'Checked In'
-  | 'In Room'
-  | 'Ready for Checkout'
-  | 'Completed';
-
-type StatusSubjectKind = 'appointment' | 'visit' | 'dev';
-
-interface StatusAction {
-  label: ReceptionStatus;
-  description: string;
-  endpoint?: string;
-}
-
-interface ClinicDisplayRow {
-  id: string;
-  patientName: string;
-  species?: string | undefined;
-  clientName: string;
-  location: string;
-  status: ReceptionStatus;
-  state: string;
-  kind: StatusSubjectKind;
-  statusDetail?: string | undefined;
-  href?: string;
-}
-
-interface ScheduleDisplayRow {
-  id: string;
-  time: string;
-  patientName: string;
-  species?: string | undefined;
-  clientName: string;
-  status: ReceptionStatus;
-  state: string;
-  kind: StatusSubjectKind;
-  location?: string | undefined;
-  statusDetail?: string | undefined;
-  href?: string;
-}
 
 const DEV_CLINIC_ROWS: ClinicDisplayRow[] = [
   {
@@ -273,14 +247,6 @@ function greetingForDate(date: Date, name?: string | null) {
   return name ? `Good ${daypart}, ${name}! 👋` : `Good ${daypart}! 👋`;
 }
 
-function patientHref(patientId?: string | null) {
-  return patientId ? `/patients/${patientId}` : '/patients';
-}
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString([], {
     month: 'short',
@@ -322,264 +288,6 @@ function TrashIcon() {
     <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
       <path d="M4.5 6h11M8 6V4.75h4V6M6 6l.55 9.25h6.9L14 6" />
     </svg>
-  );
-}
-
-function roomLabelFromLocation(location?: string) {
-  const match = location?.match(/(?:Exam\s*)?Room\s*(\d+)/i);
-  return match ? `Room ${match[1]}` : undefined;
-}
-
-function visitLocation(visit: DashboardVisitSummary) {
-  if (
-    ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(
-      visit.state,
-    )
-  ) {
-    return 'Checkout';
-  }
-
-  if (
-    [
-      'VeterinarianExamReady',
-      'VeterinarianExamInProgress',
-      'PlanDrafted',
-      'EstimateNeeded',
-      'EstimatePrepared',
-      'ClientApprovalPending',
-      'Approved',
-      'PartiallyApproved',
-      'Declined',
-      'DiagnosticsPending',
-      'DiagnosticsInProgress',
-      'ResultsPending',
-      'ResultsReady',
-      'VeterinarianReviewPending',
-    ].includes(visit.state)
-  ) {
-    return 'Exam Room';
-  }
-
-  if (
-    [
-      'TreatmentPending',
-      'TreatmentInProgress',
-      'TreatmentComplete',
-      'MedicationPending',
-      'ClientCommunicationPending',
-      'FollowUpPending',
-    ].includes(visit.state)
-  ) {
-    return 'Treatment';
-  }
-
-  // Anna: the word "Intake" shouldn't surface in the UI — this is a
-  // location label (alongside Lobby/Exam Room/Treatment/Checkout), so
-  // "Triage" reads correctly as a place rather than "New Visit" language,
-  // which only fits actions/CTAs.
-  if (visit.state === 'IntakeInProgress') {
-    return 'Triage';
-  }
-
-  return 'Lobby';
-}
-
-function visitReceptionStatus(visit: DashboardVisitSummary) {
-  if (
-    ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(
-      visit.state,
-    )
-  ) {
-    return 'Ready for Checkout';
-  }
-  if (
-    [
-      'IntakeInProgress',
-      'VeterinarianExamReady',
-      'VeterinarianExamInProgress',
-      'PlanDrafted',
-      'EstimateNeeded',
-      'EstimatePrepared',
-      'ClientApprovalPending',
-      'Approved',
-      'PartiallyApproved',
-      'Declined',
-      'DiagnosticsPending',
-      'DiagnosticsInProgress',
-      'ResultsPending',
-      'ResultsReady',
-      'VeterinarianReviewPending',
-    ].includes(visit.state)
-  ) {
-    return 'In Room';
-  }
-  if (
-    [
-      'TreatmentPending',
-      'TreatmentInProgress',
-      'TreatmentComplete',
-      'MedicationPending',
-      'ClientCommunicationPending',
-      'FollowUpPending',
-    ].includes(visit.state)
-  ) {
-    return 'In Room';
-  }
-  return 'Checked In';
-}
-
-function statusTone(status: ReceptionStatus) {
-  if (status === 'In Room') return 'blue';
-  if (status === 'Ready for Checkout') return 'orange';
-  if (status === 'Completed') return 'green';
-  if (status === 'Upcoming') return 'gray';
-  return 'teal';
-}
-
-function appointmentReceptionStatus(appointment: DashboardAppointmentSummary): ReceptionStatus {
-  if (appointment.state === 'Completed') return 'Completed';
-  if (appointment.state === 'Arrived' || appointment.state === 'VisitCreated') return 'Checked In';
-  if (appointment.state === 'InRoom') return 'In Room';
-  if (appointment.state === 'CheckoutReady') return 'Ready for Checkout';
-  return 'Upcoming';
-}
-
-function visitToClinicRow(visit: DashboardVisitSummary): ClinicDisplayRow {
-  return {
-    id: visit.id,
-    patientName: visit.patient.name,
-    species: visit.patient.species,
-    clientName: clientLabel(visit.client),
-    location: visitLocation(visit),
-    status: visitReceptionStatus(visit),
-    state: visit.state,
-    kind: 'visit',
-    statusDetail: roomLabelFromLocation(visitLocation(visit)),
-    href: `/visits/${visit.id}`,
-  };
-}
-
-function appointmentToScheduleRow(appointment: DashboardAppointmentSummary): ScheduleDisplayRow {
-  const href = appointmentHref(appointment) ?? patientHref(appointment.patient?.id);
-  return {
-    id: appointment.id,
-    time: formatTime(appointment.scheduledAt),
-    patientName: appointment.patient?.name ?? 'Unlinked patient',
-    species: appointment.patient?.species,
-    clientName: clientLabel(appointment.client),
-    status: appointmentReceptionStatus(appointment),
-    state: appointment.state,
-    kind: 'appointment',
-    href,
-  };
-}
-
-function nextStatusActions(row: Pick<ClinicDisplayRow | ScheduleDisplayRow, 'id' | 'kind' | 'state'>): StatusAction[] {
-  if (row.kind === 'dev') {
-    if (row.state === 'Scheduled') {
-      return [{ label: 'Checked In', description: 'Demo transition preview.' }];
-    }
-    if (row.state === 'Arrived') {
-      return [{ label: 'In Room', description: 'Demo transition preview.' }];
-    }
-    return [];
-  }
-
-  if (row.kind === 'appointment') {
-    if (['Scheduled', 'PreVisitPending', 'Confirmed'].includes(row.state)) {
-      return [
-        {
-          label: 'Checked In',
-          description: 'Mark this appointment arrived.',
-          endpoint: `/api/appointments/${row.id}/arrive`,
-        },
-      ];
-    }
-    return [];
-  }
-
-  if (['Arrived', 'ReadyForIntake'].includes(row.state)) {
-    return [
-      {
-        label: 'In Room',
-        description: 'Start the roomed visit workflow.',
-        endpoint: `/api/visits/${row.id}/start`,
-      },
-    ];
-  }
-
-  return [];
-}
-
-function StatusChip({
-  row,
-  onChanged,
-}: {
-  row: Pick<ClinicDisplayRow | ScheduleDisplayRow, 'id' | 'status' | 'state' | 'kind' | 'statusDetail'>;
-  onChanged?: (() => void) | undefined;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const actions = nextStatusActions(row);
-  const label = row.statusDetail ? `${row.status} · ${row.statusDetail}` : row.status;
-
-  async function runAction(action: StatusAction) {
-    if (!action.endpoint) {
-      setOpen(false);
-      return;
-    }
-
-    setPending(action.endpoint);
-    setError(null);
-    try {
-      const response = await fetch(action.endpoint, { method: 'POST' });
-      if (!response.ok) throw new Error(`Status update failed (${response.status})`);
-      setOpen(false);
-      onChanged?.();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Status update failed.');
-    } finally {
-      setPending(null);
-    }
-  }
-
-  return (
-    <div className="status-picker">
-      <button
-        type="button"
-        className="reception-status-chip"
-        data-tone={statusTone(row.status)}
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        {label}
-      </button>
-      {open && (
-        <div className="status-picker__popover" role="dialog" aria-label={`${label} status actions`}>
-          <strong>Next status</strong>
-          {actions.length > 0 ? (
-            <div className="status-picker__actions">
-              {actions.map((action) => (
-                <button
-                  key={`${action.label}-${action.description}`}
-                  type="button"
-                  className="status-picker__action"
-                  disabled={pending === action.endpoint}
-                  onClick={() => void runAction(action)}
-                >
-                  <span>{pending === action.endpoint ? 'Updating...' : action.label}</span>
-                  <small>{action.description}</small>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p>{row.status === 'Completed' ? 'Completed is terminal.' : 'No dashboard transition available.'}</p>
-          )}
-          {error && <p className="status-picker__error">{error}</p>}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -627,17 +335,11 @@ function PatientClientCell({
   return <div className="patient-client-cell">{content}</div>;
 }
 
-function QuickActionsWidget() {
+function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: () => void }) {
   const router = useRouter();
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
 
   const linkActions = [
-    {
-      href: '/scheduler',
-      label: 'New Appointment',
-      description: 'Schedule a future visit.',
-      tone: 'teal',
-    },
     {
       href: '/patients',
       label: 'New Visit',
@@ -666,6 +368,14 @@ function QuickActionsWidget() {
         </div>
       </div>
       <div className="quick-action-grid">
+        <NewAppointmentAction
+          className="quick-action"
+          tone="teal"
+          onCreated={onAppointmentCreated}
+        >
+          <strong>New Appointment</strong>
+          <span>Schedule a future visit.</span>
+        </NewAppointmentAction>
         {linkActions.map((action) => (
           <Link
             key={action.label}
@@ -742,9 +452,11 @@ function TodaySnapshotWidget({
 function ClinicVisitRow({
   row,
   onStatusChanged,
+  statusColors,
 }: {
   row: ClinicDisplayRow;
   onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
 }) {
   return (
     <div className="clinic-table__row">
@@ -755,7 +467,7 @@ function ClinicVisitRow({
         href={row.href}
       />
       <span className="clinic-table__location">{row.location}</span>
-      <StatusChip row={row} onChanged={onStatusChanged} />
+      <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
     </div>
   );
 }
@@ -763,9 +475,11 @@ function ClinicVisitRow({
 function AppointmentRow({
   row,
   onStatusChanged,
+  statusColors,
 }: {
   row: ScheduleDisplayRow;
   onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
 }) {
   return (
     <div className="schedule-row">
@@ -776,7 +490,7 @@ function AppointmentRow({
         clientName={row.clientName}
         href={row.href}
       />
-      <StatusChip row={row} onChanged={onStatusChanged} />
+      <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
       <span className="schedule-row__location">{row.location ?? 'Unassigned'}</span>
       <div className="schedule-row__actions">
         <RowActionsButton label={`Open actions for ${row.patientName}`} />
@@ -788,9 +502,11 @@ function AppointmentRow({
 function CurrentlyInClinicWidget({
   visits,
   onStatusChanged,
+  statusColors,
 }: {
   visits: DashboardVisitSummary[];
   onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
 }) {
   const realRows = visits.map(visitToClinicRow);
   const displayRows = realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_CLINIC_ROWS : [];
@@ -817,7 +533,7 @@ function CurrentlyInClinicWidget({
         {hasVisits ? (
           <div className="clinic-table__body">
             {displayRows.map((row) => (
-              <ClinicVisitRow key={row.id} row={row} onStatusChanged={onStatusChanged} />
+              <ClinicVisitRow key={row.id} row={row} onStatusChanged={onStatusChanged} statusColors={statusColors} />
             ))}
           </div>
         ) : (
@@ -838,9 +554,11 @@ function CurrentlyInClinicWidget({
 function TodaySchedulePreviewWidget({
   appointments,
   onStatusChanged,
+  statusColors,
 }: {
   appointments: DashboardAppointmentSummary[];
   onStatusChanged?: (() => void) | undefined;
+  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
 }) {
   const realRows = appointments.map(appointmentToScheduleRow);
   const displayRows =
@@ -865,7 +583,7 @@ function TodaySchedulePreviewWidget({
       <div className={hasOverflow ? 'home-list home-list--scroll' : 'home-list'}>
         {hasAppointments ? (
           displayRows.map((row) => (
-            <AppointmentRow key={row.id} row={row} onStatusChanged={onStatusChanged} />
+            <AppointmentRow key={row.id} row={row} onStatusChanged={onStatusChanged} statusColors={statusColors} />
           ))
         ) : (
           <EmptyQueue label="No appointments are coming up." />
@@ -1281,6 +999,7 @@ function VeterinarianDashboardPlaceholder() {
 
 function ReceptionistDashboard() {
   const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
+  const { colorMap: statusColors } = useDashboardStatusColors();
 
   const activeVisits = useMemo(
     () => [
@@ -1311,7 +1030,7 @@ function ReceptionistDashboard() {
       {!loading && !error && dashboard && (
         <div className="dashboard-widget-grid">
           <div className="dashboard-widget-row dashboard-widget-row--top">
-            <QuickActionsWidget />
+            <QuickActionsWidget onAppointmentCreated={refresh} />
             <TodaySnapshotWidget dashboard={dashboard} />
           </div>
           <div className="dashboard-widget-row dashboard-widget-row--shift">
@@ -1319,8 +1038,12 @@ function ReceptionistDashboard() {
             <TasksWidget />
           </div>
           <div className="dashboard-widget-row dashboard-widget-row--flow">
-            <CurrentlyInClinicWidget visits={activeVisits} onStatusChanged={refresh} />
-            <TodaySchedulePreviewWidget appointments={groups.upcomingAppointments} onStatusChanged={refresh} />
+            <CurrentlyInClinicWidget visits={activeVisits} onStatusChanged={refresh} statusColors={statusColors} />
+            <TodaySchedulePreviewWidget
+              appointments={groups.upcomingAppointments}
+              onStatusChanged={refresh}
+              statusColors={statusColors}
+            />
           </div>
         </div>
       )}

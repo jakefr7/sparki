@@ -27,7 +27,7 @@ const TEST_USERS = [
     email: 'testrecept@gmail.com',
     firstName: 'Maria',
     lastName: 'Alvarez',
-    role: 'FRONT_DESK',
+    role: 'RECEPTIONIST',
     jobTitle: 'Receptionist',
     canReceiveAppointments: false,
     canOwnVisits: true,

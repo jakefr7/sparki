@@ -53,14 +53,14 @@ describe('scheduler settings permissions', () => {
   it('grants scheduler settings mutation to elevated existing roles', () => {
     expect(canManageSchedulerSettings({ role: 'OWNER' })).toBe(true);
     expect(canManageSchedulerSettings({ role: 'PRACTICE_MANAGER' })).toBe(true);
-    expect(canManageSchedulerSettings({ role: 'FRONT_DESK' })).toBe(true);
+    expect(canManageSchedulerSettings({ role: 'RECEPTIONIST' })).toBe(true);
     expect(canManageSchedulerSettings({ role: 'VETERINARIAN' })).toBe(false);
   });
 
   it('surfaces the scheduler settings capability without adding an Admin role', () => {
     expect(ROLE_PERMISSIONS.OWNER).toContain(MANAGE_SCHEDULER_SETTINGS);
     expect(ROLE_PERMISSIONS.PRACTICE_MANAGER).toContain(MANAGE_SCHEDULER_SETTINGS);
-    expect(ROLE_PERMISSIONS.FRONT_DESK).toContain(MANAGE_SCHEDULER_SETTINGS);
+    expect(ROLE_PERMISSIONS.RECEPTIONIST).toContain(MANAGE_SCHEDULER_SETTINGS);
     expect(Object.keys(ROLE_PERMISSIONS)).not.toContain('ADMIN');
   });
 });

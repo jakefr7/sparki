@@ -3534,6 +3534,12 @@ img.pet-photo-placeholder {
   color: #1f7a4d;
 }
 
+/* Admin-configured status color (Settings > Admin) overrides the tone above. */
+.reception-status-chip[data-tone='custom'] {
+  background: color-mix(in srgb, var(--status-chip-color) 14%, #fff);
+  color: var(--status-chip-color);
+}
+
 .reception-status-chip:hover,
 .reception-status-chip:focus-visible {
   box-shadow: 0 0 0 3px rgba(31, 169, 160, 0.14);
@@ -3552,16 +3558,20 @@ img.pet-photo-placeholder {
   min-width: 0;
 }
 
+/* Rendered in a document.body portal (see status-transition-menu.tsx) so it
+ * can never be clipped by a card's overflow, a scroll container, or the
+ * page — position is computed in JS from the trigger pill's bounding rect
+ * and flips above/shifts horizontally near a viewport edge. */
 .status-picker__popover {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  width: min(17rem, calc(100vw - 2rem));
+  position: fixed;
+  z-index: 300;
+  width: 17rem;
+  max-width: calc(100vw - 1.5rem);
   padding: 0.65rem;
   border: 1px solid rgba(195, 211, 214, 0.9);
   border-radius: 0.65rem;
   background: #ffffff;
+  color: #172633;
   box-shadow: 0 18px 42px rgba(30, 55, 70, 0.16);
 }
 
@@ -3571,12 +3581,12 @@ img.pet-photo-placeholder {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--text-secondary);
+  color: #687786;
 }
 
 .status-picker__popover p {
   margin: 0;
-  color: var(--text-secondary);
+  color: #687786;
   font-size: 0.82rem;
   line-height: 1.35;
 }
@@ -3597,7 +3607,7 @@ img.pet-photo-placeholder {
   border: 1px solid rgba(209, 224, 226, 0.82);
   border-radius: 0.5rem;
   background: #f8fbfb;
-  color: inherit;
+  color: #172633;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
@@ -3615,12 +3625,13 @@ img.pet-photo-placeholder {
 }
 
 .status-picker__action span {
+  color: #172633;
   font-size: 0.86rem;
   font-weight: 800;
 }
 
 .status-picker__action small {
-  color: var(--text-secondary);
+  color: #687786;
   font-size: 0.74rem;
   line-height: 1.25;
 }
@@ -4211,12 +4222,20 @@ img.pet-photo-placeholder {
 }
 
 .today-summary-list > div {
-  display: grid;
-  gap: 0.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.48rem 0.55rem;
   border: 1px solid rgba(218, 229, 231, 0.62);
   border-radius: 0.62rem;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.today-summary-list__info {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
 }
 
 .today-summary-list strong {
@@ -4233,7 +4252,8 @@ img.pet-photo-placeholder {
   gap: 0.38rem;
 }
 
-.today-quick-actions a {
+.today-quick-actions a,
+.today-quick-actions button {
   display: flex;
   min-height: 2.35rem;
   align-items: center;
@@ -4242,18 +4262,23 @@ img.pet-photo-placeholder {
   border-radius: 0.62rem;
   background: #fbfdfd;
   color: var(--text-primary);
+  font: inherit;
   font-size: 0.84rem;
   font-weight: 800;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .today-quick-actions a:hover,
-.today-quick-actions a:focus-visible {
+.today-quick-actions a:focus-visible,
+.today-quick-actions button:hover,
+.today-quick-actions button:focus-visible {
   border-color: rgba(31, 169, 160, 0.25);
   background: #eef8f7;
 }
 
-.today-quick-actions a:focus-visible {
+.today-quick-actions a:focus-visible,
+.today-quick-actions button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -4616,94 +4641,6 @@ img.pet-photo-placeholder {
   gap: 1rem;
 }
 
-.patient-profile-edit-photo-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.85rem;
-  align-items: start;
-  padding: 0.75rem;
-  border: 1px solid rgba(209, 224, 226, 0.78);
-  border-radius: 0.75rem;
-  background: #fbfdfd;
-}
-
-.patient-profile-edit-photo-card img,
-.patient-profile-edit-photo-card__initial {
-  width: 4.5rem;
-  aspect-ratio: 1;
-  border-radius: 0.8rem;
-  object-fit: cover;
-}
-
-.patient-profile-edit-photo-card__initial {
-  display: grid;
-  place-items: center;
-  background: #eef8f7;
-  color: var(--accent-strong);
-  font-size: 1.35rem;
-  font-weight: 900;
-}
-
-.patient-profile-edit-photo-card label {
-  min-width: 0;
-}
-
-.patient-profile-edit-photo-card__body {
-  display: grid;
-  min-width: 0;
-  gap: 0.35rem;
-}
-
-.patient-profile-edit-photo-card__body > strong {
-  color: var(--text-primary);
-  font-size: 0.92rem;
-}
-
-.patient-profile-edit-photo-card__body > span {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  line-height: 1.35;
-}
-
-.patient-profile-edit-photo-card__actions,
-.patient-profile-edit-photo-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.42rem;
-}
-
-.patient-profile-edit-photo-card__actions button,
-.patient-profile-edit-photo-options button {
-  min-height: 2.1rem;
-  padding: 0.38rem 0.58rem;
-  border: 1px solid rgba(188, 207, 211, 0.92);
-  border-radius: 0.55rem;
-  background: #ffffff;
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.patient-profile-edit-photo-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, auto));
-  margin-top: 0.2rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid rgba(211, 225, 227, 0.86);
-}
-
-.patient-profile-edit-photo-options button:disabled {
-  cursor: not-allowed;
-  opacity: 0.62;
-}
-
-.patient-profile-edit-photo-options button span {
-  color: var(--text-secondary);
-  font-size: 0.7rem;
-}
-
 .patient-profile-modal-card {
   display: flex;
   flex-direction: column;
@@ -4855,9 +4792,20 @@ img.pet-photo-placeholder {
   padding: 1.15rem 1.75rem 1rem;
 }
 
-.new-patient-modal .patient-profile-modal-header__avatar {
-  width: 3.6rem;
-  height: 3.6rem;
+.new-patient-photo-control {
+  width: 6.4rem;
+  min-width: 6.4rem;
+  margin-bottom: 0.25rem;
+  padding-left: 0;
+}
+
+.new-patient-photo-control .patient-profile-photo {
+  width: 6.4rem;
+  border: 1px solid rgba(196, 216, 219, 0.95);
+  border-radius: 1.1rem;
+  background: #eef8f7;
+  color: #617381;
+  box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.7);
 }
 
 .new-patient-modal .patient-profile-modal-header h2 {
@@ -5063,84 +5011,6 @@ img.pet-photo-placeholder {
   pointer-events: none;
 }
 
-.new-patient-photo-card {
-  display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
-  gap: 0.85rem;
-  align-items: center;
-  margin-top: 0.9rem;
-  padding: 0.85rem;
-  border: 1px dashed rgba(161, 190, 194, 0.9);
-  border-radius: 0.75rem;
-  background: #fbfdfd;
-}
-
-.new-patient-photo-card__content {
-  display: grid;
-  min-width: 0;
-  gap: 0.55rem;
-}
-
-.new-patient-photo-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.new-patient-photo-card__header span {
-  display: block;
-  color: var(--text-primary);
-  font-size: 0.86rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.new-patient-photo-card__header p {
-  margin: 0.18rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.76rem;
-  line-height: 1.35;
-}
-
-.new-patient-photo-card__header button {
-  flex: 0 0 auto;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid rgba(209, 224, 226, 0.88);
-  border-radius: 999px;
-  background: #ffffff;
-  color: var(--text-secondary);
-  font-size: 0.74rem;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.new-patient-photo-card__header button:hover,
-.new-patient-photo-card__header button:focus-visible {
-  border-color: rgba(31, 169, 160, 0.35);
-  background: #eef8f7;
-  color: var(--text-primary);
-}
-
-.new-patient-photo-card__preview {
-  width: 4.5rem;
-  height: 4.5rem;
-  overflow: hidden;
-  border-radius: 0.75rem;
-  background: #eef8f7;
-}
-
-.new-patient-photo-card__preview img,
-.new-patient-photo-card__preview .pet-photo-placeholder {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.new-patient-photo-card label {
-  gap: 0.32rem;
-}
-
 .form-hint {
   margin: 0.5rem 0 0;
   padding: 0.55rem 0.75rem;
@@ -5226,13 +5096,8 @@ img.pet-photo-placeholder {
     grid-template-columns: 1fr;
   }
 
-  .new-patient-photo-card {
-    grid-template-columns: 3.75rem minmax(0, 1fr);
-  }
-
-  .new-patient-photo-card__preview {
-    width: 3.75rem;
-    height: 3.75rem;
+  .new-patient-photo-control .patient-profile-photo {
+    width: 5.25rem;
   }
 }
 
@@ -5666,9 +5531,26 @@ img.pet-photo-placeholder {
   position: absolute;
   right: 0;
   left: 4.45rem;
-  z-index: 3;
+  z-index: 5;
   height: 0;
   pointer-events: none;
+}
+
+.scheduler-now-indicator__label {
+  position: absolute;
+  top: 0;
+  left: calc(-4.45rem + 0.42rem);
+  display: inline-flex;
+  min-width: 3.45rem;
+  justify-content: flex-end;
+  padding-right: 0.42rem;
+  color: #168f87;
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: right;
+  white-space: nowrap;
+  transform: translateY(-50%);
 }
 
 .scheduler-now-indicator__line,
@@ -5710,7 +5592,6 @@ img.pet-photo-placeholder {
   position: absolute;
   right: 0.18rem;
   left: 0.18rem;
-  z-index: 0;
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
@@ -5718,22 +5599,65 @@ img.pet-photo-placeholder {
   gap: 0.35rem;
   overflow: hidden;
   padding: 0.25rem 0.42rem;
-  border: 1px dashed;
-  border-radius: 0.5rem;
+  border: 1px solid;
+  border-left-width: 0.28rem;
+  border-radius: 0.62rem;
   color: #405161;
   font-size: 0.68rem;
   font-weight: 900;
   pointer-events: none;
 }
 
+.scheduler-slot-template--wash {
+  z-index: 1;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.38),
+    0 0 0 1px color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.scheduler-slot-template--overlay {
+  z-index: 4;
+  background: transparent;
+  border-style: solid;
+  border-width: 1px 1px 1px 0.28rem;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent),
+    0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
 .scheduler-slot-template span {
-  opacity: 0.78;
+  position: absolute;
+  top: 0.45rem;
+  right: 0.56rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  max-width: calc(100% - 3rem);
+  padding: 0.13rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 4px 10px rgba(31, 54, 70, 0.1),
+    0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  opacity: 0.96;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .scheduler-slot-template small {
+  position: absolute;
+  right: 0.42rem;
+  bottom: 0.3rem;
   overflow: hidden;
-  max-width: 45%;
+  max-width: calc(100% - 0.84rem);
   opacity: 0.68;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5833,7 +5757,7 @@ img.pet-photo-placeholder {
   position: absolute;
   right: 0.35rem;
   left: 0.35rem;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -6263,9 +6187,28 @@ img.pet-photo-placeholder {
   cursor: pointer;
 }
 
+.scheduler-secondary-action {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.75rem;
+  border: 1px solid #dce8eb;
+  border-radius: 0.55rem;
+  background: #ffffff;
+  color: #172633;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .scheduler-primary-action:disabled {
   cursor: wait;
   opacity: 0.72;
+}
+
+.scheduler-secondary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.66;
 }
 
 .scheduler-disabled-action:disabled {
@@ -6330,7 +6273,8 @@ img.pet-photo-placeholder {
 }
 
 .scheduler-booking-form input,
-.scheduler-booking-form select {
+.scheduler-booking-form select,
+.scheduler-booking-form textarea {
   width: 100%;
   min-height: 2.35rem;
   padding: 0 0.68rem;
@@ -6340,6 +6284,12 @@ img.pet-photo-placeholder {
   color: #172633;
   font: inherit;
   font-size: 0.9rem;
+}
+
+.scheduler-booking-form textarea {
+  min-height: 5.25rem;
+  padding-block: 0.6rem;
+  resize: vertical;
 }
 
 .scheduler-booking-form select:disabled {
@@ -6406,6 +6356,112 @@ img.pet-photo-placeholder {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
+}
+
+.scheduler-modal--appointment {
+  width: min(54rem, 100%);
+}
+
+.new-appointment-form {
+  gap: 0.8rem;
+}
+
+.new-appointment-section {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid #dce8eb;
+  border-radius: 0.7rem;
+  background: #fbfdfd;
+}
+
+.new-appointment-section h3 {
+  margin: 0;
+  color: #172633;
+  font-size: 0.98rem;
+}
+
+.new-appointment-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.new-appointment-toggle {
+  display: inline-flex;
+  padding: 0.18rem;
+  border: 1px solid #dce8eb;
+  border-radius: 0.6rem;
+  background: #ffffff;
+}
+
+.new-appointment-toggle button {
+  min-height: 2rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #667586;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.new-appointment-toggle__button--active {
+  background: #1fa9a0 !important;
+  color: #ffffff !important;
+}
+
+.new-appointment-time-summary {
+  justify-self: start;
+  padding: 0.28rem 0.52rem;
+  border: 1px solid rgba(31, 169, 160, 0.24);
+  border-radius: 999px;
+  background: #f1fbfb;
+  color: #177f79;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.new-appointment-inline-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.new-appointment-inline-form label,
+.new-appointment-section label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.new-appointment-field-error {
+  color: #b44135;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.new-appointment-actions {
+  justify-content: flex-end;
+}
+
+.profile-quick-actions__button {
+  border: 0;
+  background: transparent;
+  color: #177f79;
+  font: inherit;
+  font-weight: 850;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-quick-actions__button:hover,
+.profile-quick-actions__button:focus-visible {
+  text-decoration: underline;
 }
 
 .scheduler-color-picker p {
@@ -7075,6 +7131,7 @@ body:has(.patient-profile-hub) {
 
 .patient-photo-menu__actions button {
   min-height: 2.35rem;
+  padding: 0 0.65rem;
   border: 0;
   border-radius: 0.6rem;
   background: transparent;
@@ -7091,11 +7148,19 @@ body:has(.patient-profile-hub) {
 }
 
 .patient-photo-menu__actions button:first-child {
-  background: #eef8f7;
-  color: var(--accent-strong);
+  background: #1fa9a0;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(31, 169, 160, 0.18);
+}
+
+.patient-photo-menu__actions button:first-child:hover:not(:disabled) {
+  background: #188f88;
 }
 
 .patient-photo-menu__actions button:disabled {
+  background: transparent;
+  color: #667586;
+  box-shadow: none;
   cursor: not-allowed;
   opacity: 0.62;
 }
@@ -7172,11 +7237,76 @@ body:has(.patient-profile-hub) {
 
 .patient-profile-hub .patient-profile-actions {
   display: flex;
-  min-width: 13rem;
+  min-width: 15rem;
   flex-direction: column;
   align-items: stretch;
   gap: 0.55rem;
   margin: 0;
+}
+
+.patient-care-status-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.72rem;
+  border: 1px solid rgba(211, 225, 227, 0.92);
+  border-radius: 0.82rem;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8px 18px rgba(30, 55, 70, 0.045);
+}
+
+.patient-care-status-card .eyebrow {
+  margin: 0;
+  text-align: left;
+}
+
+.patient-care-status-card__row {
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(211, 225, 227, 0.76);
+  border-radius: 0.64rem;
+  background: #f8fbfb;
+}
+
+.patient-care-status-card__row--active {
+  border-left: 0.26rem solid #1fa9a0;
+  background: linear-gradient(90deg, rgba(31, 169, 160, 0.09), transparent 68%), #f8fbfb;
+}
+
+.patient-care-status-card__row span {
+  color: #70808d;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.patient-care-status-card__row strong {
+  color: #172633;
+  font-size: 0.88rem;
+  line-height: 1.18;
+}
+
+.patient-care-status-card__row small {
+  overflow-wrap: anywhere;
+  color: #667586;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.patient-profile-actions__visit {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.patient-profile-actions__visit span {
+  color: #70808d;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .patient-alert-strip {
@@ -7217,12 +7347,73 @@ body:has(.patient-profile-hub) {
   line-height: 1.28;
 }
 
-.patient-alert-strip__item a {
+.patient-alert-strip__item a,
+.patient-alert-strip__button {
   width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--accent-strong);
+  font: inherit;
   font-size: 0.78rem;
   font-weight: 850;
   text-decoration: none;
+  cursor: pointer;
+}
+
+.patient-alert-strip__button:hover,
+.patient-alert-strip__button:focus-visible {
+  text-decoration: underline;
+}
+
+.active-visit-details-modal {
+  width: min(34rem, calc(100vw - 2rem));
+}
+
+.active-visit-details {
+  display: grid;
+  gap: 1rem;
+}
+
+.active-visit-details__list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.active-visit-details__list div {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: baseline;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid rgba(211, 225, 227, 0.8);
+}
+
+.active-visit-details__list div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.active-visit-details__list dt {
+  color: #70808d;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.active-visit-details__list dd {
+  min-width: 0;
+  margin: 0;
+  color: #172633;
+  font-weight: 750;
+}
+
+.active-visit-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
 }
 
 .patient-profile-tabs-shell {
@@ -7313,6 +7504,10 @@ body:has(.patient-profile-hub) {
 
 .patient-profile-hub .profile-card--accent {
   border-left: 0.32rem solid var(--accent);
+}
+
+.patient-profile-hub .profile-card--care-flow {
+  border-left-color: #1fa9a0;
 }
 
 .patient-profile-hub .profile-card--compact {
@@ -7410,6 +7605,68 @@ body:has(.patient-profile-hub) {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
+}
+
+.profile-care-flow {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.profile-care-flow__item {
+  display: grid;
+  grid-template-columns: 4.15rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.74rem;
+  border: 1px solid rgba(211, 225, 227, 0.86);
+  border-radius: 0.78rem;
+  background: #f8fbfb;
+}
+
+.profile-care-flow__item--active {
+  border-color: rgba(31, 169, 160, 0.32);
+  background: linear-gradient(90deg, rgba(31, 169, 160, 0.09), transparent 64%), #f8fbfb;
+}
+
+.profile-care-flow__item--empty {
+  grid-template-columns: 4.15rem minmax(0, 1fr);
+}
+
+.profile-care-flow__item > span:first-child {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #70808d;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(211, 225, 227, 0.88);
+}
+
+.profile-care-flow__item strong {
+  color: #172633;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.profile-care-flow__item p {
+  margin: 0.12rem 0 0;
+  overflow-wrap: anywhere;
+  color: #526577;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.profile-care-flow__item small {
+  display: block;
+  margin-top: 0.16rem;
+  color: #667586;
+  font-size: 0.78rem;
+  font-weight: 750;
 }
 
 .patient-profile-hub .profile-visit-row {
@@ -7846,12 +8103,18 @@ body:has(.patient-profile-hub) {
 
 .settings-nav__item {
   display: block;
+  width: 100%;
   padding: 0.5rem 0.7rem;
+  border: 0;
   border-radius: 0.375rem;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .settings-nav__item--active {

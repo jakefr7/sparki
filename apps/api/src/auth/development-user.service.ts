@@ -51,6 +51,7 @@ export class DevelopmentUserService {
       where: { id: DEV_USER_ID },
       update: {
         locations: { connect: [{ id: location.id }] },
+        canManageAdminSettings: true,
       },
       create: {
         id: DEV_USER_ID,
@@ -59,6 +60,9 @@ export class DevelopmentUserService {
         firstName: 'Development',
         lastName: 'User',
         role: 'OWNER',
+        // Explicit grant, not implied by OWNER (see permissions.ts) — set
+        // here too so local/test development is never blocked by it.
+        canManageAdminSettings: true,
         locations: { connect: [{ id: location.id }] },
         staffProfile: {
           create: { canReceiveAppointments: true, canOwnVisits: true },
@@ -100,6 +104,7 @@ export class DevelopmentUserService {
       organizationId: organization.id,
       locationId: location.id,
       role: user.role,
+      canManageAdminSettings: user.canManageAdminSettings,
     };
   }
 }

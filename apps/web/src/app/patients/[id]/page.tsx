@@ -4,6 +4,7 @@ import {
   StartAppointmentVisitButton,
   StartWalkInVisitForm,
 } from '../../../components/start-visit-actions';
+import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
 import { BackButton } from '../../../components/back-button';
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
@@ -155,11 +156,47 @@ export default async function PatientWorkspacePage({
             )}
           </div>
         </div>
-        <div className="patient-profile-actions" aria-label="Patient quick actions">
+        <div className="patient-profile-actions" aria-label="Patient care actions">
+          <section className="patient-care-status-card" aria-labelledby="patient-care-status-heading">
+            <p className="eyebrow" id="patient-care-status-heading">Care Status</p>
+            <div className="patient-care-status-card__row patient-care-status-card__row--active">
+              <span>Active visit</span>
+              {currentVisit ? (
+                <>
+                  <strong>{visitStateLabel(currentVisit.state)}</strong>
+                  <small>{currentVisit.reason}</small>
+                </>
+              ) : (
+                <>
+                  <strong>None</strong>
+                  <small>Ready for a new visit.</small>
+                </>
+              )}
+            </div>
+            <div className="patient-care-status-card__row">
+              <span>Upcoming</span>
+              {nextAppointment ? (
+                <>
+                  <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
+                  <small>{appointmentTime(nextAppointment.scheduledAt)}</small>
+                </>
+              ) : (
+                <>
+                  <strong>No appointment</strong>
+                  <small>No future care moment scheduled.</small>
+                </>
+              )}
+            </div>
+          </section>
           {currentVisit ? (
-            <Link href={`/visits/${currentVisit.id}`} className="button-primary">
-              Open New Visit
-            </Link>
+            <ActiveVisitDetailsButton visit={currentVisit} className="button-primary" label="View Active Visit" />
+          ) : nextAppointment ? (
+            <StartAppointmentVisitButton
+              appointmentId={nextAppointment.id}
+              appointmentState={nextAppointment.state}
+              className="button-primary"
+              label="Start New Visit"
+            />
           ) : (
             <a href="#active-visit-heading" className="button-primary">
               Start New Visit
@@ -196,17 +233,6 @@ export default async function PatientWorkspacePage({
                 : null
             }
           />
-          <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
-            Set Appointment
-          </Link>
-          {!currentVisit && nextAppointment && (
-            <StartAppointmentVisitButton
-              appointmentId={nextAppointment.id}
-              appointmentState={nextAppointment.state}
-              className="button-secondary"
-              label="Start New Visit"
-            />
-          )}
         </div>
       </header>
 
@@ -225,7 +251,13 @@ export default async function PatientWorkspacePage({
         <div className="patient-alert-strip__item">
           <span>Visit status</span>
           <strong>{currentVisit ? visitStateLabel(currentVisit.state) : 'No active visit.'}</strong>
-          {currentVisit && <Link href={`/visits/${currentVisit.id}`}>Open New Visit</Link>}
+          {currentVisit && (
+            <ActiveVisitDetailsButton
+              visit={currentVisit}
+              className="patient-alert-strip__button"
+              label="View Visit"
+            />
+          )}
         </div>
       </section>
 
@@ -237,57 +269,63 @@ export default async function PatientWorkspacePage({
             panel: (
               <div className="patient-profile-overview">
                 <div className="patient-profile-overview__main">
-                  <section className="profile-card profile-card--accent" aria-labelledby="active-visit-heading">
+                  <section className="profile-card profile-card--accent profile-card--care-flow" aria-labelledby="active-visit-heading">
                     <div className="profile-card__header">
-                      <p className="eyebrow">Today</p>
-                      <h2 id="active-visit-heading">{currentVisit ? 'Active New Visit' : 'Start New Visit'}</h2>
+                      <p className="eyebrow">Care flow</p>
+                      <h2 id="active-visit-heading">Visit Status</h2>
                     </div>
-                    {currentVisit ? (
-                      <div className="profile-visit-row">
-                        <div>
-                          <strong>{visitStateLabel(currentVisit.state)}</strong>
-                          <span>{currentVisit.reason}</span>
-                          <span>
-                            {currentVisit.visitType}
-                            {currentVisit.client ? ` · ${clientDisplayName(currentVisit.client)}` : ''}
+                    <div className="profile-care-flow">
+                      {currentVisit ? (
+                        <div className="profile-care-flow__item profile-care-flow__item--active">
+                          <span>Now</span>
+                          <div>
+                            <strong>{visitStateLabel(currentVisit.state)}</strong>
+                            <p>{currentVisit.reason}</p>
+                            <small>
+                              {currentVisit.visitType}
+                              {currentVisit.client ? ` · ${clientDisplayName(currentVisit.client)}` : ''}
+                            </small>
+                          </div>
+                          <ActiveVisitDetailsButton visit={currentVisit} label="View Visit" />
+                        </div>
+                      ) : (
+                        <div className="profile-care-flow__item profile-care-flow__item--empty">
+                          <span>Now</span>
+                          <div>
+                            <strong>No active visit</strong>
+                            <p>
+                              {sections.currentVisit.status === 'unavailable'
+                                ? sections.currentVisit.reason
+                                : 'Start a visit when this patient is ready for care.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {nextAppointment ? (
+                        <div className="profile-care-flow__item">
+                          <span>Next</span>
+                          <div>
+                            <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
+                            <p>{nextAppointment.reason}</p>
+                            <small>{appointmentTime(nextAppointment.scheduledAt)}</small>
+                          </div>
+                          <span className="status-badge status-badge--scheduled">
+                            {appointmentStatusLabel(nextAppointment.state)}
                           </span>
                         </div>
-                        <Link href={`/visits/${currentVisit.id}`} className="button-primary">
-                          Open New Visit
-                        </Link>
-                      </div>
-                    ) : (
-                      <div className="profile-empty-action">
-                        <p className="empty-state">
-                          {sections.currentVisit.status === 'unavailable'
-                            ? sections.currentVisit.reason
-                            : 'No active visit.'}
-                        </p>
-                        <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="profile-card" aria-labelledby="upcoming-appointment-heading">
-                    <div className="profile-card__header">
-                      <p className="eyebrow">Next care moment</p>
-                      <h2 id="upcoming-appointment-heading">Upcoming Appointment</h2>
+                      ) : (
+                        <div className="profile-care-flow__item profile-care-flow__item--empty">
+                          <span>Next</span>
+                          <div>
+                            <strong>No upcoming appointment</strong>
+                            <p>No future care moment is scheduled.</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    {nextAppointment ? (
-                      <div className="profile-callout">
-                        <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
-                        <span>{appointmentTime(nextAppointment.scheduledAt)}</span>
-                        <p>{nextAppointment.reason}</p>
-                        <span className="status-badge status-badge--scheduled">
-                          {appointmentStatusLabel(nextAppointment.state)}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="profile-empty-action profile-empty-action--inline">
-                        <p className="empty-state">No upcoming appointment.</p>
-                        <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
-                          Set Appointment
-                        </Link>
+                    {!currentVisit && (
+                      <div className="profile-empty-action">
+                        <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
                       </div>
                     )}
                   </section>
@@ -358,8 +396,15 @@ export default async function PatientWorkspacePage({
                       <h2 id="profile-quick-actions-heading">Quick Actions</h2>
                     </div>
                     <div className="profile-quick-actions">
-                      <a href="#active-visit-heading">Start New Visit</a>
-                      <Link href={`/patients/${patient.id}/schedule`}>Set Appointment</Link>
+                      {currentVisit ? (
+                        <ActiveVisitDetailsButton
+                          visit={currentVisit}
+                          className="profile-quick-actions__button"
+                          label="View Active Visit"
+                        />
+                      ) : (
+                        <a href="#active-visit-heading">Start New Visit</a>
+                      )}
                     </div>
                   </section>
                 </aside>

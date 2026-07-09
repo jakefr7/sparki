@@ -114,7 +114,7 @@ const STAFF = [
     firstName: 'Hannah',
     lastName: 'Brooks',
     email: 'hannah.brooks@sparki-local-demo.vet',
-    role: 'FRONT_DESK',
+    role: 'RECEPTIONIST',
     jobTitle: 'Front Desk Coordinator',
     canReceiveAppointments: false,
     canOwnVisits: true,
@@ -136,7 +136,7 @@ const STAFF = [
 const VET_A = 'local-demo-staff-anna-carter';
 const VET_B = 'local-demo-staff-miles-bennett';
 const TECH = 'local-demo-staff-marcus-lee';
-const FRONT_DESK = 'local-demo-staff-hannah-brooks';
+const RECEPTIONIST = 'local-demo-staff-hannah-brooks';
 
 // -----------------------------------------------------------------------------
 // Clients — 18 households, realistic contact + address info.
@@ -601,7 +601,7 @@ async function ensureAppointmentsAndVisits(organizationId, locationId, patientId
       scheduledAt: entry.scheduledAt,
       expectedDurationMinutes: entry.template.duration,
       providerId: entry.provider,
-      createdById: FRONT_DESK,
+      createdById: RECEPTIONIST,
     });
 
     await prisma.appointment.upsert({
@@ -628,7 +628,7 @@ async function ensureAppointmentsAndVisits(organizationId, locationId, patientId
       ? TECH
       : isExamOrTreatment || isArchived
         ? (vetOwner ?? entry.provider)
-        : FRONT_DESK;
+        : RECEPTIONIST;
 
     await prisma.visit.upsert({
       where: { id: visitId },
@@ -644,8 +644,8 @@ async function ensureAppointmentsAndVisits(organizationId, locationId, patientId
         currentOwnerId,
         primaryVeterinarianId: vetOwner,
         assignedTechnicianId: isIntake ? TECH : null,
-        createdById: FRONT_DESK,
-        lastUpdatedById: FRONT_DESK,
+        createdById: RECEPTIONIST,
+        lastUpdatedById: RECEPTIONIST,
         nextAction: isCheckoutReady ? 'Collect payment and discharge patient.' : null,
         archivedAt: isArchived ? entry.scheduledAt : null,
       },
@@ -662,8 +662,8 @@ async function ensureAppointmentsAndVisits(organizationId, locationId, patientId
         currentOwnerId,
         primaryVeterinarianId: vetOwner,
         assignedTechnicianId: isIntake ? TECH : null,
-        createdById: FRONT_DESK,
-        lastUpdatedById: FRONT_DESK,
+        createdById: RECEPTIONIST,
+        lastUpdatedById: RECEPTIONIST,
         nextAction: isCheckoutReady ? 'Collect payment and discharge patient.' : null,
         archivedAt: isArchived ? entry.scheduledAt : null,
       },

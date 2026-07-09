@@ -7,7 +7,7 @@ import type { ListStaffQuery } from './dto/list-staff.schema';
 const STAFF_ROLES: UserRole[] = [
   'OWNER',
   'PRACTICE_MANAGER',
-  'FRONT_DESK',
+  'RECEPTIONIST',
   'VETERINARIAN',
   'TECHNICIAN',
   'ASSISTANT',

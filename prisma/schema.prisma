@@ -60,6 +60,7 @@ model Organization {
   appointmentTypeSettings AppointmentTypeSetting[]
   schedulerSettings       SchedulerSettings[]
   schedulerSlotTemplates  SchedulerSlotTemplate[]
+  dashboardStatusColorSettings DashboardStatusColorSetting[]
 
   memberships     OrganizationMembership[]
   locationAccess  ClinicLocationAccess[]
@@ -79,6 +80,7 @@ model Location {
   appointmentTypeSettings AppointmentTypeSetting[]
   schedulerSettings       SchedulerSettings?
   schedulerSlotTemplates  SchedulerSlotTemplate[]
+  dashboardStatusColorSettings DashboardStatusColorSetting[]
 
   locationAccess ClinicLocationAccess[]
 
@@ -92,7 +94,7 @@ model Location {
 enum UserRole {
   OWNER
   PRACTICE_MANAGER
-  FRONT_DESK
+  RECEPTIONIST
   VETERINARIAN
   TECHNICIAN
   ASSISTANT
@@ -114,6 +116,12 @@ model User {
   // Sparki owns authorization; WorkOS AuthKit owns authentication (see
   // apps/api/src/auth). Nullable until real sign-in issues this.
   workosUserId   String?  @unique
+  // Explicit per-user grant, independent of Role — Settings > Admin (scheduler
+  // settings + dashboard status colors) is deliberately not tied to any
+  // Role so any team member can be granted it individually without a role
+  // change pulling in that role's other capabilities. See
+  // apps/api/src/auth/permissions.ts.
+  canManageAdminSettings Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -440,6 +448,34 @@ model AppointmentTypeSetting {
   @@unique([locationId, appointmentType])
   @@index([organizationId])
   @@index([locationId, isActive, sortOrder])
+}
+
+// The Command Center dashboard's coarse status pill sequence (see
+// operations-command-center.tsx's ReceptionStatus) — kept as its own enum
+// rather than reusing AppointmentState/VisitState since it's a display-only
+// concept, not a workflow state.
+enum DashboardStatus {
+  Upcoming
+  CheckedIn
+  InRoom
+  ReadyForCheckout
+  Completed
+}
+
+model DashboardStatusColorSetting {
+  id             String          @id @default(cuid())
+  organizationId String
+  locationId     String
+  status         DashboardStatus
+  color          String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+
+  @@unique([locationId, status])
+  @@index([organizationId])
 }
 
 model SchedulerSettings {

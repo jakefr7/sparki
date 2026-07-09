@@ -6,6 +6,11 @@ import { MANAGE_SCHEDULER_SETTINGS } from './permissions';
  * Identity only, same as User.role (see prisma/schema.prisma) — the
  * enforcement that matters happens server-side per-endpoint (see
  * requireRole in require-role.ts), not by trusting this list.
+ *
+ * MANAGE_ADMIN_SETTINGS is deliberately absent here — unlike everything
+ * else in this map, it's not implied by Role at all. It's appended
+ * per-user from User.canManageAdminSettings in auth.controller.ts's
+ * toMeResponse instead (see permissions.ts).
  */
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   OWNER: [
@@ -25,7 +30,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'settings:manage',
     MANAGE_SCHEDULER_SETTINGS,
   ],
-  FRONT_DESK: [
+  RECEPTIONIST: [
     'dashboard:view',
     'scheduler:view',
     'patients:manage',

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { appointmentTypeLabel, type DashboardVisitSummary } from '../../lib/patient-types';
-import { enumLabel } from '../../lib/format';
+import { visitStateLabel } from '../../lib/format';
 import { LONG_WAIT_MINUTES, STARTABLE_STATES } from '../../lib/command-center-states';
 import {
   blockedReason,
@@ -95,7 +95,7 @@ export function ExamReadyVisitCard({
           <dd>{visit.reason || appointmentTypeLabel(visit.visitType)}</dd>
         </div>
         <div>
-          <dt>Intake</dt>
+          <dt>New Visit</dt>
           <dd>{visit.intakeSummaryAvailable ? 'Summary available' : 'No summary yet'}</dd>
         </div>
       </dl>
@@ -177,7 +177,7 @@ export function VisitCard({
     >
       {highlight && <p className="ops-work-card__priority-tag">{highlight}</p>}
       <div className="ops-work-card__topline">
-        <span className={overdue ? 'ops-pill ops-pill--overdue' : 'ops-pill'}>{enumLabel(visit.state)}</span>
+        <span className={overdue ? 'ops-pill ops-pill--overdue' : 'ops-pill'}>{visitStateLabel(visit.state)}</span>
         <span>{visit.elapsedMinutes} min</span>
       </div>
       {blocked && <span className="ops-tag ops-tag--danger">Blocked · {blockedReason(visit)}</span>}
@@ -190,7 +190,7 @@ export function VisitCard({
         </div>
         <div>
           <dt>State</dt>
-          <dd>{enumLabel(visit.state)}</dd>
+          <dd>{visitStateLabel(visit.state)}</dd>
         </div>
         <div>
           <dt>Owner</dt>

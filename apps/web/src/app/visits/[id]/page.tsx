@@ -4,7 +4,7 @@ import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { env } from '../../../lib/env';
-import { enumLabel } from '../../../lib/format';
+import { enumLabel, visitStateLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -39,7 +39,7 @@ function examStatusForState(state: string): { label: string; detail: string } | 
   if (state === 'VeterinarianExamReady') {
     return {
       label: 'Ready for doctor',
-      detail: 'Technician intake is complete and the patient is waiting for the exam.',
+      detail: 'The New Visit details are complete and the patient is waiting for the exam.',
     };
   }
   if (state === 'VeterinarianExamInProgress') {
@@ -93,7 +93,7 @@ export default async function VisitWorkspacePage({
           </p>
         </div>
         <div className="patient-header__status">
-          <span className="patient-status">{enumLabel(visit.state)}</span>
+          <span className="patient-status">{visitStateLabel(visit.state)}</span>
           <span className="source-label">
             Opened {openedFromCommandCenter ? 'from Command Center' : 'from patient workspace'}
           </span>

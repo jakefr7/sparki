@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { enumLabel, timeLabel } from '../lib/format';
+import { timeLabel, visitStateLabel } from '../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -19,7 +19,7 @@ function resultRank(result: PatientSearchResult): number {
 
 function statusLabel(result: PatientSearchResult): string {
   if (result.activeVisit) return 'In visit';
-  if (result.nextAppointment) return 'Scheduled';
+  if (result.nextAppointment) return 'Upcoming';
   return 'On file';
 }
 
@@ -31,7 +31,7 @@ function statusTone(result: PatientSearchResult): string {
 
 function operationDetail(result: PatientSearchResult): string {
   if (result.activeVisit) {
-    return `${enumLabel(result.activeVisit.state)} · ${result.activeVisit.reason}`;
+    return `${visitStateLabel(result.activeVisit.state)} · ${result.activeVisit.reason}`;
   }
 
   if (result.nextAppointment) {

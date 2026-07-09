@@ -220,7 +220,26 @@ model Client {
   lastName               String
   email                  String?
   phone                  String?
+  alternatePhone         String?
   preferredContactMethod String?
+
+  // Structured owner address (Phase 2: address autocomplete). Kept as
+  // discrete columns rather than one string so city/state/zip stay
+  // queryable/reportable; formattedAddress is the provider's display string
+  // (or a locally-built fallback — see formatClientAddress on the web side)
+  // for showing the address as one line without hand-joining parts.
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  state            String?
+  postalCode       String?
+  country          String?
+  formattedAddress String?
+  // Autocomplete provider's place id + coordinates, captured when a
+  // suggestion is selected. Null for manually-typed addresses.
+  addressPlaceId   String?
+  addressLatitude  Float?
+  addressLongitude Float?
 
   // Migration/provenance (see schema-level note above). Set only by a future
   // migration workflow; nullable because native (non-imported) records have
@@ -257,12 +276,19 @@ model Patient {
   id             String        @id @default(cuid())
   organizationId String
   name           String
+  // Pet last name is never shown or edited directly in the UI — it's
+  // inherited automatically from the primary owner's Client.lastName (see
+  // PatientsService.create / ClientsService.update). Kept only so search
+  // and records can match on it.
+  lastName       String?
   species        String
   breed          String?
   sex            String?
   dateOfBirth    DateTime?
+  estimatedAge   String?
   weight         Float?
   color          String?
+  imageUrl       String?
   status         PatientStatus @default(Active)
 
   // Migration/provenance (see schema-level note above). Set only by a future
@@ -286,6 +312,8 @@ model Patient {
   @@index([organizationId, name])
   // Fuzzy/substring matching for Patient Search's "search by patient name".
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  // Same, for the inherited/stored pet lastName (see PatientsService.search).
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model PatientClient {
@@ -358,6 +386,7 @@ model Appointment {
 
   scheduledAt             DateTime
   expectedDurationMinutes Int?
+  colorKey                String?
 
   providerId String?
 

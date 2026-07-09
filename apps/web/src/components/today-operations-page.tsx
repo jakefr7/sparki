@@ -18,15 +18,14 @@ const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
 type TodayFilter = 'all' | 'upcoming' | 'checked-in' | 'in-clinic' | 'checkout' | 'completed';
 
 type TodayStatus =
-  | 'Scheduled'
-  | 'Arrived'
+  | 'Upcoming'
   | 'Checked In'
   | 'In Room'
   | 'With Technician'
   | 'With Doctor'
   | 'Treatment'
   | 'Ready for Checkout'
-  | 'Complete'
+  | 'Completed'
   | 'Cancelled';
 
 interface TodayAppointmentRow {
@@ -59,7 +58,7 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     species: 'Dog',
     clientName: 'Sarah Johnson',
     appointmentType: 'Wellness',
-    status: 'Scheduled',
+    status: 'Upcoming',
     location: 'Lobby',
     doctor: 'Dr. Patel',
   },
@@ -70,7 +69,7 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     species: 'Dog',
     clientName: 'Michael Lee',
     appointmentType: 'Exam',
-    status: 'Arrived',
+    status: 'Checked In',
     location: 'Exam Room 2',
     doctor: 'Dr. Nguyen',
   },
@@ -103,7 +102,7 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     species: 'Cat',
     clientName: 'Priya Patel',
     appointmentType: 'Vaccines',
-    status: 'Scheduled',
+    status: 'Upcoming',
     doctor: 'Unassigned',
   },
   {
@@ -113,7 +112,7 @@ const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
     species: 'Dog',
     clientName: 'Jordan Smith',
     appointmentType: 'Follow-up',
-    status: 'Scheduled',
+    status: 'Upcoming',
     doctor: 'Dr. Nguyen',
   },
 ];
@@ -126,28 +125,31 @@ function statusTone(status: TodayStatus) {
   if (['In Room', 'With Doctor', 'Checked In'].includes(status)) return 'blue';
   if (['With Technician', 'Treatment'].includes(status)) return 'purple';
   if (status === 'Ready for Checkout') return 'orange';
-  if (['Complete', 'Cancelled'].includes(status)) return 'gray';
+  if (['Completed', 'Cancelled'].includes(status)) return 'gray';
   return 'teal';
 }
 
+/**
+ * Confirmed clinic-facing labels (Anna, Phase 2 cleanup): only
+ * 'Arrived'/'VisitCreated', 'Completed', and 'Cancelled' are real
+ * AppointmentState values — everything else defaults to "Upcoming". The
+ * 'In Room'/'With Technician'/'With Doctor'/'Treatment' statuses reflect a
+ * Visit's progress past check-in, which lives on the separate Visit state
+ * machine, not on Appointment; they're reachable here only via
+ * DEV_TODAY_ROWS fixtures until this cross-references real visit data.
+ */
 function appointmentStatus(appointment: DashboardAppointmentSummary): TodayStatus {
-  if (appointment.state === 'Arrived') return 'Arrived';
-  if (appointment.state === 'CheckedIn') return 'Checked In';
-  if (appointment.state === 'InRoom') return 'In Room';
-  if (appointment.state === 'WithTechnician') return 'With Technician';
-  if (appointment.state === 'WithDoctor') return 'With Doctor';
-  if (appointment.state === 'Treatment') return 'Treatment';
-  if (appointment.state === 'CheckoutReady') return 'Ready for Checkout';
-  if (appointment.state === 'Completed') return 'Complete';
+  if (appointment.state === 'Arrived' || appointment.state === 'VisitCreated') return 'Checked In';
+  if (appointment.state === 'Completed') return 'Completed';
   if (appointment.state === 'Cancelled') return 'Cancelled';
-  return 'Scheduled';
+  return 'Upcoming';
 }
 
 function appointmentLocation(status: TodayStatus) {
   if (status === 'Ready for Checkout') return 'Checkout';
   if (['In Room', 'With Doctor'].includes(status)) return 'Exam Room';
   if (['With Technician', 'Treatment'].includes(status)) return 'Treatment';
-  if (['Arrived', 'Checked In'].includes(status)) return 'Lobby';
+  if (status === 'Checked In') return 'Lobby';
   return undefined;
 }
 
@@ -169,15 +171,13 @@ function appointmentToRow(appointment: DashboardAppointmentSummary): TodayAppoin
 
 function filterRow(row: TodayAppointmentRow, filter: TodayFilter) {
   if (filter === 'all') return true;
-  if (filter === 'upcoming') return row.status === 'Scheduled';
-  if (filter === 'checked-in') return row.status === 'Arrived' || row.status === 'Checked In';
+  if (filter === 'upcoming') return row.status === 'Upcoming';
+  if (filter === 'checked-in') return row.status === 'Checked In';
   if (filter === 'in-clinic') {
-    return ['Arrived', 'Checked In', 'In Room', 'With Technician', 'With Doctor', 'Treatment'].includes(
-      row.status,
-    );
+    return ['Checked In', 'In Room', 'With Technician', 'With Doctor', 'Treatment'].includes(row.status);
   }
   if (filter === 'checkout') return row.status === 'Ready for Checkout';
-  return row.status === 'Complete';
+  return row.status === 'Completed';
 }
 
 function PatientStatusChip({ status }: { status: TodayStatus }) {

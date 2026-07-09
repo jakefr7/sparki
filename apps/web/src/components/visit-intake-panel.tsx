@@ -96,7 +96,7 @@ function IntakeSummary({ intake }: { intake: VisitIntake }) {
 
   return (
     <div className="visit-intake-summary">
-      <h3>Saved Intake Summary</h3>
+      <h3>Saved New Visit Details</h3>
       <dl>
         <div>
           <dt>Reason for visit</dt>
@@ -147,10 +147,10 @@ export function VisitIntakePanel({
     try {
       const response = await fetch(`/api/visits/${visitId}/start`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not start intake.');
+      if (!response.ok) throw new Error(payload.message ?? 'Could not start new visit.');
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start intake.');
+      setError(caught instanceof Error ? caught.message : 'Could not start new visit.');
     } finally {
       setSubmitting(false);
     }
@@ -163,7 +163,7 @@ export function VisitIntakePanel({
       body: JSON.stringify(intakePayload(formData)),
     });
     const payload = (await response.json()) as { message?: string };
-    if (!response.ok) throw new Error(payload.message ?? 'Could not save intake.');
+    if (!response.ok) throw new Error(payload.message ?? 'Could not save new visit details.');
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -175,7 +175,7 @@ export function VisitIntakePanel({
       await saveIntake(new FormData(event.currentTarget));
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save intake.');
+      setError(caught instanceof Error ? caught.message : 'Could not save new visit details.');
     } finally {
       setSubmitting(false);
     }
@@ -189,10 +189,10 @@ export function VisitIntakePanel({
       await saveIntake(new FormData(form));
       const response = await fetch(`/api/visits/${visitId}/intake/complete`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not complete intake.');
+      if (!response.ok) throw new Error(payload.message ?? 'Could not complete new visit.');
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not complete intake.');
+      setError(caught instanceof Error ? caught.message : 'Could not complete new visit.');
     } finally {
       setSubmitting(false);
     }
@@ -202,8 +202,8 @@ export function VisitIntakePanel({
     <section className="visit-intake-panel" aria-labelledby="visit-intake-heading">
       <div className="visit-intake-panel__header">
         <div>
-          <p className="eyebrow">Technician Intake</p>
-          <h2 id="visit-intake-heading">Visit Intake</h2>
+          <p className="eyebrow">New Visit</p>
+          <h2 id="visit-intake-heading">New Visit Form</h2>
         </div>
         {STARTABLE_STATES.has(state) && (
           <button
@@ -212,7 +212,7 @@ export function VisitIntakePanel({
             onClick={startIntake}
             disabled={submitting}
           >
-            {submitting ? 'Starting...' : 'Start Intake'}
+            {submitting ? 'Starting...' : 'Start New Visit'}
           </button>
         )}
       </div>
@@ -318,7 +318,7 @@ export function VisitIntakePanel({
           )}
           <div className="visit-intake-form__actions">
             <button type="submit" className="button-secondary" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save Intake'}
+              {submitting ? 'Saving...' : 'Save New Visit'}
             </button>
             <button
               type="button"
@@ -329,7 +329,7 @@ export function VisitIntakePanel({
                 if (form) void completeFromForm(form);
               }}
             >
-              {submitting ? 'Completing...' : 'Complete Intake'}
+              {submitting ? 'Completing...' : 'Complete New Visit'}
             </button>
           </div>
         </form>
@@ -337,7 +337,7 @@ export function VisitIntakePanel({
 
       {state !== 'IntakeInProgress' && !STARTABLE_STATES.has(state) && (
         <p className="visit-intake-panel__status">
-          Intake is not editable while this visit is in {state}.
+          New Visit details are not editable while this visit is in {state}.
         </p>
       )}
 

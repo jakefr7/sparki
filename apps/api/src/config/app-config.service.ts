@@ -34,4 +34,8 @@ export class AppConfigService {
       cookiePassword: this.env.WORKOS_COOKIE_PASSWORD,
     };
   }
+
+  get addressProvider(): { mapboxAccessToken: string | undefined } {
+    return { mapboxAccessToken: this.env.MAPBOX_ACCESS_TOKEN };
+  }
 }

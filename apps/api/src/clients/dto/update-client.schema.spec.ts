@@ -26,4 +26,33 @@ describe('updateClientSchema', () => {
     const result = updateClientSchema.safeParse({ firstName: '' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts alternatePhone and structured address updates', () => {
+    const result = updateClientSchema.safeParse({
+      alternatePhone: '555-0100',
+      addressLine1: '123 Main St',
+      city: 'Springfield',
+      state: 'IL',
+      postalCode: '62704',
+      country: 'US',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts clearing alternatePhone and address fields with null', () => {
+    const result = updateClientSchema.safeParse({
+      alternatePhone: null,
+      addressLine1: null,
+      addressLine2: null,
+      city: null,
+      state: null,
+      postalCode: null,
+      country: null,
+      formattedAddress: null,
+      addressPlaceId: null,
+      addressLatitude: null,
+      addressLongitude: null,
+    });
+    expect(result.success).toBe(true);
+  });
 });

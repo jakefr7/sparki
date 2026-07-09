@@ -49,11 +49,13 @@ export function StartAppointmentVisitButton({
   appointmentState,
   disabled = false,
   className = 'button-secondary',
+  label = 'Start Visit',
 }: {
   appointmentId: string;
   appointmentState: string;
   disabled?: boolean;
   className?: string;
+  label?: string;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -95,8 +97,8 @@ export function StartAppointmentVisitButton({
         className={className}
         onClick={handleClick}
         disabled={disabled || submitting}
-      >
-        {submitting ? 'Starting…' : 'Start Visit'}
+    >
+        {submitting ? 'Starting…' : label}
       </button>
       {error && (
         <p className="form-error" role="alert">
@@ -111,10 +113,12 @@ export function StartWalkInVisitForm({
   patientId,
   activeVisitId,
   compact = false,
+  submitLabel = 'Create Walk-In Visit',
 }: {
   patientId: string;
   activeVisitId?: string;
   compact?: boolean;
+  submitLabel?: string;
 }) {
   const router = useRouter();
   const [reason, setReason] = useState('');
@@ -183,7 +187,7 @@ export function StartWalkInVisitForm({
         className={compact ? 'button-secondary' : 'button-primary'}
         disabled={submitting}
       >
-        {submitting ? 'Creating…' : 'Create Walk-In Visit'}
+        {submitting ? 'Creating…' : submitLabel}
       </button>
     </form>
   );

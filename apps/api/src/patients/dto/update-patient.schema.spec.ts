@@ -26,4 +26,14 @@ describe('updatePatientSchema', () => {
     const result = updatePatientSchema.safeParse({ dateOfBirth: 'not-a-date' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts estimatedAge and imageUrl updates', () => {
+    const result = updatePatientSchema.safeParse({ estimatedAge: '~5 years', imageUrl: 'https://example.com/a.png' });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts clearing estimatedAge and imageUrl with null', () => {
+    const result = updatePatientSchema.safeParse({ estimatedAge: null, imageUrl: null });
+    expect(result.success).toBe(true);
+  });
 });

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { timeLabel } from '../lib/format';
 import {
   appointmentTypeLabel,
@@ -46,7 +47,15 @@ export function FrontDeskIntakeForm() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [alternatePhone, setAlternatePhone] = useState('');
   const [email, setEmail] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [country, setCountry] = useState('');
+  const [addressAutofill, setAddressAutofill] = useState<AddressAutofillResult | null>(null);
 
   // Patient
   const patientNameRef = useRef<HTMLInputElement>(null);
@@ -54,7 +63,7 @@ export function FrontDeskIntakeForm() {
   const [species, setSpecies] = useState<string>(SPECIES_OPTIONS[0]);
   const [otherSpecies, setOtherSpecies] = useState('');
   const [breed, setBreed] = useState('');
-  const [sex, setSex] = useState<string>('Unknown');
+  const [sex, setSex] = useState<string>('');
   const [dobMode, setDobMode] = useState<DobMode>('approximate');
   const [exactDate, setExactDate] = useState('');
   const [approxAgeYears, setApproxAgeYears] = useState('');
@@ -209,7 +218,18 @@ export function FrontDeskIntakeForm() {
             firstName,
             lastName,
             phone: phone || undefined,
+            alternatePhone: alternatePhone || undefined,
             email: email || undefined,
+            addressLine1: addressLine1 || undefined,
+            addressLine2: addressLine2 || undefined,
+            city: city || undefined,
+            state: state || undefined,
+            postalCode: postalCode || undefined,
+            country: country || undefined,
+            formattedAddress: addressAutofill?.formattedAddress || undefined,
+            addressPlaceId: addressAutofill?.placeId || undefined,
+            addressLatitude: addressAutofill?.latitude ?? undefined,
+            addressLongitude: addressAutofill?.longitude ?? undefined,
           }),
         });
         if (!response.ok) {
@@ -226,7 +246,7 @@ export function FrontDeskIntakeForm() {
           name: patientName,
           species: species === 'Other' ? otherSpecies : species,
           breed: breed || undefined,
-          sex,
+          sex: sex || undefined,
           dateOfBirth: computeDateOfBirth(dobMode, exactDate, approxAgeYears),
           weight: weight ? Number(weight) : undefined,
           color: color || undefined,
@@ -349,13 +369,24 @@ export function FrontDeskIntakeForm() {
                   />
                 </label>
                 <label htmlFor="client-phone">
-                  Phone
+                  Cell phone
                   <input
                     id="client-phone"
                     type="tel"
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                     required
+                    maxLength={50}
+                  />
+                </label>
+                <label htmlFor="client-alternate-phone">
+                  Alternate phone
+                  <input
+                    id="client-alternate-phone"
+                    type="tel"
+                    value={alternatePhone}
+                    onChange={(event) => setAlternatePhone(event.target.value)}
+                    placeholder="Optional"
                     maxLength={50}
                   />
                 </label>
@@ -367,6 +398,77 @@ export function FrontDeskIntakeForm() {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="Optional"
+                  />
+                </label>
+                <div className="front-desk-grid__field--full">
+                  <AddressAutocompleteField
+                    id="client-address"
+                    label="Street address"
+                    value={addressLine1}
+                    onChange={setAddressLine1}
+                    onAddressSelected={(result) => {
+                      setAddressLine1(result.addressLine1);
+                      setCity(result.city);
+                      setState(result.state);
+                      setPostalCode(result.postalCode);
+                      setCountry(result.country);
+                      setAddressAutofill(result);
+                    }}
+                  />
+                </div>
+                <label htmlFor="client-address-2">
+                  Address line 2 (apt/suite)
+                  <input
+                    id="client-address-2"
+                    type="text"
+                    value={addressLine2}
+                    onChange={(event) => setAddressLine2(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={200}
+                  />
+                </label>
+                <label htmlFor="client-city">
+                  City
+                  <input
+                    id="client-city"
+                    type="text"
+                    value={city}
+                    onChange={(event) => setCity(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={100}
+                  />
+                </label>
+                <label htmlFor="client-state">
+                  State
+                  <input
+                    id="client-state"
+                    type="text"
+                    value={state}
+                    onChange={(event) => setState(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={100}
+                  />
+                </label>
+                <label htmlFor="client-postal-code">
+                  ZIP/postal code
+                  <input
+                    id="client-postal-code"
+                    type="text"
+                    value={postalCode}
+                    onChange={(event) => setPostalCode(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={20}
+                  />
+                </label>
+                <label htmlFor="client-country">
+                  Country
+                  <input
+                    id="client-country"
+                    type="text"
+                    value={country}
+                    onChange={(event) => setCountry(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={100}
                   />
                 </label>
               </div>
@@ -390,7 +492,7 @@ export function FrontDeskIntakeForm() {
           <legend>Patient</legend>
           <div className="front-desk-grid">
             <label htmlFor="patient-name">
-              Name
+              Pet first name
               <input
                 ref={patientNameRef}
                 id="patient-name"
@@ -442,6 +544,7 @@ export function FrontDeskIntakeForm() {
             <label htmlFor="patient-sex">
               Sex
               <select id="patient-sex" value={sex} onChange={(event) => setSex(event.target.value)}>
+                <option value="">Unspecified</option>
                 {SEX_OPTIONS.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -462,7 +565,7 @@ export function FrontDeskIntakeForm() {
               />
             </label>
             <label htmlFor="patient-color">
-              Color / markings
+              Coat color
               <input
                 id="patient-color"
                 type="text"

@@ -11,6 +11,34 @@ export function timeLabel(value: string): string {
   return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * Confirmed clinic-facing labels for AppointmentState (Anna, Phase 2 cleanup
+ * pass): pre-arrival states all read "Upcoming", arrival-adjacent states
+ * read "Checked In". Everything else (Completed, Cancelled, NoShow,
+ * Rescheduled) is already readable via enumLabel. Display-only — the
+ * backend AppointmentState enum is unchanged.
+ */
+export function appointmentStatusLabel(state: string): string {
+  if (state === 'Scheduled' || state === 'Draft' || state === 'PreVisitPending' || state === 'Confirmed') {
+    return 'Upcoming';
+  }
+  if (state === 'Arrived' || state === 'VisitCreated') {
+    return 'Checked In';
+  }
+  return enumLabel(state);
+}
+
+/**
+ * Same as enumLabel, but re-labels the technician "Intake" visit state so
+ * the word "Intake" never surfaces as literal UI copy (Anna: rename to New
+ * Visit language). Display-only — the backend VisitState enum value
+ * ('IntakeInProgress') is unchanged.
+ */
+export function visitStateLabel(state: string): string {
+  if (state === 'IntakeInProgress') return 'New Visit In Progress';
+  return enumLabel(state);
+}
+
 /** Formats a patient's age from its date of birth. `short` is for dense list rows. */
 export function formatAge(
   dateOfBirth: string | null,

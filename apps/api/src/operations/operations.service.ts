@@ -124,6 +124,7 @@ function toDashboardAppointment(appointment: AppointmentWithContext): DashboardA
     state: appointment.state,
     scheduledAt: appointment.scheduledAt,
     expectedDurationMinutes: appointment.expectedDurationMinutes,
+    colorKey: appointment.colorKey,
     patient: toPatientSummary(appointment.patient),
     client: toClientSummary(appointment.client),
     provider: toPersonSummary(appointment.provider),

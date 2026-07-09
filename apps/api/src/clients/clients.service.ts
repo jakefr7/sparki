@@ -23,7 +23,18 @@ export class ClientsService {
         lastName: input.lastName,
         email: input.email ?? null,
         phone: input.phone ?? null,
+        alternatePhone: input.alternatePhone ?? null,
         preferredContactMethod: input.preferredContactMethod ?? null,
+        addressLine1: input.addressLine1 ?? null,
+        addressLine2: input.addressLine2 ?? null,
+        city: input.city ?? null,
+        state: input.state ?? null,
+        postalCode: input.postalCode ?? null,
+        country: input.country ?? null,
+        formattedAddress: input.formattedAddress ?? null,
+        addressPlaceId: input.addressPlaceId ?? null,
+        addressLatitude: input.addressLatitude ?? null,
+        addressLongitude: input.addressLongitude ?? null,
       },
     });
   }
@@ -37,11 +48,30 @@ export class ClientsService {
   }
 
   async update(id: string, organizationId: string, input: UpdateClientInput) {
-    await this.findById(id, organizationId);
+    const existing = await this.findById(id, organizationId);
+    const data = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
 
-    return prisma.client.update({
-      where: { id },
-      data: Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.client.update({ where: { id }, data });
+
+      // Pet last name is inherited from the owner (see PatientsService.create)
+      // and never edited directly, so keep it in sync here — but only for
+      // patients whose lastName still matches the old owner name or was
+      // never set. A patient whose lastName was manually changed to
+      // something else (record correction, blended family, etc.) is left
+      // alone rather than silently overwritten.
+      if (input.lastName !== undefined && input.lastName !== existing.lastName) {
+        await tx.patient.updateMany({
+          where: {
+            organizationId,
+            OR: [{ lastName: existing.lastName }, { lastName: null }],
+            clients: { some: { clientId: id, isPrimary: true } },
+          },
+          data: { lastName: input.lastName },
+        });
+      }
+
+      return updated;
     });
   }
 

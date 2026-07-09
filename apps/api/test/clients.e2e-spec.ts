@@ -28,6 +28,12 @@ describe('Clients (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.patientClient.deleteMany({
+      where: { client: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } } },
+    });
+    await prisma.patient.deleteMany({
+      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+    });
     await prisma.client.deleteMany({
       where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
     });
@@ -53,6 +59,37 @@ describe('Clients (e2e)', () => {
         email: 'jordan@example.com',
       });
       expect(response.body.id).toEqual(expect.any(String));
+    });
+
+    it('creates a client with a full structured address', async () => {
+      const response = await request(app.getHttpServer()).post('/clients').send({
+        firstName: 'Priya',
+        lastName: 'Nair',
+        addressLine1: '123 Main St',
+        addressLine2: 'Apt 4',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62704',
+        country: 'US',
+        formattedAddress: '123 Main St, Apt 4, Springfield, IL 62704',
+        addressPlaceId: 'place.123',
+        addressLatitude: 39.78,
+        addressLongitude: -89.65,
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toMatchObject({
+        addressLine1: '123 Main St',
+        addressLine2: 'Apt 4',
+        city: 'Springfield',
+        state: 'IL',
+        postalCode: '62704',
+        country: 'US',
+        formattedAddress: '123 Main St, Apt 4, Springfield, IL 62704',
+        addressPlaceId: 'place.123',
+        addressLatitude: 39.78,
+        addressLongitude: -89.65,
+      });
     });
 
     it('ignores a client-supplied organizationId and uses the authenticated organization', async () => {
@@ -193,6 +230,50 @@ describe('Clients (e2e)', () => {
       });
     });
 
+    it('updates the structured address fields', async () => {
+      const created = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Address', lastName: 'Update' },
+      });
+
+      const response = await request(app.getHttpServer()).patch(`/clients/${created.id}`).send({
+        addressLine1: '456 Oak Ave',
+        city: 'Metropolis',
+        state: 'NY',
+        postalCode: '10001',
+        country: 'US',
+        formattedAddress: '456 Oak Ave, Metropolis, NY 10001',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        addressLine1: '456 Oak Ave',
+        city: 'Metropolis',
+        state: 'NY',
+        postalCode: '10001',
+        country: 'US',
+        formattedAddress: '456 Oak Ave, Metropolis, NY 10001',
+      });
+    });
+
+    it('clears address fields when explicitly set to null', async () => {
+      const created = await prisma.client.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          firstName: 'Clear',
+          lastName: 'Address',
+          addressLine1: '789 Elm St',
+          city: 'Gotham',
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/clients/${created.id}`)
+        .send({ addressLine1: null, city: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ addressLine1: null, city: null });
+    });
+
     it('rejects an invalid email with 400', async () => {
       const created = await prisma.client.create({
         data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Bad', lastName: 'Email' },
@@ -225,6 +306,68 @@ describe('Clients (e2e)', () => {
         .send({ firstName: 'Should Not Apply' });
 
       expect(response.status).toBe(404);
+    });
+
+    it("syncs the linked pet's inherited lastName when it still matches the old owner name", async () => {
+      const owner = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Dana', lastName: 'Original' },
+      });
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Biscuit',
+          lastName: 'Original',
+          species: 'Canine',
+          clients: { create: { clientId: owner.id, isPrimary: true } },
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .patch(`/clients/${owner.id}`)
+        .send({ lastName: 'Updated' });
+
+      expect(response.status).toBe(200);
+      const refreshed = await prisma.patient.findUniqueOrThrow({ where: { id: patient.id } });
+      expect(refreshed.lastName).toBe('Updated');
+    });
+
+    it("syncs an empty pet lastName when the owner's lastName is set", async () => {
+      const owner = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Ravi', lastName: 'Original' },
+      });
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Waffles',
+          species: 'Canine',
+          clients: { create: { clientId: owner.id, isPrimary: true } },
+        },
+      });
+
+      await request(app.getHttpServer()).patch(`/clients/${owner.id}`).send({ lastName: 'Updated' });
+
+      const refreshed = await prisma.patient.findUniqueOrThrow({ where: { id: patient.id } });
+      expect(refreshed.lastName).toBe('Updated');
+    });
+
+    it('does not overwrite a pet lastName that was manually changed away from the owner name', async () => {
+      const owner = await prisma.client.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Pat', lastName: 'Original' },
+      });
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Shadow',
+          lastName: 'ManuallySet',
+          species: 'Canine',
+          clients: { create: { clientId: owner.id, isPrimary: true } },
+        },
+      });
+
+      await request(app.getHttpServer()).patch(`/clients/${owner.id}`).send({ lastName: 'Updated' });
+
+      const refreshed = await prisma.patient.findUniqueOrThrow({ where: { id: patient.id } });
+      expect(refreshed.lastName).toBe('ManuallySet');
     });
   });
 });

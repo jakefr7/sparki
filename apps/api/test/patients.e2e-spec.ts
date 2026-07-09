@@ -44,6 +44,9 @@ describe('Patients (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.visit.deleteMany({
+      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+    });
     await prisma.appointment.deleteMany({
       where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
     });
@@ -81,6 +84,9 @@ describe('Patients (e2e)', () => {
       expect(response.body).toMatchObject({
         organizationId: DEV_ORGANIZATION_ID,
         name: 'Biscuit',
+        // Pet last name is never entered by the user — it's inherited from
+        // the primary client (fixture: 'Primary Owner') automatically.
+        lastName: 'Owner',
         species: 'Canine',
         status: 'Active',
       });
@@ -174,6 +180,46 @@ describe('Patients (e2e)', () => {
     });
   });
 
+  describe('GET /patients', () => {
+    it('lists patients alphabetically for the authenticated organization', async () => {
+      await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Zelda',
+          species: 'Canine',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+      await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Aria',
+          species: 'Feline',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+      await prisma.patient.create({
+        data: {
+          organizationId: otherOrganizationId,
+          name: 'Other Org Pet',
+          species: 'Canine',
+        },
+      });
+
+      const response = await request(app.getHttpServer()).get('/patients').query({ limit: 100 });
+
+      expect(response.status).toBe(200);
+      const names = response.body.map((patient: { name: string }) => patient.name);
+      expect(names).toContain('Aria');
+      expect(names).toContain('Zelda');
+      expect(names.indexOf('Aria')).toBeLessThan(names.indexOf('Zelda'));
+      expect(names).not.toContain('Other Org Pet');
+    });
+
+    it('rejects a limit above the max with 400', async () => {
+      const response = await request(app.getHttpServer()).get('/patients').query({ limit: 500 });
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe('GET /patients/search', () => {
     it('matches by patient name', async () => {
       await request(app.getHttpServer())
@@ -210,6 +256,27 @@ describe('Patients (e2e)', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual(
         expect.arrayContaining([expect.objectContaining({ name: 'Client Search Patient' })]),
+      );
+    });
+
+    it('matches by stored pet lastName even when it diverges from the linked client', async () => {
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Whiskers',
+          lastName: 'Blackwood',
+          species: 'Feline',
+          clients: { create: { clientId: primaryClientId, isPrimary: true } },
+        },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get('/patients/search')
+        .query({ query: 'Blackwood' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: patient.id, name: 'Whiskers' })]),
       );
     });
 
@@ -292,12 +359,53 @@ describe('Patients (e2e)', () => {
         ]),
       );
       expect(response.body.upcomingAppointments).toEqual([]);
+      expect(response.body.recentVisits).toEqual([]);
       expect(response.body.sections.currentVisit).toMatchObject({ status: 'unavailable' });
+      expect(response.body.sections.medications).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.workItems).toMatchObject({ status: 'unavailable' });
-      expect(response.body.sections.timeline).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.communication).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.financial).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.attachments).toMatchObject({ status: 'unavailable' });
+    });
+
+    it("surfaces the primary client's structured address", async () => {
+      const addressedClient = await prisma.client.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          firstName: 'Address',
+          lastName: 'Owner',
+          addressLine1: '123 Main St',
+          city: 'Springfield',
+          state: 'IL',
+          postalCode: '62704',
+          country: 'US',
+          formattedAddress: '123 Main St, Springfield, IL 62704',
+        },
+      });
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Addressed Patient',
+          species: 'Canine',
+          clients: [{ clientId: addressedClient.id, isPrimary: true }],
+        });
+
+      const response = await request(app.getHttpServer()).get(
+        `/patients/${created.body.id}/workspace`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.clients).toEqual([
+        expect.objectContaining({
+          id: addressedClient.id,
+          addressLine1: '123 Main St',
+          city: 'Springfield',
+          state: 'IL',
+          postalCode: '62704',
+          country: 'US',
+          formattedAddress: '123 Main St, Springfield, IL 62704',
+        }),
+      ]);
     });
 
     it('includes upcoming appointments and excludes cancelled/past ones', async () => {
@@ -356,6 +464,61 @@ describe('Patients (e2e)', () => {
       expect(response.body.upcomingAppointments).toEqual([
         expect.objectContaining({ id: upcoming.id, reason: 'Checkup', state: 'Scheduled' }),
       ]);
+    });
+
+    it('surfaces recent visits and medications from the latest visit intake', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Medication Workspace Patient',
+          species: 'Canine',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+      const patientId = created.body.id;
+      const location = await prisma.location.create({
+        data: { organizationId: DEV_ORGANIZATION_ID, name: 'Workspace Test Location' },
+      });
+
+      const olderVisit = await prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: location.id,
+          patientId,
+          visitType: 'Scheduled',
+          reason: 'Old checkup',
+          state: 'Archived',
+        },
+      });
+      await prisma.visitIntake.create({
+        data: { visitId: olderVisit.id, medicationsAllergies: 'Old med — no longer current' },
+      });
+
+      const latestVisit = await prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: location.id,
+          patientId,
+          visitType: 'WalkIn',
+          reason: 'Recheck',
+          state: 'Archived',
+        },
+      });
+      await prisma.visitIntake.create({
+        data: { visitId: latestVisit.id, medicationsAllergies: 'Amoxicillin 250mg twice daily' },
+      });
+
+      const response = await request(app.getHttpServer()).get(`/patients/${patientId}/workspace`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.recentVisits).toEqual([
+        expect.objectContaining({ id: latestVisit.id, reason: 'Recheck' }),
+        expect.objectContaining({ id: olderVisit.id, reason: 'Old checkup' }),
+      ]);
+      expect(response.body.sections.medications).toMatchObject({
+        status: 'available',
+        notes: 'Amoxicillin 250mg twice daily',
+        visitId: latestVisit.id,
+      });
     });
 
     it('returns 404 when the patient belongs to a different organization', async () => {

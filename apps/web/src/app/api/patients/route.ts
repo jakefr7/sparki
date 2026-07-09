@@ -15,3 +15,16 @@ export async function POST(request: NextRequest) {
 
   return relayJson(upstreamResponse);
 }
+
+/** Plain directory listing (no query) — what the Patients tab shows before
+ *  the user searches. */
+export async function GET(request: NextRequest) {
+  const upstreamUrl = new URL('/patients', env.API_URL);
+  const limit = request.nextUrl.searchParams.get('limit');
+  if (limit) {
+    upstreamUrl.searchParams.set('limit', limit);
+  }
+
+  const upstreamResponse = await proxyFetch(request, upstreamUrl);
+  return relayJson(upstreamResponse);
+}

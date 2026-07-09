@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { enumLabel, timeLabel } from '../../lib/format';
+import { appointmentStatusLabel, timeLabel } from '../../lib/format';
 import { CHECK_IN_STATES } from '../../lib/command-center-states';
 import { appointmentTypeLabel, type DashboardAppointmentSummary } from '../../lib/patient-types';
 import { appointmentHref, appointmentMatchesStaff, appointmentNextAction, clientLabel } from './card-helpers';
@@ -78,7 +78,7 @@ function AppointmentCard({
         </div>
         <div>
           <dt>State</dt>
-          <dd>{enumLabel(appointment.state)}</dd>
+          <dd>{appointmentStatusLabel(appointment.state)}</dd>
         </div>
         <div>
           <dt>Owner</dt>

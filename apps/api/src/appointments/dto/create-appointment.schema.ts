@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { AppointmentType } from '@sparki/db';
 
+export const APPOINTMENT_COLOR_KEYS = [
+  'teal',
+  'blue',
+  'purple',
+  'amber',
+  'orange',
+  'green',
+  'slate',
+  'rose',
+] as const;
+
 export const createAppointmentSchema = z.object({
   patientId: z.string().min(1),
   // Omitted: defaults to the patient's primary Client (see AppointmentsService).
@@ -15,6 +26,7 @@ export const createAppointmentSchema = z.object({
     .max(24 * 60)
     .optional(),
   assignedProviderId: z.string().min(1).optional(),
+  colorKey: z.enum(APPOINTMENT_COLOR_KEYS).optional(),
 });
 
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;

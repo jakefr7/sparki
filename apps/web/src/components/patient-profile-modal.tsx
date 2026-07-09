@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
-import { enumLabel } from '../lib/format';
+import { visitStateLabel } from '../lib/format';
 import { appointmentTypeLabel, SEX_OPTIONS, SPECIES_OPTIONS } from '../lib/patient-types';
 
 /** Everything the modal needs to render the patient profile workspace.
@@ -194,7 +195,7 @@ function QuickActions({
         </button>
       )}
       <Link href="/patients/new" className="button-secondary">
-        New Intake
+        New Visit
       </Link>
       {medicalRecordHref ? (
         <Link href={medicalRecordHref} className="button-secondary">
@@ -258,7 +259,7 @@ function OverviewTab({
         {patient.activeVisit ? (
           <>
             <strong className="patient-profile-modal-card__title">
-              {enumLabel(patient.activeVisit.state)}
+              {visitStateLabel(patient.activeVisit.state)}
             </strong>
             <span className="patient-profile-modal-card__line">{patient.activeVisit.reason}</span>
           </>
@@ -451,7 +452,7 @@ function EditProfileForm({
     const clientEmail = form.clientEmail.trim();
 
     if (!patientName) {
-      setError('Pet name is required.');
+      setError('Pet first name is required.');
       return;
     }
     if (!species) {
@@ -522,7 +523,7 @@ function EditProfileForm({
     <form className="front-desk-form patient-profile-modal-edit-form" onSubmit={handleSubmit}>
       <div className="front-desk-grid">
         <label>
-          Pet name
+          Pet first name
           <input
             value={form.patientName}
             onChange={(event) => updateField('patientName', event.target.value)}
@@ -641,6 +642,8 @@ export function PatientProfileModal({
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileTab>('overview');
   const [isEditing, setIsEditing] = useState(false);
+
+  useLockBodyScroll(Boolean(patient));
 
   useEffect(() => {
     if (!patient) return;

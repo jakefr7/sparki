@@ -4,13 +4,18 @@ import {
   StartAppointmentVisitButton,
   StartWalkInVisitForm,
 } from '../../../components/start-visit-actions';
-import { PetPhotoPlaceholder } from '../../../components/pet-photo-placeholder';
+import { BackButton } from '../../../components/back-button';
+import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
+import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
+import { PatientPhotoActions } from '../../../components/patient-photo-actions';
 import { env } from '../../../lib/env';
-import { enumLabel, formatAge } from '../../../lib/format';
+import { appointmentStatusLabel, formatAge, visitStateLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
+  formatClientAddress,
   type PatientWorkspace,
+  type RecentVisitSummary,
 } from '../../../lib/patient-types';
 
 async function getWorkspace(id: string): Promise<PatientWorkspace | null> {
@@ -36,6 +41,40 @@ function appointmentTime(value: string) {
   });
 }
 
+function visitDate(value: string) {
+  return new Date(value).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function fullDate(value: string) {
+  return new Date(value).toLocaleDateString([], {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function doctorLabel(visit: RecentVisitSummary): string {
+  return visit.primaryVeterinarian
+    ? `Dr. ${visit.primaryVeterinarian.firstName} ${visit.primaryVeterinarian.lastName}`
+    : 'Unassigned';
+}
+
+function patientDobLine(dateOfBirth: string | null, estimatedAge: string | null): string {
+  const age = formatAge(dateOfBirth) || estimatedAge;
+  if (dateOfBirth && age) return `${age} · DOB ${fullDate(dateOfBirth)}`;
+  if (dateOfBirth) return `DOB ${fullDate(dateOfBirth)}`;
+  return age ?? 'Age not captured';
+}
+
+function displayValue(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export default async function PatientWorkspacePage({
   params,
 }: {
@@ -47,38 +86,65 @@ export default async function PatientWorkspacePage({
     notFound();
   }
 
-  const { patient, clients, upcomingAppointments, sections } = workspace;
+  const { patient, clients, upcomingAppointments, recentVisits, sections } = workspace;
   const primaryClient = clients.find((client) => client.isPrimary);
   const secondaryClients = clients.filter((client) => !client.isPrimary);
   const currentVisit = sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
+  const medications = sections.medications.status === 'available' ? sections.medications : null;
   const nextAppointment = upcomingAppointments[0] ?? null;
-  const identityLine = [
-    patient.species,
-    patient.breed,
-    patient.sex,
-    formatAge(patient.dateOfBirth),
-    patient.color,
-    patient.weight ? `${patient.weight} lb` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const ageLine = patientDobLine(patient.dateOfBirth, patient.estimatedAge);
+  const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
+  const patientDetails = [
+    { label: 'Species', value: patient.species },
+    { label: 'Breed', value: patient.breed },
+    { label: 'Sex', value: patient.sex },
+    { label: 'Age / DOB', value: ageLine },
+    { label: 'Coat', value: patient.color },
+  ].filter((item) => displayValue(item.value));
+  const ownerContactDetails = primaryClient
+    ? [
+        { label: 'Owner name', value: clientDisplayName(primaryClient) },
+        { label: 'Cell phone', value: primaryClient.phone },
+        { label: 'Home/work phone', value: primaryClient.alternatePhone },
+        { label: 'Email', value: primaryClient.email },
+        { label: 'Address', value: ownerAddress },
+        { label: 'Preference', value: primaryClient.preferredContactMethod },
+      ].filter((item) => displayValue(item.value))
+    : [];
+  const ownerStructuredDetails = primaryClient
+    ? [
+        { label: 'Address line 1', value: primaryClient.addressLine1 },
+        { label: 'Address line 2', value: primaryClient.addressLine2 },
+        { label: 'City', value: primaryClient.city },
+        { label: 'State', value: primaryClient.state },
+        { label: 'ZIP/postal code', value: primaryClient.postalCode },
+        { label: 'Country', value: primaryClient.country },
+      ].filter((item) => displayValue(item.value))
+    : [];
 
   return (
     <main className="page page--wide patient-profile-hub">
-      <Link href="/patients" className="back-link">
-        Back to Patients / Clients
-      </Link>
+      <BackButton fallbackHref="/patients" label="Back to previous page" />
 
       <header className="patient-profile-hero">
-        <PetPhotoPlaceholder
+        <PatientPhotoActions
+          patientId={patient.id}
           name={patient.name}
           species={patient.species}
-          className="pet-photo-placeholder patient-profile-photo"
+          imageUrl={patient.imageUrl}
         />
         <div className="patient-profile-hero__identity">
           <p className="eyebrow">Patient Profile</p>
           <h1>{patient.name}</h1>
-          <p>{identityLine || 'Patient details not yet captured'}</p>
+          {primaryClient && <p className="patient-profile-hero__owner">Owner: {clientDisplayName(primaryClient)}</p>}
+          <dl className="patient-profile-hero__details">
+            {patientDetails.map((item) => (
+              <div key={item.label}>
+                <dt>{item.label}</dt>
+                <dd>{item.value}</dd>
+              </div>
+            ))}
+          </dl>
           <div className="patient-profile-hero__badges">
             <span className={`patient-status patient-status--${patient.status.toLowerCase()}`}>
               {patient.status}
@@ -90,18 +156,46 @@ export default async function PatientWorkspacePage({
           </div>
         </div>
         <div className="patient-profile-actions" aria-label="Patient quick actions">
-          <Link href="/patients/new" className="button-secondary">
-            New Intake
-          </Link>
           {currentVisit ? (
             <Link href={`/visits/${currentVisit.id}`} className="button-primary">
-              New Medical Record
+              Open New Visit
             </Link>
           ) : (
-            <button type="button" className="button-secondary" disabled>
-              New Medical Record
-            </button>
+            <a href="#active-visit-heading" className="button-primary">
+              Start New Visit
+            </a>
           )}
+          <PatientProfileEditPanel
+            patient={{
+              id: patient.id,
+              name: patient.name,
+              species: patient.species,
+              breed: patient.breed,
+              sex: patient.sex,
+              dateOfBirth: patient.dateOfBirth,
+              estimatedAge: patient.estimatedAge,
+              color: patient.color,
+              imageUrl: patient.imageUrl,
+            }}
+            primaryClient={
+              primaryClient
+                ? {
+                    id: primaryClient.id,
+                    firstName: primaryClient.firstName,
+                    lastName: primaryClient.lastName,
+                    phone: primaryClient.phone,
+                    alternatePhone: primaryClient.alternatePhone,
+                    email: primaryClient.email,
+                    addressLine1: primaryClient.addressLine1,
+                    addressLine2: primaryClient.addressLine2,
+                    city: primaryClient.city,
+                    state: primaryClient.state,
+                    postalCode: primaryClient.postalCode,
+                    country: primaryClient.country,
+                  }
+                : null
+            }
+          />
           <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
             Set Appointment
           </Link>
@@ -110,112 +204,316 @@ export default async function PatientWorkspacePage({
               appointmentId={nextAppointment.id}
               appointmentState={nextAppointment.state}
               className="button-secondary"
+              label="Start New Visit"
             />
           )}
         </div>
       </header>
 
-      <div className="patient-profile-grid">
-        <section className="profile-card" aria-labelledby="client-info-heading">
-          <div className="profile-card__header">
-            <p className="eyebrow">Relationship</p>
-            <h2 id="client-info-heading">Client Info</h2>
-          </div>
-          {primaryClient ? (
-            <div className="profile-fact-list">
-              <div>
-                <span>Primary client</span>
-                <strong>{clientDisplayName(primaryClient)}</strong>
-              </div>
-              <div>
-                <span>Contact</span>
-                <strong>{primaryClient.phone ?? primaryClient.email ?? 'No contact on file'}</strong>
-              </div>
-              <div>
-                <span>Preference</span>
-                <strong>{primaryClient.preferredContactMethod ?? 'Not set'}</strong>
-              </div>
-            </div>
-          ) : (
-            <p className="empty-state">No client is linked to this patient.</p>
+      <section className="patient-alert-strip" aria-label="Clinical alerts">
+        <div className="patient-alert-strip__item patient-alert-strip__item--medications">
+          <span>Medications</span>
+          <strong>{medications ? medications.notes : 'No active medications on file.'}</strong>
+          {medications && (
+            <Link href={`/visits/${medications.visitId}`}>Updated {visitDate(medications.recordedAt)}</Link>
           )}
-          {secondaryClients.length > 0 && (
-            <div className="profile-secondary-list">
-              {secondaryClients.map((client) => (
-                <span key={client.id}>
-                  {clientDisplayName(client)} · {client.phone ?? client.email ?? 'No contact'}
-                </span>
-              ))}
-            </div>
-          )}
-        </section>
+        </div>
+        <div className="patient-alert-strip__item">
+          <span>Allergies / Alerts</span>
+          <strong>No alerts on file.</strong>
+        </div>
+        <div className="patient-alert-strip__item">
+          <span>Visit status</span>
+          <strong>{currentVisit ? visitStateLabel(currentVisit.state) : 'No active visit.'}</strong>
+          {currentVisit && <Link href={`/visits/${currentVisit.id}`}>Open New Visit</Link>}
+        </div>
+      </section>
 
-        <section className="profile-card" aria-labelledby="upcoming-appointment-heading">
-          <div className="profile-card__header">
-            <p className="eyebrow">Next care moment</p>
-            <h2 id="upcoming-appointment-heading">Upcoming Appointment</h2>
-          </div>
-          {nextAppointment ? (
-            <div className="profile-callout">
-              <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
-              <span>{appointmentTime(nextAppointment.scheduledAt)}</span>
-              <p>{nextAppointment.reason}</p>
-              <span className="status-badge status-badge--scheduled">
-                {enumLabel(nextAppointment.state)}
-              </span>
-            </div>
-          ) : (
-            <div className="profile-empty-action">
-              <p className="empty-state">No upcoming appointment.</p>
-              <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
-                Set Appointment
-              </Link>
-            </div>
-          )}
-        </section>
+      <PatientProfileTabs
+        tabs={[
+          {
+            id: 'overview',
+            label: 'Overview',
+            panel: (
+              <div className="patient-profile-overview">
+                <div className="patient-profile-overview__main">
+                  <section className="profile-card profile-card--accent" aria-labelledby="active-visit-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Today</p>
+                      <h2 id="active-visit-heading">{currentVisit ? 'Active New Visit' : 'Start New Visit'}</h2>
+                    </div>
+                    {currentVisit ? (
+                      <div className="profile-visit-row">
+                        <div>
+                          <strong>{visitStateLabel(currentVisit.state)}</strong>
+                          <span>{currentVisit.reason}</span>
+                          <span>
+                            {currentVisit.visitType}
+                            {currentVisit.client ? ` · ${clientDisplayName(currentVisit.client)}` : ''}
+                          </span>
+                        </div>
+                        <Link href={`/visits/${currentVisit.id}`} className="button-primary">
+                          Open New Visit
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="profile-empty-action">
+                        <p className="empty-state">
+                          {sections.currentVisit.status === 'unavailable'
+                            ? sections.currentVisit.reason
+                            : 'No active visit.'}
+                        </p>
+                        <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
+                      </div>
+                    )}
+                  </section>
 
-        <section className="profile-card profile-card--wide" aria-labelledby="active-visit-heading">
-          <div className="profile-card__header">
-            <p className="eyebrow">Today</p>
-            <h2 id="active-visit-heading">Active Visit</h2>
-          </div>
-          {currentVisit ? (
-            <div className="profile-visit-row">
-              <div>
-                <strong>{enumLabel(currentVisit.state)}</strong>
-                <span>{currentVisit.reason}</span>
-                <span>
-                  {currentVisit.visitType}
-                  {currentVisit.client ? ` · ${clientDisplayName(currentVisit.client)}` : ''}
-                </span>
+                  <section className="profile-card" aria-labelledby="upcoming-appointment-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Next care moment</p>
+                      <h2 id="upcoming-appointment-heading">Upcoming Appointment</h2>
+                    </div>
+                    {nextAppointment ? (
+                      <div className="profile-callout">
+                        <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
+                        <span>{appointmentTime(nextAppointment.scheduledAt)}</span>
+                        <p>{nextAppointment.reason}</p>
+                        <span className="status-badge status-badge--scheduled">
+                          {appointmentStatusLabel(nextAppointment.state)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="profile-empty-action profile-empty-action--inline">
+                        <p className="empty-state">No upcoming appointment.</p>
+                        <Link href={`/patients/${patient.id}/schedule`} className="button-secondary">
+                          Set Appointment
+                        </Link>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="profile-card" aria-labelledby="recent-visits-preview-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Recent care</p>
+                      <h2 id="recent-visits-preview-heading">Recent Visits</h2>
+                    </div>
+                    {recentVisits.length > 0 ? (
+                      <ul className="profile-visit-history profile-visit-history--preview">
+                        {recentVisits.slice(0, 3).map((visit) => (
+                          <li key={visit.id}>
+                            <Link href={`/visits/${visit.id}`} className="profile-visit-history__row">
+                              <span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span>
+                              <span className="profile-visit-history__reason">
+                                <strong>{visit.reason}</strong>
+                                <small>{visit.visitType}</small>
+                              </span>
+                              <span className="status-badge status-badge--scheduled">
+                                {visitStateLabel(visit.state)}
+                              </span>
+                              <span className="profile-visit-history__doctor">{doctorLabel(visit)}</span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="empty-state">No visits yet.</p>
+                    )}
+                  </section>
+                </div>
+
+                <aside className="patient-profile-overview__sidebar">
+                  <section className="profile-card profile-card--compact" aria-labelledby="owner-summary-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Owner</p>
+                      <h2 id="owner-summary-heading">Contact Summary</h2>
+                    </div>
+                    {primaryClient ? (
+                      <dl className="profile-info-list profile-info-list--summary">
+                        {ownerContactDetails.slice(0, 4).map((item) => (
+                          <div key={item.label}>
+                            <dt>{item.label}</dt>
+                            <dd>{item.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <p className="empty-state">No owner is linked to this patient.</p>
+                    )}
+                  </section>
+
+                  <section className="profile-card profile-card--compact" aria-labelledby="care-flags-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Care flags</p>
+                      <h2 id="care-flags-heading">Alerts Summary</h2>
+                    </div>
+                    <div className="profile-compact-empty">
+                      <strong>No alerts on file.</strong>
+                      <span>Allergies, handling notes, and care cautions can be highlighted here when available.</span>
+                    </div>
+                  </section>
+
+                  <section className="profile-card profile-card--compact" aria-labelledby="profile-quick-actions-heading">
+                    <div className="profile-card__header">
+                      <p className="eyebrow">Shortcuts</p>
+                      <h2 id="profile-quick-actions-heading">Quick Actions</h2>
+                    </div>
+                    <div className="profile-quick-actions">
+                      <a href="#active-visit-heading">Start New Visit</a>
+                      <Link href={`/patients/${patient.id}/schedule`}>Set Appointment</Link>
+                    </div>
+                  </section>
+                </aside>
               </div>
-              <Link href={`/visits/${currentVisit.id}`} className="button-primary">
-                Resume Visit
-              </Link>
-            </div>
-          ) : (
-            <div className="profile-empty-action">
-              <p className="empty-state">
-                {sections.currentVisit.status === 'unavailable'
-                  ? sections.currentVisit.reason
-                  : 'No active visit.'}
-              </p>
-              <StartWalkInVisitForm patientId={patient.id} compact />
-            </div>
-          )}
-        </section>
-
-        <section className="profile-card profile-card--wide" aria-labelledby="visit-history-heading">
-          <div className="profile-card__header">
-            <p className="eyebrow">Clinical context</p>
-            <h2 id="visit-history-heading">Visit History</h2>
-          </div>
-          <div className="profile-history-placeholder">
-            <strong>Visit history skeleton</strong>
-            <p>{sections.timeline.reason}</p>
-          </div>
-        </section>
-      </div>
+            ),
+          },
+          {
+            id: 'records',
+            label: 'Records',
+            panel: (
+              <div className="patient-tab-grid patient-tab-grid--records">
+                <section className="profile-card profile-card--wide" aria-labelledby="medical-record-summary-heading">
+                  <div className="profile-card__header">
+                    <p className="eyebrow">Medical notes</p>
+                    <h2 id="medical-record-summary-heading">Medical Record Summary</h2>
+                  </div>
+                  <div className="profile-records-empty">
+                    <strong>No medical records have been added for this patient yet.</strong>
+                    <p>
+                      Ready for New Visit details, exam findings, and treatment plans as clinical notes are recorded.
+                    </p>
+                  </div>
+                </section>
+                <section className="profile-records-readiness" aria-label="Record sections">
+                  {[
+                    ['New Visit details', 'Ready to show notes captured during a visit.'],
+                    ['Exam findings', 'Ready for exam notes.'],
+                    ['Treatment plan', 'Ready for care plans and follow-up notes.'],
+                  ].map(([title, copy]) => (
+                    <div key={title}>
+                      <span>{title}</span>
+                      <p>{copy}</p>
+                    </div>
+                  ))}
+                </section>
+              </div>
+            ),
+          },
+          {
+            id: 'visits',
+            label: 'Visits',
+            panel: (
+              <section className="profile-card profile-card--wide" aria-labelledby="visit-history-heading">
+                <div className="profile-card__header">
+                  <p className="eyebrow">Timeline</p>
+                  <h2 id="visit-history-heading">Visit History</h2>
+                </div>
+                {recentVisits.length > 0 ? (
+                  <ul className="profile-visit-history">
+                    {recentVisits.map((visit) => (
+                      <li key={visit.id}>
+                        <Link href={`/visits/${visit.id}`} className="profile-visit-history__row">
+                          <span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span>
+                          <span className="profile-visit-history__reason">
+                            <strong>{visit.reason}</strong>
+                            <small>{visit.visitType}</small>
+                          </span>
+                          <span className="status-badge status-badge--scheduled">{visitStateLabel(visit.state)}</span>
+                          <span className="profile-visit-history__doctor">{doctorLabel(visit)}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="profile-empty-action">
+                    <p className="empty-state">No visits yet.</p>
+                    <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
+                  </div>
+                )}
+              </section>
+            ),
+          },
+          {
+            id: 'medications',
+            label: 'Medications',
+            panel: (
+              <section className="profile-card profile-card--wide profile-card--medications" aria-labelledby="medications-heading">
+                <div className="profile-card__header">
+                  <p className="eyebrow">Medication profile</p>
+                  <h2 id="medications-heading">Medications</h2>
+                </div>
+                {medications ? (
+                  <div className="profile-medications">
+                    <div className="profile-medications__row">
+                      <strong>{medications.notes}</strong>
+                      <span>
+                        Active · Last updated {visitDate(medications.recordedAt)} ·{' '}
+                        <Link href={`/visits/${medications.visitId}`}>View visit</Link>
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="profile-medications profile-medications--empty">
+                    <p>No active medications on file.</p>
+                    <span>Use New Visit details to capture medication and allergy notes.</span>
+                  </div>
+                )}
+              </section>
+            ),
+          },
+          {
+            id: 'owner',
+            label: 'Owner Info',
+            panel: (
+              <section className="profile-card profile-card--wide" aria-labelledby="owner-info-heading">
+                <div className="profile-card__header">
+                  <p className="eyebrow">Owner / Contact</p>
+                  <h2 id="owner-info-heading">Owner Info</h2>
+                </div>
+                {primaryClient ? (
+                  <>
+                    <dl className="profile-info-list profile-info-list--owner">
+                      {ownerContactDetails.map((item) => (
+                        <div key={item.label}>
+                          <dt>{item.label}</dt>
+                          <dd>{item.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {ownerStructuredDetails.length > 0 && (
+                      <>
+                        <hr className="profile-section-divider" />
+                        <div className="profile-card__header profile-card__header--subtle">
+                          <p className="eyebrow">Structured address</p>
+                          <h3>Address Details</h3>
+                        </div>
+                        <dl className="profile-info-list profile-info-list--owner">
+                          {ownerStructuredDetails.map((item) => (
+                            <div key={item.label}>
+                              <dt>{item.label}</dt>
+                              <dd>{item.value}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <p className="empty-state">No owner is linked to this patient.</p>
+                )}
+                {secondaryClients.length > 0 && (
+                  <div className="profile-secondary-list">
+                    {secondaryClients.map((client) => (
+                      <span key={client.id}>
+                        {clientDisplayName(client)} · {client.phone ?? client.email ?? 'No contact'}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ),
+          },
+        ]}
+      />
     </main>
   );
 }

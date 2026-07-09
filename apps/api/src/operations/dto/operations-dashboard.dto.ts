@@ -23,6 +23,7 @@ export interface DashboardAppointmentSummary {
   state: string;
   scheduledAt: Date;
   expectedDurationMinutes: number | null;
+  colorKey: string | null;
   patient: DashboardPatientSummary | null;
   client: DashboardClientSummary | null;
   provider: DashboardPersonSummary | null;

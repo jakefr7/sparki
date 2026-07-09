@@ -22,6 +22,13 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // Origin apps/web is served from; the API only accepts browser requests
   // (CORS) from this origin.
   CORS_ORIGIN: z.string().min(1).default('http://localhost:3000'),
+
+  // Address autocomplete (Owner address, Phase 2). Server-side secret key
+  // for the Mapbox Search Box API — never sent to the browser; the web app
+  // only ever talks to this API's own /address/* BFF endpoints (see
+  // AddressService). Optional: autocomplete degrades to "no suggestions"
+  // rather than erroring when unset, so patient creation is never blocked.
+  MAPBOX_ACCESS_TOKEN: z.string().optional(),
 });
 
 /** Variables only apps/web needs. */

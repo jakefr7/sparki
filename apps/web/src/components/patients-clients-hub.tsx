@@ -1,18 +1,19 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { DashboardCard, DashboardShell } from './dashboard-shell';
 import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
-import {
-  PatientProfileModal,
-  type PatientProfileData,
-  type PatientProfileEditPatch,
-} from './patient-profile-modal';
+// PatientProfileModal (the quick-card popup preview) is intentionally not
+// wired up anymore — clicking a card now navigates straight to the full
+// Patient Profile page instead. The component is left in place in
+// patient-profile-modal.tsx in case the popup gets reintroduced later.
+import type { PatientProfileData } from './patient-profile-modal';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { formatAge } from '../lib/format';
 import { clientDisplayName, type PatientSearchResult } from '../lib/patient-types';
 
-const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
 const DEBOUNCE_MS = 150;
 
 /** Pure identity/contact info only — no visit state, appointment state, or
@@ -26,6 +27,7 @@ interface DirectoryPatient {
   sex?: string | null | undefined;
   age?: string | null | undefined;
   dateOfBirth?: string | null | undefined;
+  imageUrl?: string | null | undefined;
   clientId?: string | null | undefined;
   clientName: string;
   clientFirstName?: string | null | undefined;
@@ -35,206 +37,7 @@ interface DirectoryPatient {
   clientEmail?: string | null | undefined;
   nextAppointment?: PatientProfileData['nextAppointment'];
   activeVisit?: PatientProfileData['activeVisit'];
-  /** Dev-only fixture with no real backend record — the schedule link
-   *  degrades to a disabled action instead of hitting a 404, and editing
-   *  is disabled too since there's no patient/client id to PATCH. */
-  isFallback: boolean;
 }
-
-const DEV_DIRECTORY_PATIENTS: DirectoryPatient[] = [
-  {
-    id: 'dev-bella',
-    patientName: 'Bella',
-    species: 'Dog',
-    breed: 'Golden Retriever',
-    clientName: 'Sarah Johnson',
-    isFallback: true,
-  },
-  {
-    id: 'dev-max',
-    patientName: 'Max',
-    species: 'Cat',
-    breed: 'Domestic Shorthair',
-    clientName: 'Michael Lee',
-    isFallback: true,
-  },
-  {
-    id: 'dev-luna',
-    patientName: 'Luna',
-    species: 'Dog',
-    breed: 'Border Collie',
-    clientName: 'Emily Davis',
-    isFallback: true,
-  },
-  {
-    id: 'dev-cooper',
-    patientName: 'Cooper',
-    species: 'Dog',
-    breed: 'English Bulldog',
-    clientName: 'David Wilson',
-    isFallback: true,
-  },
-  {
-    id: 'dev-charlie',
-    patientName: 'Charlie',
-    species: 'Dog',
-    breed: 'Labrador Retriever',
-    clientName: 'Jessica Martinez',
-    isFallback: true,
-  },
-  {
-    id: 'dev-penny',
-    patientName: 'Penny',
-    species: 'Cat',
-    breed: 'Siamese',
-    clientName: 'Robert Chen',
-    isFallback: true,
-  },
-  {
-    id: 'dev-rocky',
-    patientName: 'Rocky',
-    species: 'Dog',
-    breed: 'German Shepherd',
-    clientName: 'Amanda Torres',
-    isFallback: true,
-  },
-  {
-    id: 'dev-jasper',
-    patientName: 'Jasper',
-    species: 'Cat',
-    breed: 'Maine Coon',
-    clientName: 'Kevin Park',
-    isFallback: true,
-  },
-  {
-    id: 'dev-sadie',
-    patientName: 'Sadie',
-    species: 'Dog',
-    breed: 'Beagle',
-    clientName: 'Laura Bennett',
-    isFallback: true,
-  },
-  {
-    id: 'dev-oliver',
-    patientName: 'Oliver',
-    species: 'Cat',
-    breed: 'British Shorthair',
-    clientName: 'Daniel Kim',
-    isFallback: true,
-  },
-  {
-    id: 'dev-buddy',
-    patientName: 'Buddy',
-    species: 'Dog',
-    breed: 'Boxer',
-    clientName: 'Rachel Green',
-    isFallback: true,
-  },
-  {
-    id: 'dev-chloe',
-    patientName: 'Chloe',
-    species: 'Cat',
-    breed: 'Ragdoll',
-    clientName: 'Thomas Nguyen',
-    isFallback: true,
-  },
-  {
-    id: 'dev-zeus',
-    patientName: 'Zeus',
-    species: 'Dog',
-    breed: 'Rottweiler',
-    clientName: 'Melissa Scott',
-    isFallback: true,
-  },
-  {
-    id: 'dev-lily',
-    patientName: 'Lily',
-    species: 'Cat',
-    breed: 'Persian',
-    clientName: 'Brian Foster',
-    isFallback: true,
-  },
-  {
-    id: 'dev-duke',
-    patientName: 'Duke',
-    species: 'Dog',
-    breed: 'Great Dane',
-    clientName: 'Nicole Adams',
-    isFallback: true,
-  },
-  {
-    id: 'dev-sophie',
-    patientName: 'Sophie',
-    species: 'Cat',
-    breed: 'Russian Blue',
-    clientName: 'James Whitfield',
-    isFallback: true,
-  },
-  {
-    id: 'dev-bear',
-    patientName: 'Bear',
-    species: 'Dog',
-    breed: 'Bernese Mountain Dog',
-    clientName: 'Christina Ruiz',
-    isFallback: true,
-  },
-  {
-    id: 'dev-nala',
-    patientName: 'Nala',
-    species: 'Cat',
-    breed: 'Bengal',
-    clientName: 'Marcus Bell',
-    isFallback: true,
-  },
-  {
-    id: 'dev-tucker',
-    patientName: 'Tucker',
-    species: 'Dog',
-    breed: 'Australian Shepherd',
-    clientName: 'Karen Ortiz',
-    isFallback: true,
-  },
-  {
-    id: 'dev-mia',
-    patientName: 'Mia',
-    species: 'Cat',
-    breed: 'Sphynx',
-    clientName: 'Steven Baker',
-    isFallback: true,
-  },
-  {
-    id: 'dev-winston',
-    patientName: 'Winston',
-    species: 'Dog',
-    breed: 'Bulldog',
-    clientName: 'Diane Sullivan',
-    isFallback: true,
-  },
-  {
-    id: 'dev-ginger',
-    patientName: 'Ginger',
-    species: 'Cat',
-    breed: 'Abyssinian',
-    clientName: 'Patrick Reyes',
-    isFallback: true,
-  },
-  {
-    id: 'dev-rusty',
-    patientName: 'Rusty',
-    species: 'Dog',
-    breed: 'Dachshund',
-    clientName: 'Heather Collins',
-    isFallback: true,
-  },
-  {
-    id: 'dev-willow',
-    patientName: 'Willow',
-    species: 'Cat',
-    breed: 'Norwegian Forest Cat',
-    clientName: 'Gregory Hayes',
-    isFallback: true,
-  },
-];
 
 function searchResultToDirectoryPatient(result: PatientSearchResult): DirectoryPatient {
   return {
@@ -245,6 +48,7 @@ function searchResultToDirectoryPatient(result: PatientSearchResult): DirectoryP
     sex: result.sex,
     age: formatAge(result.dateOfBirth, 'short'),
     dateOfBirth: result.dateOfBirth,
+    imageUrl: result.imageUrl,
     clientId: result.primaryClient?.id ?? null,
     clientName: result.primaryClient ? clientDisplayName(result.primaryClient) : 'Client not linked',
     clientFirstName: result.primaryClient?.firstName ?? null,
@@ -266,7 +70,6 @@ function searchResultToDirectoryPatient(result: PatientSearchResult): DirectoryP
           reason: result.activeVisit.reason,
         }
       : null,
-    isFallback: false,
   };
 }
 
@@ -280,6 +83,7 @@ function newPatientResultToSearchResult(result: NewPatientCreationResult): Patie
     dateOfBirth: result.dateOfBirth,
     weight: null,
     color: null,
+    imageUrl: result.imageUrl,
     status: 'Active',
     primaryClient: {
       id: result.clientId,
@@ -294,51 +98,27 @@ function newPatientResultToSearchResult(result: NewPatientCreationResult): Patie
   };
 }
 
-function directoryPatientToProfile(patient: DirectoryPatient): PatientProfileData {
-  return {
-    id: patient.id,
-    patientName: patient.patientName,
-    species: patient.species,
-    breed: patient.breed,
-    sex: patient.sex,
-    age: patient.age,
-    dateOfBirth: patient.dateOfBirth,
-    clientId: patient.clientId,
-    clientName: patient.clientName,
-    clientFirstName: patient.clientFirstName,
-    clientLastName: patient.clientLastName,
-    clientPhone: patient.clientPhone,
-    clientEmail: patient.clientEmail,
-    nextAppointment: patient.nextAppointment,
-    activeVisit: patient.activeVisit,
-    scheduleHref: patient.isFallback ? undefined : `/patients/${patient.id}/schedule`,
-    editable: !patient.isFallback,
-  };
-}
-
-function PatientDirectoryCard({
-  patient,
-  onOpen,
-}: {
-  patient: DirectoryPatient;
-  onOpen: (patient: DirectoryPatient) => void;
-}) {
+function PatientDirectoryCardBody({ patient }: { patient: DirectoryPatient }) {
   const details = [patient.species, patient.breed, patient.sex, patient.age]
     .filter((part): part is string => Boolean(part))
     .join(' · ');
 
   return (
-    <button
-      type="button"
-      className="patient-directory-card"
-      aria-label={`Preview ${patient.patientName}'s profile`}
-      onClick={() => onOpen(patient)}
-    >
-      <PetPhotoPlaceholder
-        name={patient.patientName}
-        species={patient.species}
-        className="pet-photo-placeholder patient-directory-card__avatar"
-      />
+    <>
+      {patient.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={patient.imageUrl}
+          alt={patient.patientName}
+          className="pet-photo-placeholder patient-directory-card__avatar"
+        />
+      ) : (
+        <PetPhotoPlaceholder
+          name={patient.patientName}
+          species={patient.species}
+          className="pet-photo-placeholder patient-directory-card__avatar"
+        />
+      )}
       <div className="patient-directory-card__body">
         <strong>{patient.patientName}</strong>
         {details && <span className="patient-directory-card__details">{details}</span>}
@@ -347,14 +127,28 @@ function PatientDirectoryCard({
           <span className="patient-directory-card__contact">{patient.clientContact}</span>
         )}
       </div>
-    </button>
+    </>
+  );
+}
+
+/** Quick-card is a lightweight preview only — clicking it navigates
+ *  straight to the full Patient Profile page (/patients/[id]). No popup. */
+function PatientDirectoryCard({ patient }: { patient: DirectoryPatient }) {
+  return (
+    <Link
+      href={`/patients/${patient.id}`}
+      className="patient-directory-card"
+      aria-label={`Open ${patient.patientName}'s profile`}
+    >
+      <PatientDirectoryCardBody patient={patient} />
+    </Link>
   );
 }
 
 function PatientDirectoryEmptyState({ hasQuery }: { hasQuery: boolean }) {
   return (
     <div className="patient-directory-empty">
-      <p>{hasQuery ? 'No matching patients or clients found.' : 'No patients found yet.'}</p>
+      <p>{hasQuery ? 'No matching patients or clients found.' : 'No patients yet — create one to get started.'}</p>
     </div>
   );
 }
@@ -408,12 +202,39 @@ function PatientDirectoryQuickActions({ onNewPatient }: { onNewPatient: () => vo
 }
 
 export function PatientsDirectoryPage() {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<DirectoryPatient | null>(null);
+  // Plain directory listing (GET /api/patients, no query) — what the tab
+  // shows before the user types a search, so it's never empty just because
+  // nobody's searched yet.
+  const [listing, setListing] = useState<PatientSearchResult[]>([]);
+  const [listingLoading, setListingLoading] = useState(true);
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+
+  const loadListing = useMemo(
+    () => (signal: AbortSignal) => {
+      setListingLoading(true);
+      return fetch('/api/patients?limit=50', { signal })
+        .then((response) => response.json() as Promise<PatientSearchResult[]>)
+        .then((data) => setListing(data))
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === 'AbortError')) {
+            setListing([]);
+          }
+        })
+        .finally(() => setListingLoading(false));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadListing(controller.signal);
+    return () => controller.abort();
+  }, [loadListing]);
 
   // Directory search reuses the existing /api/patients/search proxy (same
   // one PatientSearch uses) rather than standing up a new backend endpoint.
@@ -451,73 +272,38 @@ export function PatientsDirectoryPage() {
     };
   }, [query]);
 
-  const directoryPatients = useMemo(() => {
+  const baseDirectoryPatients = useMemo(() => {
     if (hasSearched) return results.map(searchResultToDirectoryPatient);
-    return SHOW_DEV_FALLBACK_ROWS ? DEV_DIRECTORY_PATIENTS : [];
-  }, [hasSearched, results]);
-
-  // Memoized so the modal only sees a new object identity when the selected
-  // patient actually changes, not on every unrelated re-render (e.g. typing
-  // in search) — that identity drives its focus-management effect.
-  const profileData = useMemo(
-    () => (selectedPatient ? directoryPatientToProfile(selectedPatient) : null),
-    [selectedPatient],
-  );
+    return listing.map(searchResultToDirectoryPatient);
+  }, [hasSearched, results, listing]);
 
   const trimmedQuery = query.trim();
+  const isLoading = hasSearched ? loading : listingLoading;
 
-  function handlePatientSaved(patch: PatientProfileEditPatch) {
-    setSelectedPatient((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        patientName: patch.patientName,
-        species: patch.species,
-        breed: patch.breed,
-        sex: patch.sex,
-        age: formatAge(patch.dateOfBirth, 'short'),
-        dateOfBirth: patch.dateOfBirth,
-        clientFirstName: patch.clientFirstName,
-        clientLastName: patch.clientLastName,
-        clientName: current.clientId ? `${patch.clientFirstName} ${patch.clientLastName}` : current.clientName,
-        clientContact: patch.clientPhone ?? patch.clientEmail ?? null,
-        clientPhone: patch.clientPhone,
-        clientEmail: patch.clientEmail,
-      };
-    });
-
-    setResults((current) =>
-      current.map((result) => {
-        if (result.id !== selectedPatient?.id) return result;
-        return {
-          ...result,
-          name: patch.patientName,
-          species: patch.species ?? result.species,
-          breed: patch.breed,
-          sex: patch.sex,
-          dateOfBirth: patch.dateOfBirth,
-          primaryClient: result.primaryClient
-            ? {
-                ...result.primaryClient,
-                firstName: patch.clientFirstName,
-                lastName: patch.clientLastName,
-                phone: patch.clientPhone,
-                email: patch.clientEmail,
-              }
-            : result.primaryClient,
-        };
-      }),
+  // Instant visual filtering over whatever's already loaded (the last
+  // server response), so the grid narrows on every keystroke rather than
+  // waiting on the debounced server round-trip above. The debounced fetch
+  // still runs and replaces `results` with authoritative data once it lands.
+  const directoryPatients = useMemo(() => {
+    if (!trimmedQuery) return baseDirectoryPatients;
+    const needle = trimmedQuery.toLowerCase();
+    return baseDirectoryPatients.filter(
+      (patient) =>
+        patient.patientName.toLowerCase().includes(needle) ||
+        patient.clientName.toLowerCase().includes(needle) ||
+        (patient.clientContact?.toLowerCase().includes(needle) ?? false),
     );
-  }
+  }, [baseDirectoryPatients, trimmedQuery]);
 
   function handlePatientCreated(result: NewPatientCreationResult) {
-    setResults((current) => [newPatientResultToSearchResult(result), ...current]);
-    setHasSearched(true);
+    // Show the new patient immediately in the default (no-query) listing —
+    // no need to force the user into a "search results" view for it.
+    setListing((current) => [newPatientResultToSearchResult(result), ...current]);
   }
 
   function handleOpenCreatedProfile(result: NewPatientCreationResult) {
-    setSelectedPatient(searchResultToDirectoryPatient(newPatientResultToSearchResult(result)));
     setIsNewPatientModalOpen(false);
+    router.push(`/patients/${result.id}`);
   }
 
   return (
@@ -540,23 +326,18 @@ export function PatientsDirectoryPage() {
             </h2>
           </div>
         </div>
-        {loading ? (
-          <p className="patient-search__status">Searching…</p>
+        {isLoading ? (
+          <p className="patient-search__status">{hasSearched ? 'Searching…' : 'Loading patients…'}</p>
         ) : directoryPatients.length > 0 ? (
           <div className="patient-directory-grid">
             {directoryPatients.map((patient) => (
-              <PatientDirectoryCard key={patient.id} patient={patient} onOpen={setSelectedPatient} />
+              <PatientDirectoryCard key={patient.id} patient={patient} />
             ))}
           </div>
         ) : (
           <PatientDirectoryEmptyState hasQuery={hasSearched} />
         )}
       </DashboardCard>
-      <PatientProfileModal
-        patient={profileData}
-        onClose={() => setSelectedPatient(null)}
-        onSaved={handlePatientSaved}
-      />
       <NewPatientModal
         open={isNewPatientModalOpen}
         onClose={() => setIsNewPatientModalOpen(false)}

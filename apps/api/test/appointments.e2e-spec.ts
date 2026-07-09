@@ -133,6 +133,7 @@ describe('Appointments (e2e)', () => {
         source: 'Phone',
         state: 'Scheduled',
         expectedDurationMinutes: 30,
+        colorKey: 'teal',
         createdById: DEV_USER_ID,
       });
       expect(new Date(response.body.scheduledAt).toISOString()).toBe('2027-01-15T15:00:00.000Z');
@@ -162,6 +163,31 @@ describe('Appointments (e2e)', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.providerId).toBe(DEV_USER_ID);
+    });
+
+    it('persists a valid appointment calendar color override', async () => {
+      const response = await request(app.getHttpServer()).post('/appointments').send({
+        patientId,
+        appointmentType: 'EmergencyUrgent',
+        visitReason: 'Same-day urgent visit',
+        startTime: '2027-01-17T18:00:00.000Z',
+        colorKey: 'rose',
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.colorKey).toBe('rose');
+    });
+
+    it('rejects an invalid appointment calendar color with 400', async () => {
+      const response = await request(app.getHttpServer()).post('/appointments').send({
+        patientId,
+        appointmentType: 'WellnessPreventiveCare',
+        visitReason: 'Annual checkup',
+        startTime: '2027-01-17T19:00:00.000Z',
+        colorKey: '#ff00ff',
+      });
+
+      expect(response.status).toBe(400);
     });
 
     it('rejects an invalid appointmentType with 400', async () => {

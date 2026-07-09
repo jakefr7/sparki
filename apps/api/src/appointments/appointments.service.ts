@@ -10,6 +10,7 @@ import type {
   CreateAppointmentInput,
   LinkAppointmentPatientInput,
 } from './dto/create-appointment.schema';
+import { APPOINTMENT_COLOR_KEYS } from './dto/create-appointment.schema';
 
 /**
  * This slice creates appointments directly as committed bookings from
@@ -27,6 +28,22 @@ const DEFAULT_STATE: AppointmentState = 'Scheduled';
 const DEFAULT_SOURCE: AppointmentSource = 'Phone';
 
 const UPCOMING_EXCLUDED_STATES: AppointmentState[] = ['Cancelled', 'NoShow', 'Completed'];
+
+type AppointmentColorKey = (typeof APPOINTMENT_COLOR_KEYS)[number];
+
+const DEFAULT_COLOR_BY_APPOINTMENT_TYPE: Record<CreateAppointmentInput['appointmentType'], AppointmentColorKey> = {
+  WellnessPreventiveCare: 'teal',
+  SickVisit: 'blue',
+  Recheck: 'green',
+  TechnicianAppointment: 'amber',
+  Vaccination: 'teal',
+  SurgeryProcedure: 'purple',
+  DropOff: 'slate',
+  EmergencyUrgent: 'orange',
+  Telemedicine: 'blue',
+  Euthanasia: 'rose',
+  BoardingNonMedical: 'slate',
+};
 
 /** [start of day, start of next day) in local server time, for "today" queries. */
 function dayBoundsFor(date: Date): { start: Date; end: Date } {
@@ -99,6 +116,7 @@ export class AppointmentsService {
         state: DEFAULT_STATE,
         scheduledAt: input.startTime,
         expectedDurationMinutes: input.expectedDurationMinutes ?? null,
+        colorKey: input.colorKey ?? DEFAULT_COLOR_BY_APPOINTMENT_TYPE[input.appointmentType],
         providerId: input.assignedProviderId ?? null,
         createdById,
       },

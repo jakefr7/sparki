@@ -53,4 +53,23 @@ describe('createPatientSchema', () => {
     const result = createPatientSchema.safeParse({ ...base, clients: [] });
     expect(result.success).toBe(false);
   });
+
+  it('accepts estimatedAge and imageUrl', () => {
+    const result = createPatientSchema.safeParse({
+      ...base,
+      estimatedAge: '~3 years',
+      imageUrl: 'https://example.com/pet.jpg',
+      clients: [{ clientId: 'client_1', isPrimary: true }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-URL imageUrl', () => {
+    const result = createPatientSchema.safeParse({
+      ...base,
+      imageUrl: 'not-a-url',
+      clients: [{ clientId: 'client_1', isPrimary: true }],
+    });
+    expect(result.success).toBe(false);
+  });
 });

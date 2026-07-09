@@ -18,6 +18,7 @@ export interface PatientSearchResult {
   dateOfBirth: string | null;
   weight: number | null;
   color: string | null;
+  imageUrl: string | null;
   status: string;
   primaryClient: PrimaryClientSummary | null;
   activeVisit: {
@@ -42,12 +43,57 @@ export interface WorkspaceClient {
   lastName: string;
   email: string | null;
   phone: string | null;
+  alternatePhone: string | null;
   preferredContactMethod: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+  formattedAddress: string | null;
   isPrimary: boolean;
 }
 
 export function clientDisplayName(client: { firstName: string; lastName: string }): string {
   return `${client.firstName} ${client.lastName}`;
+}
+
+/** One clean display line for a structured address — never shows dangling
+ *  commas/labels for missing parts. Prefers the provider's formattedAddress
+ *  (from autocomplete) and falls back to hand-joining the parts so a
+ *  manually-typed address still displays properly. */
+export function formatClientAddress(client: {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+  formattedAddress: string | null;
+}): string | null {
+  const formattedAddress = client.formattedAddress?.trim();
+  const addressLine1 = client.addressLine1?.trim();
+  const addressLine2 = client.addressLine2?.trim();
+
+  if (formattedAddress) {
+    if (!addressLine2 || formattedAddress.toLowerCase().includes(addressLine2.toLowerCase())) {
+      return formattedAddress;
+    }
+
+    if (addressLine1 && formattedAddress.toLowerCase().startsWith(addressLine1.toLowerCase())) {
+      return `${formattedAddress.slice(0, addressLine1.length)}, ${addressLine2}${formattedAddress.slice(addressLine1.length)}`;
+    }
+
+    return `${formattedAddress}, ${addressLine2}`;
+  }
+
+  const line1 = [addressLine1, addressLine2].filter(Boolean).join(', ');
+  const cityState = [client.city, client.state].filter(Boolean).join(', ');
+  const cityStateZip = [cityState, client.postalCode].filter(Boolean).join(' ');
+  const parts = [line1, cityStateZip, client.country].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(', ') : null;
 }
 
 export interface UnavailableWorkspaceSection {
@@ -79,6 +125,25 @@ export type CurrentVisitSection =
       status: 'available';
       visit: ActiveVisitSummary;
     };
+
+export interface MedicationsSummary {
+  notes: string;
+  recordedAt: string;
+  visitId: string;
+}
+
+export type MedicationsSection =
+  | UnavailableWorkspaceSection
+  | ({ status: 'available' } & MedicationsSummary);
+
+export interface RecentVisitSummary {
+  id: string;
+  visitType: string;
+  reason: string;
+  state: string;
+  createdAt: string;
+  primaryVeterinarian: { id: string; firstName: string; lastName: string } | null;
+}
 
 export interface UpcomingAppointment {
   id: string;
@@ -114,6 +179,7 @@ export interface DashboardAppointmentSummary {
   state: string;
   scheduledAt: string;
   expectedDurationMinutes: number | null;
+  colorKey: string | null;
   patient: DashboardPatientSummary | null;
   client: DashboardClientSummary | null;
   provider: DashboardPersonSummary | null;
@@ -160,18 +226,21 @@ export interface PatientWorkspace {
     breed: string | null;
     sex: string | null;
     dateOfBirth: string | null;
+    estimatedAge: string | null;
     weight: number | null;
     color: string | null;
+    imageUrl: string | null;
     status: string;
     sourceSystem: string | null;
     sourceConfidence: number | null;
   };
   clients: WorkspaceClient[];
   upcomingAppointments: UpcomingAppointment[];
+  recentVisits: RecentVisitSummary[];
   sections: {
     currentVisit: CurrentVisitSection;
+    medications: MedicationsSection;
     workItems: UnavailableWorkspaceSection;
-    timeline: UnavailableWorkspaceSection;
     communication: UnavailableWorkspaceSection;
     financial: UnavailableWorkspaceSection;
     attachments: UnavailableWorkspaceSection;
@@ -297,16 +366,10 @@ export interface StaffMember {
 }
 
 /** Mirrors Clinic Provisioning v1's default species list (Dog, Cat); "Other"
- *  keeps intake unblocked for clinics that see additional species. */
+ *  keeps patient creation unblocked for clinics that see additional species. */
 export const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'] as const;
 
-export const SEX_OPTIONS = [
-  'Male',
-  'Female',
-  'Male (Neutered)',
-  'Female (Spayed)',
-  'Unknown',
-] as const;
+export const SEX_OPTIONS = ['Male', 'Female', 'Spayed Female', 'Neutered Male'] as const;
 
 /** Mirrors Clinic Provisioning v1's communication defaults (Phone default). */
 export const CONTACT_METHOD_OPTIONS = ['Phone', 'Text', 'Email'] as const;

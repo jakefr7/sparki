@@ -1,4 +1,4 @@
-import { VISIT_WORKFLOW_STAGES, visitWorkflowStageIndex } from '../lib/visit-workflow';
+import { VISIT_WORKFLOW_STAGES, visitWorkflowStageIndex, visitWorkflowStageLabel } from '../lib/visit-workflow';
 
 /** Plain function component (no hooks) so it renders identically from the
  *  server-rendered visit page and the client intake panel. */
@@ -23,7 +23,7 @@ export function VisitWorkflowProgress({
             <span className="visit-workflow-step__marker" aria-hidden="true">
               {status === 'done' ? '✓' : status === 'current' ? '●' : '○'}
             </span>
-            <span className="visit-workflow-step__label">{stage}</span>
+            <span className="visit-workflow-step__label">{visitWorkflowStageLabel(stage)}</span>
           </li>
         );
       })}

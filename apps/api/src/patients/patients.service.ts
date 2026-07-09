@@ -29,6 +29,7 @@ export interface PatientSearchResult {
   dateOfBirth: Date | null;
   weight: number | null;
   color: string | null;
+  imageUrl: string | null;
   status: PatientStatus;
   primaryClient: {
     id: string;
@@ -62,17 +63,30 @@ export class PatientsService {
   async create(organizationId: string, input: CreatePatientInput) {
     await this.assertClientsBelongToOrganization(organizationId, input.clients);
 
+    const primaryClientId = input.clients.find((client) => client.isPrimary)!.clientId;
+
     return prisma.$transaction(async (tx) => {
+      // Pet last name is never entered directly — it's inherited from the
+      // primary owner at creation time (Anna: pet last name should be
+      // stored automatically from the owner's last name, not typed in).
+      const primaryClient = await tx.client.findUniqueOrThrow({
+        where: { id: primaryClientId },
+        select: { lastName: true },
+      });
+
       const patient = await tx.patient.create({
         data: {
           organizationId,
           name: input.name,
+          lastName: primaryClient.lastName,
           species: input.species,
           breed: input.breed ?? null,
           sex: input.sex ?? null,
           dateOfBirth: input.dateOfBirth ?? null,
+          estimatedAge: input.estimatedAge ?? null,
           weight: input.weight ?? null,
           color: input.color ?? null,
+          imageUrl: input.imageUrl ?? null,
         },
       });
 
@@ -137,6 +151,18 @@ export class PatientsService {
 
         UNION ALL
 
+        -- Stored pet lastName (inherited from the owner, but can diverge if
+        -- the owner's name changes after a manual pet-record edit) — lets
+        -- search still find a pet by the last name on file even when it no
+        -- longer matches any currently-linked Client.
+        SELECT p3.id AS id, similarity(lower(p3."lastName"), lower(${query})) AS score
+        FROM "Patient" p3
+        WHERE p3."organizationId" = ${organizationId}
+          AND p3."lastName" IS NOT NULL
+          AND (p3."lastName" ILIKE '%' || ${query} || '%' OR p3."lastName" % ${query})
+
+        UNION ALL
+
         SELECT p2.id AS id, ${clientNameSimilarity('c', query)} AS score
         FROM "Patient" p2
         JOIN "PatientClient" pc ON pc."patientId" = p2.id
@@ -154,14 +180,48 @@ export class PatientsService {
     }
 
     const rankedIds = ranked.map((row) => row.id);
-    const [patients, activeVisits, appointments] = await Promise.all([
-      prisma.patient.findMany({
-        where: { id: { in: rankedIds } },
-        ...patientWithClients,
-      }),
+    const patients = await prisma.patient.findMany({
+      where: { id: { in: rankedIds } },
+      ...patientWithClients,
+    });
+    const byId = new Map(patients.map((patient) => [patient.id, patient]));
+    const ordered = rankedIds
+      .map((id) => byId.get(id))
+      .filter((patient): patient is PatientWithClients => patient !== undefined);
+
+    return this.enrichAndRank(ordered, organizationId);
+  }
+
+  /**
+   * Plain directory listing (no query) — what the Patients tab shows before
+   * the user types a search. Alphabetical by patient name; active-visit /
+   * upcoming-appointment patients still float to the top via the same
+   * operationalRank the search results use, for consistency.
+   */
+  async list(organizationId: string, limit: number): Promise<PatientSearchResult[]> {
+    const patients = await prisma.patient.findMany({
+      where: { organizationId },
+      ...patientWithClients,
+      orderBy: { name: 'asc' },
+      take: limit,
+    });
+
+    return this.enrichAndRank(patients, organizationId);
+  }
+
+  private async enrichAndRank(
+    patients: PatientWithClients[],
+    organizationId: string,
+  ): Promise<PatientSearchResult[]> {
+    if (patients.length === 0) {
+      return [];
+    }
+
+    const patientIds = patients.map((patient) => patient.id);
+    const [activeVisits, appointments] = await Promise.all([
       prisma.visit.findMany({
         where: {
-          patientId: { in: rankedIds },
+          patientId: { in: patientIds },
           organizationId,
           state: { notIn: TERMINAL_VISIT_STATES },
         },
@@ -169,7 +229,7 @@ export class PatientsService {
       }),
       prisma.appointment.findMany({
         where: {
-          patientId: { in: rankedIds },
+          patientId: { in: patientIds },
           organizationId,
           scheduledAt: { gte: new Date() },
           state: { notIn: ['Cancelled', 'NoShow', 'Completed'] },
@@ -178,7 +238,6 @@ export class PatientsService {
       }),
     ]);
 
-    const byId = new Map(patients.map((patient) => [patient.id, patient]));
     const activeVisitByPatientId = new Map<string, (typeof activeVisits)[number]>();
     for (const visit of activeVisits) {
       if (!activeVisitByPatientId.has(visit.patientId)) {
@@ -192,9 +251,7 @@ export class PatientsService {
       }
     }
 
-    return rankedIds
-      .map((id) => byId.get(id))
-      .filter((patient): patient is PatientWithClients => patient !== undefined)
+    return patients
       .map((patient) =>
         toSearchResult(
           patient,
@@ -215,7 +272,7 @@ export class PatientsService {
    */
   async getWorkspaceSummary(id: string, organizationId: string) {
     const patient = await this.findById(id, organizationId);
-    const [upcomingAppointments, activeVisit] = await Promise.all([
+    const [upcomingAppointments, activeVisit, recentVisits] = await Promise.all([
       this.appointments.listUpcomingForPatient(patient.id, organizationId),
       prisma.visit.findFirst({
         where: {
@@ -226,7 +283,21 @@ export class PatientsService {
         include: { client: true, appointment: true },
         orderBy: { createdAt: 'desc' },
       }),
+      // Most-recent-first, capped small — this is a profile summary, not a
+      // paginated history browser. Also doubles as the source for the
+      // Medications section below (no dedicated medication model exists
+      // yet; VisitIntake.medicationsAllergies is the closest real data).
+      prisma.visit.findMany({
+        where: { patientId: patient.id, organizationId },
+        include: { primaryVeterinarian: true, intake: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
     ]);
+
+    const medicationsSource = recentVisits.find(
+      (visit) => visit.intake?.medicationsAllergies,
+    );
 
     return {
       patient: {
@@ -236,8 +307,10 @@ export class PatientsService {
         breed: patient.breed,
         sex: patient.sex,
         dateOfBirth: patient.dateOfBirth,
+        estimatedAge: patient.estimatedAge,
         weight: patient.weight,
         color: patient.color,
+        imageUrl: patient.imageUrl,
         status: patient.status,
         sourceSystem: patient.sourceSystem,
         sourceConfidence: patient.sourceConfidence,
@@ -248,7 +321,15 @@ export class PatientsService {
         lastName: patientClient.client.lastName,
         email: patientClient.client.email,
         phone: patientClient.client.phone,
+        alternatePhone: patientClient.client.alternatePhone,
         preferredContactMethod: patientClient.client.preferredContactMethod,
+        addressLine1: patientClient.client.addressLine1,
+        addressLine2: patientClient.client.addressLine2,
+        city: patientClient.client.city,
+        state: patientClient.client.state,
+        postalCode: patientClient.client.postalCode,
+        country: patientClient.client.country,
+        formattedAddress: patientClient.client.formattedAddress,
         isPrimary: patientClient.isPrimary,
       })),
       upcomingAppointments: upcomingAppointments.map((appointment) => ({
@@ -258,6 +339,20 @@ export class PatientsService {
         scheduledAt: appointment.scheduledAt,
         expectedDurationMinutes: appointment.expectedDurationMinutes,
         state: appointment.state,
+      })),
+      recentVisits: recentVisits.map((visit) => ({
+        id: visit.id,
+        visitType: visit.visitType,
+        reason: visit.reason,
+        state: visit.state,
+        createdAt: visit.createdAt,
+        primaryVeterinarian: visit.primaryVeterinarian
+          ? {
+              id: visit.primaryVeterinarian.id,
+              firstName: visit.primaryVeterinarian.firstName,
+              lastName: visit.primaryVeterinarian.lastName,
+            }
+          : null,
       })),
       sections: {
         currentVisit: activeVisit
@@ -286,8 +381,15 @@ export class PatientsService {
               },
             }
           : unavailableSection('No active visit.'),
+        medications: medicationsSource?.intake?.medicationsAllergies
+          ? {
+              status: 'available' as const,
+              notes: medicationsSource.intake.medicationsAllergies,
+              recordedAt: medicationsSource.intake.updatedAt,
+              visitId: medicationsSource.id,
+            }
+          : unavailableSection('No medications on file yet.'),
         workItems: unavailableSection('Work system is not yet implemented.'),
-        timeline: unavailableSection('Timeline/history is not yet implemented.'),
         communication: unavailableSection('Communication module is not yet implemented.'),
         financial: unavailableSection('Billing/financial module is not yet implemented.'),
         attachments: unavailableSection('Attachments are not yet implemented.'),
@@ -343,6 +445,7 @@ function toSearchResult(
     dateOfBirth: patient.dateOfBirth,
     weight: patient.weight,
     color: patient.color,
+    imageUrl: patient.imageUrl,
     status: patient.status,
     primaryClient: primary
       ? {

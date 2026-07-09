@@ -2,14 +2,16 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
+import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { clientDisplayName, SEX_OPTIONS, SPECIES_OPTIONS, type ClientSearchResult, type PatientSearchResult } from '../lib/patient-types';
 
 const DEBOUNCE_MS = 200;
 
 /** What a successful create produces — enough for the parent directory page
- *  to update its list and to open the Patient Profile modal directly,
- *  without a fresh search round-trip. */
+ *  to update its list and to navigate straight to the new Patient Profile
+ *  page, without a fresh search round-trip. */
 export interface NewPatientCreationResult {
   id: string;
   name: string;
@@ -17,6 +19,7 @@ export interface NewPatientCreationResult {
   breed: string | null;
   sex: string | null;
   dateOfBirth: string | null;
+  imageUrl: string | null;
   clientId: string;
   clientFirstName: string;
   clientLastName: string;
@@ -25,75 +28,101 @@ export interface NewPatientCreationResult {
 }
 
 type ModalStep = 'form' | 'success';
-type DobMode = 'approximate' | 'exact';
+type DobMode = 'exact' | 'estimated';
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-/** The Client model stores firstName/lastName separately, but a receptionist
- *  creating the owner alongside the pet shouldn't have to think about that
- *  split — one "Owner name" field is friendlier. First word becomes
- *  firstName, the rest becomes lastName; a single word is used for both
- *  rather than blocking. */
-function splitClientName(fullName: string): { firstName: string; lastName: string } {
-  const normalized = fullName.trim().replace(/\s+/g, ' ');
-  const spaceIndex = normalized.indexOf(' ');
-  if (spaceIndex === -1) {
-    return { firstName: normalized, lastName: normalized };
-  }
-  return { firstName: normalized.slice(0, spaceIndex), lastName: normalized.slice(spaceIndex + 1) };
-}
-
-function computeDateOfBirth(mode: DobMode, exactDate: string, approxAgeYears: string): string | undefined {
-  if (mode === 'exact') {
-    return exactDate || undefined;
-  }
-  const years = Number(approxAgeYears);
-  if (!approxAgeYears || !Number.isFinite(years) || years <= 0) {
-    return undefined;
-  }
-  const millisecondsOld = years * 365.25 * 24 * 60 * 60 * 1000;
-  return new Date(Date.now() - millisecondsOld).toISOString();
-}
-
 function NewPatientClientSection({
-  ownerNameRef,
-  newClientName,
-  onNewClientNameChange,
+  ownerFirstNameRef,
+  newClientFirstName,
+  onNewClientFirstNameChange,
+  newClientLastName,
+  onNewClientLastNameChange,
   newPhone,
   onNewPhoneChange,
+  newAlternatePhone,
+  onNewAlternatePhoneChange,
   newEmail,
   onNewEmailChange,
+  newAddressLine1,
+  onNewAddressLine1Change,
+  newAddressLine2,
+  onNewAddressLine2Change,
+  newCity,
+  onNewCityChange,
+  newState,
+  onNewStateChange,
+  newPostalCode,
+  onNewPostalCodeChange,
+  newCountry,
+  onNewCountryChange,
+  onAddressAutofill,
   clientDuplicateHint,
 }: {
-  ownerNameRef: React.RefObject<HTMLInputElement>;
-  newClientName: string;
-  onNewClientNameChange: (value: string) => void;
+  ownerFirstNameRef: React.RefObject<HTMLInputElement>;
+  newClientFirstName: string;
+  onNewClientFirstNameChange: (value: string) => void;
+  newClientLastName: string;
+  onNewClientLastNameChange: (value: string) => void;
   newPhone: string;
   onNewPhoneChange: (value: string) => void;
+  newAlternatePhone: string;
+  onNewAlternatePhoneChange: (value: string) => void;
   newEmail: string;
   onNewEmailChange: (value: string) => void;
+  newAddressLine1: string;
+  onNewAddressLine1Change: (value: string) => void;
+  newAddressLine2: string;
+  onNewAddressLine2Change: (value: string) => void;
+  newCity: string;
+  onNewCityChange: (value: string) => void;
+  newState: string;
+  onNewStateChange: (value: string) => void;
+  newPostalCode: string;
+  onNewPostalCodeChange: (value: string) => void;
+  newCountry: string;
+  onNewCountryChange: (value: string) => void;
+  onAddressAutofill: (result: AddressAutofillResult) => void;
   clientDuplicateHint: string | null;
 }) {
   return (
-    <fieldset className="front-desk-section">
+    <fieldset className="front-desk-section new-patient-section">
       <legend>Owner Information</legend>
-      <div className="front-desk-grid front-desk-grid--client">
-        <label htmlFor="new-patient-client-name">
-          Owner name
+      <p className="new-patient-section__helper">Primary contact details for reminders and follow-up.</p>
+      <div className="new-patient-form-grid new-patient-form-grid--two">
+        <label htmlFor="new-patient-client-first-name">
+          <span>
+            First name <span className="front-desk-required">*</span>
+          </span>
           <input
-            ref={ownerNameRef}
-            id="new-patient-client-name"
+            ref={ownerFirstNameRef}
+            id="new-patient-client-first-name"
             type="text"
-            value={newClientName}
-            onChange={(event) => onNewClientNameChange(event.target.value)}
+            value={newClientFirstName}
+            onChange={(event) => onNewClientFirstNameChange(event.target.value)}
             required
-            maxLength={200}
+            maxLength={100}
+            autoComplete="new-password"
+          />
+        </label>
+        <label htmlFor="new-patient-client-last-name">
+          <span>
+            Last name <span className="front-desk-required">*</span>
+          </span>
+          <input
+            id="new-patient-client-last-name"
+            type="text"
+            value={newClientLastName}
+            onChange={(event) => onNewClientLastNameChange(event.target.value)}
+            required
+            maxLength={100}
+            autoComplete="new-password"
           />
         </label>
         <label htmlFor="new-patient-client-phone">
-          Phone
+          Cell phone
           <input
             id="new-patient-client-phone"
             type="tel"
@@ -101,6 +130,19 @@ function NewPatientClientSection({
             onChange={(event) => onNewPhoneChange(event.target.value)}
             placeholder="Optional"
             maxLength={50}
+            autoComplete="new-password"
+          />
+        </label>
+        <label htmlFor="new-patient-client-alternate-phone">
+          Home/work phone
+          <input
+            id="new-patient-client-alternate-phone"
+            type="tel"
+            value={newAlternatePhone}
+            onChange={(event) => onNewAlternatePhoneChange(event.target.value)}
+            placeholder="Optional"
+            maxLength={50}
+            autoComplete="new-password"
           />
         </label>
         <label htmlFor="new-patient-client-email">
@@ -111,8 +153,95 @@ function NewPatientClientSection({
             value={newEmail}
             onChange={(event) => onNewEmailChange(event.target.value)}
             placeholder="Optional"
+            autoComplete="new-password"
           />
         </label>
+      </div>
+
+      <div className="new-patient-address-panel">
+        <div className="new-patient-address-panel__header">
+          <h3>Address</h3>
+          <p>Search to fill the structured fields, or enter the address manually.</p>
+        </div>
+        <div className="new-patient-form-grid new-patient-form-grid--address">
+          <div className="front-desk-grid__field--full">
+            <AddressAutocompleteField
+              id="new-patient-client-address"
+              label="Street address"
+              value={newAddressLine1}
+              placeholder="Search address..."
+              onChange={onNewAddressLine1Change}
+              onAddressSelected={(result) => {
+                onNewAddressLine1Change(result.addressLine1);
+                onNewCityChange(result.city);
+                onNewStateChange(result.state);
+                onNewPostalCodeChange(result.postalCode);
+                onNewCountryChange(result.country);
+                onAddressAutofill(result);
+              }}
+            />
+          </div>
+          <label htmlFor="new-patient-client-address-2" className="front-desk-grid__field--full">
+            Address line 2
+            <input
+              id="new-patient-client-address-2"
+              type="text"
+              value={newAddressLine2}
+              onChange={(event) => onNewAddressLine2Change(event.target.value)}
+              placeholder="Apartment, suite, unit"
+              maxLength={200}
+              autoComplete="new-password"
+            />
+          </label>
+          <label htmlFor="new-patient-client-city" className="new-patient-field--city">
+            City
+            <input
+              id="new-patient-client-city"
+              type="text"
+              value={newCity}
+              onChange={(event) => onNewCityChange(event.target.value)}
+              placeholder="Optional"
+              maxLength={100}
+              autoComplete="new-password"
+            />
+          </label>
+          <label htmlFor="new-patient-client-state">
+            State
+            <input
+              id="new-patient-client-state"
+              type="text"
+              value={newState}
+              onChange={(event) => onNewStateChange(event.target.value)}
+              placeholder="Optional"
+              maxLength={100}
+              autoComplete="new-password"
+            />
+          </label>
+          <label htmlFor="new-patient-client-postal-code">
+            ZIP/postal code
+            <input
+              id="new-patient-client-postal-code"
+              type="text"
+              value={newPostalCode}
+              onChange={(event) => onNewPostalCodeChange(event.target.value)}
+              placeholder="Optional"
+              maxLength={20}
+              autoComplete="new-password"
+            />
+          </label>
+          <label htmlFor="new-patient-client-country">
+            Country
+            <input
+              id="new-patient-client-country"
+              type="text"
+              value={newCountry}
+              onChange={(event) => onNewCountryChange(event.target.value)}
+              placeholder="Optional"
+              maxLength={100}
+              autoComplete="new-password"
+            />
+          </label>
+        </div>
       </div>
       {clientDuplicateHint && <p className="form-hint">Possible existing owner: {clientDuplicateHint}</p>}
     </fieldset>
@@ -131,12 +260,16 @@ function NewPatientPatientSection({
   onBreedChange,
   sex,
   onSexChange,
+  color,
+  onColorChange,
+  imageUrl,
+  onImageUrlChange,
   dobMode,
   onDobModeChange,
   exactDate,
   onExactDateChange,
-  approxAgeYears,
-  onApproxAgeYearsChange,
+  estimatedAge,
+  onEstimatedAgeChange,
   patientDuplicateHint,
 }: {
   patientNameRef: React.RefObject<HTMLInputElement>;
@@ -150,20 +283,27 @@ function NewPatientPatientSection({
   onBreedChange: (value: string) => void;
   sex: string;
   onSexChange: (value: string) => void;
+  color: string;
+  onColorChange: (value: string) => void;
+  imageUrl: string;
+  onImageUrlChange: (value: string) => void;
   dobMode: DobMode;
   onDobModeChange: (mode: DobMode) => void;
   exactDate: string;
   onExactDateChange: (value: string) => void;
-  approxAgeYears: string;
-  onApproxAgeYearsChange: (value: string) => void;
+  estimatedAge: string;
+  onEstimatedAgeChange: (value: string) => void;
   patientDuplicateHint: string | null;
 }) {
   return (
-    <fieldset className="front-desk-section">
-      <legend>Pet Details</legend>
-      <div className="front-desk-grid">
+    <fieldset className="front-desk-section new-patient-section">
+      <legend>Patient Information</legend>
+      <p className="new-patient-section__helper">Basic patient details for the medical record.</p>
+      <div className="new-patient-form-grid new-patient-form-grid--two new-patient-form-grid--prominent">
         <label htmlFor="new-patient-name">
-          Pet name
+          <span>
+            Pet first name <span className="front-desk-required">*</span>
+          </span>
           <input
             ref={patientNameRef}
             id="new-patient-name"
@@ -172,10 +312,13 @@ function NewPatientPatientSection({
             onChange={(event) => onPatientNameChange(event.target.value)}
             required
             maxLength={200}
+            autoComplete="new-password"
           />
         </label>
         <label htmlFor="new-patient-species">
-          Species
+          <span>
+            Species <span className="front-desk-required">*</span>
+          </span>
           <select
             id="new-patient-species"
             value={species}
@@ -188,9 +331,13 @@ function NewPatientPatientSection({
             ))}
           </select>
         </label>
+      </div>
+      <div className="new-patient-form-grid new-patient-form-grid--three">
         {species === 'Other' && (
           <label htmlFor="new-patient-species-other">
-            Species (other)
+            <span>
+              Species (other) <span className="front-desk-required">*</span>
+            </span>
             <input
               id="new-patient-species-other"
               type="text"
@@ -198,6 +345,7 @@ function NewPatientPatientSection({
               onChange={(event) => onOtherSpeciesChange(event.target.value)}
               required
               maxLength={100}
+              autoComplete="new-password"
             />
           </label>
         )}
@@ -210,6 +358,7 @@ function NewPatientPatientSection({
             onChange={(event) => onBreedChange(event.target.value)}
             placeholder="Optional"
             maxLength={100}
+            autoComplete="new-password"
           />
         </label>
         <label htmlFor="new-patient-sex">
@@ -223,25 +372,24 @@ function NewPatientPatientSection({
             ))}
           </select>
         </label>
+        <label htmlFor="new-patient-color">
+          Coat color
+          <input
+            id="new-patient-color"
+            type="text"
+            value={color}
+            onChange={(event) => onColorChange(event.target.value)}
+            placeholder="Optional"
+            maxLength={200}
+            autoComplete="new-password"
+          />
+        </label>
       </div>
 
-      <div className="front-desk-grid front-desk-grid--spaced">
-        <div>
-          <span className="front-desk-field-label">DOB or estimated age</span>
-          <div
-            className="front-desk-visit-mode front-desk-visit-mode--nested"
-            role="radiogroup"
-            aria-label="Age input mode"
-          >
-            <label>
-              <input
-                type="radio"
-                name="new-patient-dob-mode"
-                checked={dobMode === 'approximate'}
-                onChange={() => onDobModeChange('approximate')}
-              />
-              Estimated age
-            </label>
+      <fieldset className="new-patient-age-field">
+        <legend>Age</legend>
+        <div className="new-patient-age-field__control">
+          <div className="new-patient-segmented-control" role="radiogroup" aria-label="Age input mode">
             <label>
               <input
                 type="radio"
@@ -249,34 +397,83 @@ function NewPatientPatientSection({
                 checked={dobMode === 'exact'}
                 onChange={() => onDobModeChange('exact')}
               />
-              DOB
+              <span>Known DOB</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="new-patient-dob-mode"
+                checked={dobMode === 'estimated'}
+                onChange={() => onDobModeChange('estimated')}
+              />
+              <span>Estimated age</span>
             </label>
           </div>
+          {dobMode === 'exact' ? (
+            <label htmlFor="new-patient-dob">
+              Date of birth
+              <input
+                id="new-patient-dob"
+                type="date"
+                value={exactDate}
+                onChange={(event) => onExactDateChange(event.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+          ) : (
+            <label htmlFor="new-patient-estimated-age">
+              Estimated age
+              <input
+                id="new-patient-estimated-age"
+                type="text"
+                placeholder="e.g. ~3 years"
+                value={estimatedAge}
+                onChange={(event) => onEstimatedAgeChange(event.target.value)}
+                maxLength={50}
+                autoComplete="new-password"
+              />
+            </label>
+          )}
         </div>
-        {dobMode === 'approximate' ? (
-          <label htmlFor="new-patient-approx-age">
-            Age (years)
+      </fieldset>
+
+      <div className="new-patient-photo-card">
+        <div className="new-patient-photo-card__preview">
+          {imageUrl.trim() ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imageUrl.trim()} alt="" />
+          ) : (
+            <PetPhotoPlaceholder
+              name={patientName.trim() || 'New patient'}
+              species={species === 'Other' ? otherSpecies : species}
+              className="pet-photo-placeholder"
+            />
+          )}
+        </div>
+        <div className="new-patient-photo-card__content">
+          <div className="new-patient-photo-card__header">
+            <div>
+              <span>Patient photo</span>
+              <p>Optional image for quick recognition.</p>
+            </div>
+            {imageUrl.trim() && (
+              <button type="button" onClick={() => onImageUrlChange('')}>
+                Clear
+              </button>
+            )}
+          </div>
+          <label htmlFor="new-patient-image-url">
+            Image link
             <input
-              id="new-patient-approx-age"
-              type="number"
-              min={0}
-              step="0.5"
-              placeholder="Optional"
-              value={approxAgeYears}
-              onChange={(event) => onApproxAgeYearsChange(event.target.value)}
+              id="new-patient-image-url"
+              type="url"
+              value={imageUrl}
+              onChange={(event) => onImageUrlChange(event.target.value)}
+              placeholder="Paste image URL"
+              autoComplete="new-password"
             />
           </label>
-        ) : (
-          <label htmlFor="new-patient-dob">
-            Date of birth
-            <input
-              id="new-patient-dob"
-              type="date"
-              value={exactDate}
-              onChange={(event) => onExactDateChange(event.target.value)}
-            />
-          </label>
-        )}
+        </div>
       </div>
 
       {patientDuplicateHint && (
@@ -328,17 +525,27 @@ function NewPatientNextStep({
 }
 
 const INITIAL_STATE = {
-  newClientName: '',
+  newClientFirstName: '',
+  newClientLastName: '',
   newPhone: '',
+  newAlternatePhone: '',
   newEmail: '',
+  newAddressLine1: '',
+  newAddressLine2: '',
+  newCity: '',
+  newState: '',
+  newPostalCode: '',
+  newCountry: '',
   patientName: '',
   species: SPECIES_OPTIONS[0] as string,
   otherSpecies: '',
   breed: '',
   sex: '',
-  dobMode: 'approximate' as DobMode,
+  color: '',
+  imageUrl: '',
+  dobMode: 'exact' as DobMode,
   exactDate: '',
-  approxAgeYears: '',
+  estimatedAge: '',
 };
 
 export function NewPatientModal({
@@ -353,18 +560,29 @@ export function NewPatientModal({
   onOpenProfile: (result: NewPatientCreationResult) => void;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const ownerNameRef = useRef<HTMLInputElement>(null);
+  const ownerFirstNameRef = useRef<HTMLInputElement>(null);
   const patientNameRef = useRef<HTMLInputElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  useLockBodyScroll(open);
 
   const [step, setStep] = useState<ModalStep>('form');
   const [createdResult, setCreatedResult] = useState<NewPatientCreationResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [newClientName, setNewClientName] = useState(INITIAL_STATE.newClientName);
+  const [newClientFirstName, setNewClientFirstName] = useState(INITIAL_STATE.newClientFirstName);
+  const [newClientLastName, setNewClientLastName] = useState(INITIAL_STATE.newClientLastName);
   const [newPhone, setNewPhone] = useState(INITIAL_STATE.newPhone);
+  const [newAlternatePhone, setNewAlternatePhone] = useState(INITIAL_STATE.newAlternatePhone);
   const [newEmail, setNewEmail] = useState(INITIAL_STATE.newEmail);
+  const [newAddressLine1, setNewAddressLine1] = useState(INITIAL_STATE.newAddressLine1);
+  const [newAddressLine2, setNewAddressLine2] = useState(INITIAL_STATE.newAddressLine2);
+  const [newCity, setNewCity] = useState(INITIAL_STATE.newCity);
+  const [newState, setNewState] = useState(INITIAL_STATE.newState);
+  const [newPostalCode, setNewPostalCode] = useState(INITIAL_STATE.newPostalCode);
+  const [newCountry, setNewCountry] = useState(INITIAL_STATE.newCountry);
+  const [addressAutofill, setAddressAutofill] = useState<AddressAutofillResult | null>(null);
   const [clientDuplicateHint, setClientDuplicateHint] = useState<string | null>(null);
 
   const [patientName, setPatientName] = useState(INITIAL_STATE.patientName);
@@ -372,37 +590,60 @@ export function NewPatientModal({
   const [otherSpecies, setOtherSpecies] = useState(INITIAL_STATE.otherSpecies);
   const [breed, setBreed] = useState(INITIAL_STATE.breed);
   const [sex, setSex] = useState(INITIAL_STATE.sex);
+  const [color, setColor] = useState(INITIAL_STATE.color);
+  const [imageUrl, setImageUrl] = useState(INITIAL_STATE.imageUrl);
   const [dobMode, setDobMode] = useState<DobMode>(INITIAL_STATE.dobMode);
   const [exactDate, setExactDate] = useState(INITIAL_STATE.exactDate);
-  const [approxAgeYears, setApproxAgeYears] = useState(INITIAL_STATE.approxAgeYears);
+  const [estimatedAge, setEstimatedAge] = useState(INITIAL_STATE.estimatedAge);
   const [patientDuplicateHint, setPatientDuplicateHint] = useState<string | null>(null);
 
   function resetForm() {
-    setNewClientName(INITIAL_STATE.newClientName);
+    setNewClientFirstName(INITIAL_STATE.newClientFirstName);
+    setNewClientLastName(INITIAL_STATE.newClientLastName);
     setNewPhone(INITIAL_STATE.newPhone);
+    setNewAlternatePhone(INITIAL_STATE.newAlternatePhone);
     setNewEmail(INITIAL_STATE.newEmail);
+    setNewAddressLine1(INITIAL_STATE.newAddressLine1);
+    setNewAddressLine2(INITIAL_STATE.newAddressLine2);
+    setNewCity(INITIAL_STATE.newCity);
+    setNewState(INITIAL_STATE.newState);
+    setNewPostalCode(INITIAL_STATE.newPostalCode);
+    setNewCountry(INITIAL_STATE.newCountry);
+    setAddressAutofill(null);
     setClientDuplicateHint(null);
     setPatientName(INITIAL_STATE.patientName);
     setSpecies(INITIAL_STATE.species);
     setOtherSpecies(INITIAL_STATE.otherSpecies);
     setBreed(INITIAL_STATE.breed);
     setSex(INITIAL_STATE.sex);
+    setColor(INITIAL_STATE.color);
+    setImageUrl(INITIAL_STATE.imageUrl);
     setDobMode(INITIAL_STATE.dobMode);
     setExactDate(INITIAL_STATE.exactDate);
-    setApproxAgeYears(INITIAL_STATE.approxAgeYears);
+    setEstimatedAge(INITIAL_STATE.estimatedAge);
     setPatientDuplicateHint(null);
     setError(null);
   }
 
   const isDirty =
-    newClientName.trim() !== '' ||
+    newClientFirstName.trim() !== '' ||
+    newClientLastName.trim() !== '' ||
     newPhone.trim() !== '' ||
+    newAlternatePhone.trim() !== '' ||
     newEmail.trim() !== '' ||
+    newAddressLine1.trim() !== '' ||
+    newAddressLine2.trim() !== '' ||
+    newCity.trim() !== '' ||
+    newState.trim() !== '' ||
+    newPostalCode.trim() !== '' ||
+    newCountry.trim() !== '' ||
     patientName.trim() !== '' ||
     breed.trim() !== '' ||
     otherSpecies.trim() !== '' ||
+    color.trim() !== '' ||
+    imageUrl.trim() !== '' ||
     exactDate.trim() !== '' ||
-    approxAgeYears.trim() !== '';
+    estimatedAge.trim() !== '';
 
   function requestClose() {
     if (step === 'form' && isDirty) {
@@ -436,7 +677,7 @@ export function NewPatientModal({
   // Best-effort duplicate hint for the owner — frontend-only, reuses the
   // existing client search endpoint rather than any new backend work.
   useEffect(() => {
-    const name = newClientName.trim();
+    const name = `${newClientFirstName.trim()} ${newClientLastName.trim()}`.trim();
     const phone = newPhone.trim();
     const email = newEmail.trim();
     const query = phone || email || name;
@@ -466,13 +707,13 @@ export function NewPatientModal({
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [newClientName, newPhone, newEmail]);
+  }, [newClientFirstName, newClientLastName, newPhone, newEmail]);
 
   // Best-effort duplicate hint for the pet name — only flags a match tied to
   // the same owner, since the same pet name for a different owner is fine.
   useEffect(() => {
     const trimmedName = patientName.trim();
-    const clientLabel = newClientName.trim();
+    const clientLabel = `${newClientFirstName.trim()} ${newClientLastName.trim()}`.trim();
 
     if (trimmedName.length < 2 || !clientLabel) {
       setPatientDuplicateHint(null);
@@ -502,22 +743,23 @@ export function NewPatientModal({
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [patientName, newClientName]);
+  }, [patientName, newClientFirstName, newClientLastName]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     const trimmedPatientName = patientName.trim();
-    const trimmedClientName = newClientName.trim();
+    const trimmedClientFirstName = newClientFirstName.trim();
+    const trimmedClientLastName = newClientLastName.trim();
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedPatientName) {
-      setError('Pet name is required.');
+      setError('Pet first name is required.');
       return;
     }
-    if (!trimmedClientName) {
-      setError('Owner name is required.');
+    if (!trimmedClientFirstName || !trimmedClientLastName) {
+      setError("Owner's first and last name are required.");
       return;
     }
     if (trimmedEmail && !isValidEmail(trimmedEmail)) {
@@ -531,15 +773,25 @@ export function NewPatientModal({
 
     setSaving(true);
     try {
-      const { firstName, lastName } = splitClientName(trimmedClientName);
       const clientResponse = await fetch('/api/clients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName,
-          lastName,
+          firstName: trimmedClientFirstName,
+          lastName: trimmedClientLastName,
           phone: newPhone.trim() || undefined,
+          alternatePhone: newAlternatePhone.trim() || undefined,
           email: trimmedEmail || undefined,
+          addressLine1: newAddressLine1.trim() || undefined,
+          addressLine2: newAddressLine2.trim() || undefined,
+          city: newCity.trim() || undefined,
+          state: newState.trim() || undefined,
+          postalCode: newPostalCode.trim() || undefined,
+          country: newCountry.trim() || undefined,
+          formattedAddress: addressAutofill?.formattedAddress || undefined,
+          addressPlaceId: addressAutofill?.placeId || undefined,
+          addressLatitude: addressAutofill?.latitude ?? undefined,
+          addressLongitude: addressAutofill?.longitude ?? undefined,
         }),
       });
       if (!clientResponse.ok) {
@@ -562,7 +814,10 @@ export function NewPatientModal({
           species: resolvedSpecies,
           breed: breed.trim() || undefined,
           sex: sex || undefined,
-          dateOfBirth: computeDateOfBirth(dobMode, exactDate, approxAgeYears),
+          color: color.trim() || undefined,
+          imageUrl: imageUrl.trim() || undefined,
+          dateOfBirth: dobMode === 'exact' ? exactDate || undefined : undefined,
+          estimatedAge: dobMode === 'estimated' ? estimatedAge.trim() || undefined : undefined,
           clients: [{ clientId, isPrimary: true }],
         }),
       });
@@ -585,6 +840,7 @@ export function NewPatientModal({
         breed: patient.breed,
         sex: patient.sex,
         dateOfBirth: patient.dateOfBirth,
+        imageUrl: imageUrl.trim() || null,
         clientId,
         clientFirstName,
         clientLastName,
@@ -607,7 +863,7 @@ export function NewPatientModal({
   return (
     <div className="patient-profile-modal-overlay" role="presentation" onClick={requestClose}>
       <div
-        className="patient-profile-modal"
+        className="patient-profile-modal new-patient-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-patient-modal-heading"
@@ -632,21 +888,43 @@ export function NewPatientModal({
           )}
           <h2 id="new-patient-modal-heading">New Patient</h2>
           <p className="patient-profile-modal-header__details">
-            Create a pet profile and connect it to an owner.
+            Create an owner and pet profile.
           </p>
         </div>
 
         <div className="patient-profile-modal-body">
           {step === 'form' ? (
-            <form id="new-patient-form" className="front-desk-form" onSubmit={handleSubmit}>
+            <form
+              id="new-patient-form"
+              className="front-desk-form"
+              autoComplete="off"
+              onSubmit={handleSubmit}
+            >
               <NewPatientClientSection
-                ownerNameRef={ownerNameRef}
-                newClientName={newClientName}
-                onNewClientNameChange={setNewClientName}
+                ownerFirstNameRef={ownerFirstNameRef}
+                newClientFirstName={newClientFirstName}
+                onNewClientFirstNameChange={setNewClientFirstName}
+                newClientLastName={newClientLastName}
+                onNewClientLastNameChange={setNewClientLastName}
                 newPhone={newPhone}
                 onNewPhoneChange={setNewPhone}
+                newAlternatePhone={newAlternatePhone}
+                onNewAlternatePhoneChange={setNewAlternatePhone}
                 newEmail={newEmail}
                 onNewEmailChange={setNewEmail}
+                newAddressLine1={newAddressLine1}
+                onNewAddressLine1Change={setNewAddressLine1}
+                newAddressLine2={newAddressLine2}
+                onNewAddressLine2Change={setNewAddressLine2}
+                newCity={newCity}
+                onNewCityChange={setNewCity}
+                newState={newState}
+                onNewStateChange={setNewState}
+                newPostalCode={newPostalCode}
+                onNewPostalCodeChange={setNewPostalCode}
+                newCountry={newCountry}
+                onNewCountryChange={setNewCountry}
+                onAddressAutofill={setAddressAutofill}
                 clientDuplicateHint={clientDuplicateHint}
               />
               <NewPatientPatientSection
@@ -661,12 +939,16 @@ export function NewPatientModal({
                 onBreedChange={setBreed}
                 sex={sex}
                 onSexChange={setSex}
+                color={color}
+                onColorChange={setColor}
+                imageUrl={imageUrl}
+                onImageUrlChange={setImageUrl}
                 dobMode={dobMode}
                 onDobModeChange={setDobMode}
                 exactDate={exactDate}
                 onExactDateChange={setExactDate}
-                approxAgeYears={approxAgeYears}
-                onApproxAgeYearsChange={setApproxAgeYears}
+                estimatedAge={estimatedAge}
+                onEstimatedAgeChange={setEstimatedAge}
                 patientDuplicateHint={patientDuplicateHint}
               />
               {error && (
@@ -684,7 +966,7 @@ export function NewPatientModal({
                   setStep('form');
                   setCreatedResult(null);
                   resetForm();
-                  requestAnimationFrame(() => ownerNameRef.current?.focus());
+                  requestAnimationFrame(() => ownerFirstNameRef.current?.focus());
                 }}
                 onSetAppointmentNavigated={onClose}
               />
@@ -698,7 +980,7 @@ export function NewPatientModal({
               Cancel
             </button>
             <button type="submit" form="new-patient-form" className="new-patient-modal-submit" disabled={saving}>
-              {saving ? 'Creating…' : 'Create New Patient'}
+              {saving ? 'Creating...' : 'Create Patient'}
             </button>
           </div>
         )}

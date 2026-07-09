@@ -5,6 +5,7 @@ import {
   CHECKOUT_READY_STATE,
   EXAM_READY_STATE,
   UPCOMING_APPOINTMENT_STATES,
+  WAITING_STATES,
 } from './command-center-states';
 import type {
   DashboardAppointmentSummary,
@@ -42,8 +43,17 @@ function groupDashboard(dashboard: OperationsDashboard | null, driftMinutes: num
     waitingVisits,
     examReadyVisits: activeVisits.filter((visit) => visit.state === EXAM_READY_STATE),
     checkoutVisits: activeVisits.filter((visit) => visit.state === CHECKOUT_READY_STATE),
+    // Excludes WAITING_STATES too, not just checkout/exam-ready — those visits
+    // are already represented in waitingVisits (derived from
+    // dashboard.arrivedOrWaiting, itself a subset of activeVisits), so
+    // without this exclusion a waiting visit was double-counted here and in
+    // waitingVisits wherever both groups get concatenated (e.g. Command
+    // Center's "Currently in Clinic" list), producing a duplicate React key.
     inProgressVisits: activeVisits.filter(
-      (visit) => visit.state !== CHECKOUT_READY_STATE && visit.state !== EXAM_READY_STATE,
+      (visit) =>
+        visit.state !== CHECKOUT_READY_STATE &&
+        visit.state !== EXAM_READY_STATE &&
+        !WAITING_STATES.has(visit.state),
     ),
     completedAppointments:
       dashboard?.todaysAppointments.filter((appointment) => appointment.state === 'Completed') ?? [],

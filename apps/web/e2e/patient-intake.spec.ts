@@ -1,22 +1,35 @@
 import { expect, test } from '@playwright/test';
-import { prisma } from '../../../packages/db/src/client';
+import { prisma } from '@sparki/db';
 import { fixtureId } from './support/fixture-id';
+import { pickClientName, pickPatientName } from './support/fixture-names';
+import { cleanupFixture } from './support/cleanup-fixture';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 const RUN_ID = fixtureId();
-const CLIENT_FIRST_NAME = 'Intake';
-const CLIENT_LAST_NAME = `Client ${RUN_ID}`;
-const PATIENT_NAME = `Intake Patient ${RUN_ID}`;
 
-const EXISTING_CLIENT_FIRST_NAME = 'ExistingIntake';
-const EXISTING_CLIENT_LAST_NAME = `Client ${RUN_ID}`;
+const NEW_CLIENT_NAME_PAIR = pickClientName(`patient-intake-new-client-${RUN_ID}`);
+const CLIENT_FIRST_NAME = NEW_CLIENT_NAME_PAIR.firstName;
+const CLIENT_LAST_NAME = NEW_CLIENT_NAME_PAIR.lastName;
+const PATIENT_NAME = pickPatientName(`patient-intake-new-patient-${RUN_ID}`);
+
+const EXISTING_CLIENT_NAME_PAIR = pickClientName(`patient-intake-existing-client-${RUN_ID}`);
+const EXISTING_CLIENT_FIRST_NAME = EXISTING_CLIENT_NAME_PAIR.firstName;
+const EXISTING_CLIENT_LAST_NAME = EXISTING_CLIENT_NAME_PAIR.lastName;
 const EXISTING_CLIENT_PHONE = `555-01${RUN_ID.slice(-2)}`;
-const EXISTING_PATIENT_NAME = `Existing Intake Patient ${RUN_ID}`;
+const EXISTING_PATIENT_NAME = pickPatientName(`patient-intake-existing-patient-${RUN_ID}`);
 const EXISTING_APPOINTMENT_REASON = `Vaccination booster ${RUN_ID}`;
-const NO_APPOINTMENT_CLIENT_FIRST_NAME = 'NoApptIntake';
-const NO_APPOINTMENT_CLIENT_LAST_NAME = `Client ${RUN_ID}`;
+
+const NO_APPOINTMENT_CLIENT_NAME_PAIR = pickClientName(`patient-intake-no-appt-client-${RUN_ID}`);
+const NO_APPOINTMENT_CLIENT_FIRST_NAME = NO_APPOINTMENT_CLIENT_NAME_PAIR.firstName;
+const NO_APPOINTMENT_CLIENT_LAST_NAME = NO_APPOINTMENT_CLIENT_NAME_PAIR.lastName;
 
 let existingClientId: string;
+let noAppointmentClientId: string;
+// Populated as each UI-driven test creates its own client/patient — captured
+// from the resulting page/search state since these come from form
+// submissions, not direct API JSON responses.
+const createdPatientIds: string[] = [];
+const createdClientIds: string[] = [];
 
 test.beforeAll(async ({ request }) => {
   const clientResponse = await request.post(`${API_URL}/clients`, {
@@ -29,6 +42,7 @@ test.beforeAll(async ({ request }) => {
   expect(clientResponse.ok()).toBe(true);
   const client: { id: string } = await clientResponse.json();
   existingClientId = client.id;
+  createdClientIds.push(existingClientId);
 
   await prisma.appointment.create({
     data: {
@@ -51,6 +65,15 @@ test.beforeAll(async ({ request }) => {
     },
   });
   expect(noAppointmentClientResponse.ok()).toBe(true);
+  const noAppointmentClient: { id: string } = await noAppointmentClientResponse.json();
+  noAppointmentClientId = noAppointmentClient.id;
+  createdClientIds.push(noAppointmentClientId);
+});
+
+test.afterAll(async () => {
+  // The appointment created directly above is cleaned up via its clientId
+  // (cleanupFixture deletes appointments/visits linked to any tracked id).
+  await cleanupFixture({ patientIds: createdPatientIds, clientIds: createdClientIds });
 });
 
 test('search with no match offers patient creation; new client + new patient walk-in opens the workspace and is searchable after refresh', async ({
@@ -58,9 +81,9 @@ test('search with no match offers patient creation; new client + new patient wal
 }) => {
   // Search finds no results. Deliberately not searching for PATIENT_NAME
   // itself: pg_trgm fuzzy matching means it could coincidentally match
-  // another parallel e2e spec's "... Patient <timestamp>" fixture, so this
-  // uses the same no-shared-substring gibberish query as
-  // patient-search.spec.ts's empty-state test.
+  // another parallel e2e spec's fixture, so this uses the same
+  // no-shared-substring gibberish query as patient-search.spec.ts's
+  // empty-state test.
   await page.goto('/');
   const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially('qzxjvkqzxjvknonexistent');
@@ -76,7 +99,9 @@ test('search with no match offers patient creation; new client + new patient wal
   // New client (no existing match) + new patient, in one pass.
   await page.getByLabel('First name').fill(CLIENT_FIRST_NAME);
   await page.getByLabel('Last name').fill(CLIENT_LAST_NAME);
-  await page.getByLabel('Phone').fill('555-0199');
+  // Phone carries the per-run uniqueness (internal field only) — the
+  // visible name stays a plain realistic name, never a random suffix.
+  await page.getByLabel('Phone').fill(`555-03${RUN_ID.slice(-2)}`);
 
   await page.getByLabel('Name', { exact: true }).fill(PATIENT_NAME);
   await page.getByLabel('Species').selectOption('Dog');
@@ -91,14 +116,16 @@ test('search with no match offers patient creation; new client + new patient wal
   await expect(page).toHaveURL('/');
   await expect(page.getByText('Annual wellness check').first()).toBeVisible();
 
-  // Patient is immediately searchable after refresh. Match by the result's
-  // link (patient id), not display text: search results run display names
-  // through cleanDisplayName, which strips 8+ digit runs — including this
-  // test's timestamp-suffixed fixture name.
+  // Patient is immediately searchable after refresh. Capture its id from the
+  // result link so afterAll can clean it up precisely by id.
   await page.goto('/');
   const searchInput = page.getByRole('combobox', { name: 'Search' });
   await searchInput.pressSequentially(PATIENT_NAME);
-  await expect(page.getByRole('option', { name: /Intake Patient/ }).first()).toBeVisible();
+  const option = page.getByRole('option', { name: new RegExp(PATIENT_NAME) }).first();
+  await expect(option).toBeVisible();
+  const href = await option.getByRole('link', { name: 'Open Workspace' }).getAttribute('href');
+  const patientId = href?.match(/\/patients\/([^/]+)/)?.[1];
+  if (patientId) createdPatientIds.push(patientId);
 });
 
 test('existing client search collapses the new-client fields; existing client + new patient appointment opens the workspace', async ({
@@ -143,6 +170,9 @@ test('existing client search collapses the new-client fields; existing client + 
   ).toBeVisible();
   await expect(page.getByText('Scheduled').first()).toBeVisible();
   await expect(page.getByText(EXISTING_APPOINTMENT_REASON).first()).toBeVisible();
+
+  const patientId = page.url().match(/\/patients\/([^/]+)/)?.[1];
+  if (patientId) createdPatientIds.push(patientId);
 });
 
 test('existing client with no appointment gets a clear walk-in message', async ({ page }) => {

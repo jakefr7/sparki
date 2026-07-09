@@ -1,22 +1,29 @@
 import { expect, test } from '@playwright/test';
 import { fixtureId } from './support/fixture-id';
+import { makeTypo, pickClientName, pickPatientName } from './support/fixture-names';
+import { cleanupFixture } from './support/cleanup-fixture';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 const RUN_ID = fixtureId();
-const CLIENT_FIRST_NAME = 'Playwright';
-const CLIENT_LAST_NAME = `Client ${RUN_ID}`;
+const CLIENT_NAME_PAIR = pickClientName(`patient-search-client-${RUN_ID}`);
+const CLIENT_FIRST_NAME = CLIENT_NAME_PAIR.firstName;
+const CLIENT_LAST_NAME = CLIENT_NAME_PAIR.lastName;
 const CLIENT_NAME = `${CLIENT_FIRST_NAME} ${CLIENT_LAST_NAME}`;
-const PATIENT_NAME = `Playwright Patient ${RUN_ID}`;
-const PATIENT_DISPLAY_NAME = 'Playwright Patient';
+const PATIENT_NAME = pickPatientName(`patient-search-patient-${RUN_ID}`);
+const PATIENT_DISPLAY_NAME = PATIENT_NAME;
 
 let patientId: string;
+let clientId: string;
 
 test.beforeAll(async ({ request }) => {
   const clientResponse = await request.post(`${API_URL}/clients`, {
-    data: { firstName: CLIENT_FIRST_NAME, lastName: CLIENT_LAST_NAME, phone: '555-0142' },
+    // Phone carries the per-run uniqueness (internal field only) — the
+    // visible name stays a plain realistic name, never a random suffix.
+    data: { firstName: CLIENT_FIRST_NAME, lastName: CLIENT_LAST_NAME, phone: `555-0${RUN_ID.slice(-3)}` },
   });
   expect(clientResponse.ok()).toBe(true);
   const client: { id: string } = await clientResponse.json();
+  clientId = client.id;
 
   const patientResponse = await request.post(`${API_URL}/patients`, {
     data: {
@@ -29,6 +36,10 @@ test.beforeAll(async ({ request }) => {
   expect(patientResponse.ok()).toBe(true);
   const patient: { id: string } = await patientResponse.json();
   patientId = patient.id;
+});
+
+test.afterAll(async () => {
+  await cleanupFixture({ patientIds: [patientId], clientIds: [clientId] });
 });
 
 test('search input is focused on load (keyboard-first landing)', async ({ page }) => {
@@ -74,7 +85,7 @@ test('search result shows operational context and next actions', async ({ page }
 
 test('tolerates a typo via fuzzy search', async ({ page }) => {
   await page.goto('/');
-  const typo = PATIENT_NAME.replace('Patient', 'Patiant');
+  const typo = makeTypo(PATIENT_NAME);
 
   const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially(typo);

@@ -1,11 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { DashboardShell } from './dashboard-shell';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import {
-  APPOINTMENT_TYPES,
   appointmentTypeLabel,
   clientDisplayName,
   type DashboardAppointmentSummary,
@@ -26,7 +33,36 @@ interface SelectedSlot {
   endsAt: Date;
 }
 
-type AppointmentColorKey = 'teal' | 'blue' | 'purple' | 'amber' | 'orange' | 'green' | 'slate' | 'rose';
+type AppointmentColorKey =
+  'teal' | 'blue' | 'purple' | 'amber' | 'orange' | 'green' | 'slate' | 'rose';
+
+interface AppointmentTypeSetting {
+  id: string;
+  appointmentType: AppointmentTypeValue | null;
+  name: string;
+  color: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+interface SchedulerSlotTemplate {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  label: string;
+  color: string;
+  staffId: string | null;
+  room: string | null;
+  isActive: boolean;
+}
+
+interface SchedulerConfig {
+  settings: { slotIntervalMinutes: number };
+  appointmentTypes: AppointmentTypeSetting[];
+  slotTemplates: SchedulerSlotTemplate[];
+  canManage: boolean;
+}
 
 interface CreatedAppointmentResponse {
   id: string;
@@ -41,9 +77,19 @@ interface CreatedAppointmentResponse {
 
 const CLINIC_START_HOUR = 7;
 const CLINIC_END_HOUR = 19;
-const SLOT_MINUTES = 30;
-const SLOT_COUNT = ((CLINIC_END_HOUR - CLINIC_START_HOUR) * 60) / SLOT_MINUTES;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FALLBACK_APPOINTMENT_COLOR = '#475569';
+
+const LEGACY_COLOR_HEX: Record<AppointmentColorKey, string> = {
+  teal: '#0D9488',
+  blue: '#2563EB',
+  purple: '#7C3AED',
+  amber: '#D97706',
+  orange: '#EA580C',
+  green: '#16A34A',
+  slate: '#475569',
+  rose: '#BE123C',
+};
 
 // Confirmed clinic-facing labels (Anna, Phase 2 cleanup): Scheduled reads
 // "Upcoming", Arrived/VisitCreated read "Checked In" — matches
@@ -89,18 +135,102 @@ const APPOINTMENT_COLOR_OPTIONS: { key: AppointmentColorKey; label: string }[] =
   { key: 'rose', label: 'Rose' },
 ];
 
-const DEFAULT_COLOR_BY_APPOINTMENT_TYPE: Record<AppointmentTypeValue, AppointmentColorKey> = {
-  WellnessPreventiveCare: 'teal',
-  SickVisit: 'blue',
-  Recheck: 'green',
-  TechnicianAppointment: 'amber',
-  Vaccination: 'teal',
-  SurgeryProcedure: 'purple',
-  DropOff: 'slate',
-  EmergencyUrgent: 'orange',
-  Telemedicine: 'blue',
-  Euthanasia: 'rose',
-  BoardingNonMedical: 'slate',
+const DEFAULT_APPOINTMENT_TYPE_SETTINGS: AppointmentTypeSetting[] = [
+  {
+    id: 'default-WellnessPreventiveCare',
+    appointmentType: 'WellnessPreventiveCare',
+    name: 'Consultation',
+    color: '#2563EB',
+    isActive: true,
+    sortOrder: 10,
+  },
+  {
+    id: 'default-Recheck',
+    appointmentType: 'Recheck',
+    name: 'Recheck',
+    color: '#7C3AED',
+    isActive: true,
+    sortOrder: 20,
+  },
+  {
+    id: 'default-SurgeryProcedure',
+    appointmentType: 'SurgeryProcedure',
+    name: 'Surgery',
+    color: '#16A34A',
+    isActive: true,
+    sortOrder: 30,
+  },
+  {
+    id: 'default-TechnicianAppointment',
+    appointmentType: 'TechnicianAppointment',
+    name: 'Technician',
+    color: '#D97706',
+    isActive: true,
+    sortOrder: 40,
+  },
+  {
+    id: 'default-EmergencyUrgent',
+    appointmentType: 'EmergencyUrgent',
+    name: 'Emergency',
+    color: '#DC2626',
+    isActive: true,
+    sortOrder: 50,
+  },
+  {
+    id: 'default-SickVisit',
+    appointmentType: 'SickVisit',
+    name: 'Sick visit',
+    color: '#0891B2',
+    isActive: true,
+    sortOrder: 60,
+  },
+  {
+    id: 'default-Vaccination',
+    appointmentType: 'Vaccination',
+    name: 'Vaccination',
+    color: '#0D9488',
+    isActive: true,
+    sortOrder: 70,
+  },
+  {
+    id: 'default-DropOff',
+    appointmentType: 'DropOff',
+    name: 'Drop-off / Post-op',
+    color: '#CA8A04',
+    isActive: true,
+    sortOrder: 80,
+  },
+  {
+    id: 'default-Telemedicine',
+    appointmentType: 'Telemedicine',
+    name: 'Telemedicine',
+    color: '#4F46E5',
+    isActive: true,
+    sortOrder: 90,
+  },
+  {
+    id: 'default-Euthanasia',
+    appointmentType: 'Euthanasia',
+    name: 'Euthanasia',
+    color: '#BE123C',
+    isActive: true,
+    sortOrder: 100,
+  },
+  {
+    id: 'default-BoardingNonMedical',
+    appointmentType: 'BoardingNonMedical',
+    name: 'Boarding',
+    color: '#475569',
+    isActive: true,
+    sortOrder: 110,
+  },
+];
+
+const FALLBACK_SCHEDULER_CONFIG: SchedulerConfig = {
+  settings: { slotIntervalMinutes: 30 },
+  appointmentTypes: DEFAULT_APPOINTMENT_TYPE_SETTINGS,
+  slotTemplates: [],
+  canManage: false,
 };
 
 function startOfDay(date: Date): Date {
@@ -169,6 +299,14 @@ function appointmentCardTypeLabel(type: string): string {
   return CARD_TYPE_LABELS[type] ?? appointmentTypeLabel(type);
 }
 
+function configuredAppointmentTypeLabel(
+  type: string,
+  appointmentTypes: AppointmentTypeSetting[],
+): string {
+  const configured = appointmentTypes.find((setting) => setting.appointmentType === type);
+  return configured?.name ?? appointmentCardTypeLabel(type);
+}
+
 function appointmentClientName(appointment: SchedulerAppointment): string {
   return appointment.client ? clientDisplayName(appointment.client) : 'No client linked';
 }
@@ -181,8 +319,11 @@ function appointmentProviderName(appointment: SchedulerAppointment): string | nu
   return appointment.provider?.displayName ?? null;
 }
 
-function appointmentPrimaryMeta(appointment: SchedulerAppointment): string {
-  return `${timeRange(appointment)} · ${appointmentCardTypeLabel(appointment.type)}`;
+function appointmentPrimaryMeta(
+  appointment: SchedulerAppointment,
+  appointmentTypes: AppointmentTypeSetting[],
+): string {
+  return `${timeRange(appointment)} · ${configuredAppointmentTypeLabel(appointment.type, appointmentTypes)}`;
 }
 
 function appointmentCareTeamMeta(appointment: SchedulerAppointment): string | null {
@@ -197,25 +338,32 @@ function appointmentCareTeamMeta(appointment: SchedulerAppointment): string | nu
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-function appointmentColorKey(appointment: SchedulerAppointment): AppointmentColorKey {
-  if (isAppointmentColorKey(appointment.colorKey)) {
+function isHexColor(value: string | null | undefined): value is string {
+  return Boolean(value && /^#[0-9A-Fa-f]{6}$/.test(value));
+}
+
+function appointmentColor(
+  appointment: SchedulerAppointment,
+  appointmentTypes: AppointmentTypeSetting[],
+): string {
+  if (isHexColor(appointment.colorKey)) {
     return appointment.colorKey;
   }
-  if (isAppointmentTypeValue(appointment.type)) {
-    return DEFAULT_COLOR_BY_APPOINTMENT_TYPE[appointment.type];
+  if (isAppointmentColorKey(appointment.colorKey)) {
+    return LEGACY_COLOR_HEX[appointment.colorKey];
   }
-  return 'slate';
+  const configured = appointmentTypes.find(
+    (setting) => setting.appointmentType === appointment.type && setting.isActive,
+  );
+  return configured?.color ?? FALLBACK_APPOINTMENT_COLOR;
 }
 
 function isAppointmentColorKey(value: string | null | undefined): value is AppointmentColorKey {
   return APPOINTMENT_COLOR_OPTIONS.some((option) => option.key === value);
 }
 
-function isAppointmentTypeValue(value: string): value is AppointmentTypeValue {
-  return (APPOINTMENT_TYPES as readonly string[]).includes(value);
-}
-
 function appointmentColorLabel(colorKey: string | null | undefined): string {
+  if (isHexColor(colorKey)) return colorKey.toUpperCase();
   const safeColorKey = isAppointmentColorKey(colorKey) ? colorKey : 'slate';
   return APPOINTMENT_COLOR_OPTIONS.find((option) => option.key === safeColorKey)?.label ?? 'Slate';
 }
@@ -236,12 +384,16 @@ function inVisibleHours(appointment: SchedulerAppointment): boolean {
 
 function appointmentStyle(appointment: SchedulerAppointment): { top: string; height: string } {
   const minutes = minutesSinceClinicOpen(new Date(appointment.scheduledAt));
-  const duration = Math.max(90, appointment.expectedDurationMinutes ?? 30);
+  const duration = Math.max(30, appointment.expectedDurationMinutes ?? 30);
   const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
   return {
     top: `${(minutes / total) * 100}%`,
     height: `${(duration / total) * 100}%`,
   };
+}
+
+function colorWithAlpha(color: string, alphaHex: string): string {
+  return isHexColor(color) ? `${color}${alphaHex}` : color;
 }
 
 function uniqueAppointments(appointments: SchedulerAppointment[]): SchedulerAppointment[] {
@@ -256,6 +408,10 @@ function uniqueAppointments(appointments: SchedulerAppointment[]): SchedulerAppo
 
 function toSchedulerAppointment(appointment: DashboardAppointmentSummary): SchedulerAppointment {
   return { ...appointment, room: null };
+}
+
+function isFallbackAppointment(appointment: SchedulerAppointment): boolean {
+  return appointment.id.startsWith('fallback-');
 }
 
 function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
@@ -326,22 +482,65 @@ function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
   ];
 }
 
-function slotStartsAt(day: Date, slotIndex: number): Date {
+function slotStartsAt(day: Date, slotIndex: number, slotIntervalMinutes: number): Date {
   const startsAt = new Date(day);
-  startsAt.setHours(CLINIC_START_HOUR, slotIndex * SLOT_MINUTES, 0, 0);
+  startsAt.setHours(CLINIC_START_HOUR, slotIndex * slotIntervalMinutes, 0, 0);
   return startsAt;
 }
 
-function timeSlotsFor(day: Date): SelectedSlot[] {
-  return Array.from({ length: SLOT_COUNT }, (_, slotIndex) => {
-    const startsAt = slotStartsAt(day, slotIndex);
-    return { startsAt, endsAt: new Date(startsAt.getTime() + SLOT_MINUTES * 60_000) };
+function slotCount(slotIntervalMinutes: number): number {
+  return ((CLINIC_END_HOUR - CLINIC_START_HOUR) * 60) / slotIntervalMinutes;
+}
+
+function timeSlotsFor(day: Date, slotIntervalMinutes: number): SelectedSlot[] {
+  return Array.from({ length: slotCount(slotIntervalMinutes) }, (_, slotIndex) => {
+    const startsAt = slotStartsAt(day, slotIndex, slotIntervalMinutes);
+    return { startsAt, endsAt: new Date(startsAt.getTime() + slotIntervalMinutes * 60_000) };
   });
 }
 
-function appointmentsForDay(appointments: SchedulerAppointment[], day: Date): SchedulerAppointment[] {
+function minutesFromTime(value: string): number {
+  const [hours = '0', minutes = '0'] = value.split(':');
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function slotTemplateStyle(template: SchedulerSlotTemplate): CSSProperties {
+  const start = minutesFromTime(template.startTime) - CLINIC_START_HOUR * 60;
+  const end = minutesFromTime(template.endTime) - CLINIC_START_HOUR * 60;
+  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+  return {
+    top: `${(Math.max(0, start) / total) * 100}%`,
+    height: `${((Math.min(total, end) - Math.max(0, start)) / total) * 100}%`,
+    backgroundColor: colorWithAlpha(template.color, '26'),
+    borderColor: colorWithAlpha(template.color, '80'),
+  };
+}
+
+function slotTemplatesForDay(
+  templates: SchedulerSlotTemplate[],
+  day: Date,
+): SchedulerSlotTemplate[] {
+  return templates.filter((template) => template.isActive && template.dayOfWeek === day.getDay());
+}
+
+function slotOverlapsTemplate(slot: SelectedSlot, templates: SchedulerSlotTemplate[]): boolean {
+  const slotStart = slot.startsAt.getHours() * 60 + slot.startsAt.getMinutes();
+  const slotEnd = slot.endsAt.getHours() * 60 + slot.endsAt.getMinutes();
+
+  return templates.some((template) => {
+    const templateStart = minutesFromTime(template.startTime);
+    const templateEnd = minutesFromTime(template.endTime);
+    return slotStart < templateEnd && slotEnd > templateStart;
+  });
+}
+
+function appointmentsForDay(
+  appointments: SchedulerAppointment[],
+  day: Date,
+): SchedulerAppointment[] {
   return appointments.filter(
-    (appointment) => isSameDay(new Date(appointment.scheduledAt), day) && inVisibleHours(appointment),
+    (appointment) =>
+      isSameDay(new Date(appointment.scheduledAt), day) && inVisibleHours(appointment),
   );
 }
 
@@ -356,12 +555,16 @@ function statusClass(state: string): string {
 
 export function SchedulerPage() {
   const today = useMemo(() => startOfDay(new Date()), []);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [view, setView] = useState<SchedulerView>('week');
   const [anchorDate, setAnchorDate] = useState(today);
   const [appointments, setAppointments] = useState<SchedulerAppointment[]>([]);
   const [providers, setProviders] = useState<StaffMember[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [schedulerConfig, setSchedulerConfig] =
+    useState<SchedulerConfig>(FALLBACK_SCHEDULER_CONFIG);
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState<SchedulerAppointment | null>(null);
@@ -374,15 +577,19 @@ export function SchedulerPage() {
         const requestInit: RequestInit = signal
           ? { cache: 'no-store', signal }
           : { cache: 'no-store' };
-        const [dashboardResponse, staffResponse] = await Promise.all([
+        const [dashboardResponse, staffResponse, configResponse] = await Promise.all([
           fetch('/api/operations/dashboard', requestInit),
           fetch('/api/staff?canReceiveAppointments=true', requestInit),
+          fetch('/api/scheduler-config', requestInit),
         ]);
 
         const dashboard = dashboardResponse.ok
           ? ((await dashboardResponse.json()) as OperationsDashboard)
           : null;
         const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
+        const config = configResponse.ok
+          ? ((await configResponse.json()) as SchedulerConfig)
+          : FALLBACK_SCHEDULER_CONFIG;
 
         const loadedAppointments = dashboard
           ? uniqueAppointments([
@@ -391,15 +598,15 @@ export function SchedulerPage() {
             ])
           : [];
 
-        setAppointments(
-          loadedAppointments.length > 0 ? loadedAppointments : createFallbackAppointments(anchorDate),
-        );
+        setAppointments(dashboard ? loadedAppointments : createFallbackAppointments(anchorDate));
         setGeneratedAt(dashboard?.generatedAt ?? new Date().toISOString());
         setProviders(staff);
+        setSchedulerConfig(config);
       } catch (caught) {
         if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
           setAppointments(createFallbackAppointments(anchorDate));
           setGeneratedAt(new Date().toISOString());
+          setSchedulerConfig(FALLBACK_SCHEDULER_CONFIG);
         }
       } finally {
         setLoading(false);
@@ -413,6 +620,11 @@ export function SchedulerPage() {
     void loadSchedulerData(controller.signal);
     return () => controller.abort();
   }, [loadSchedulerData]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const days = useMemo(() => {
     if (view === 'day') {
@@ -440,6 +652,70 @@ export function SchedulerPage() {
 
   function move(offset: number) {
     setAnchorDate((current) => addDays(current, view === 'week' ? offset * 7 : offset));
+  }
+
+  async function handleAppointmentMove(appointmentId: string, slot: SelectedSlot) {
+    const appointment = appointments.find((candidate) => candidate.id === appointmentId);
+    if (!appointment) return;
+
+    const movedAppointment: SchedulerAppointment = {
+      ...appointment,
+      scheduledAt: slot.startsAt.toISOString(),
+    };
+    setMoveError(null);
+
+    if (isFallbackAppointment(appointment)) {
+      setAppointments((current) =>
+        uniqueAppointments(
+          current.map((candidate) =>
+            candidate.id === appointmentId ? movedAppointment : candidate,
+          ),
+        ),
+      );
+      return;
+    }
+
+    const previousAppointments = appointments;
+    setAppointments((current) =>
+      uniqueAppointments(
+        current.map((candidate) => (candidate.id === appointmentId ? movedAppointment : candidate)),
+      ),
+    );
+
+    try {
+      const response = await fetch(`/api/appointments/${encodeURIComponent(appointmentId)}/move`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startTime: slot.startsAt.toISOString(),
+          expectedDurationMinutes: appointment.expectedDurationMinutes ?? 30,
+          assignedProviderId: appointment.provider?.id ?? null,
+        }),
+      });
+
+      if (!response.ok) {
+        let detail = '';
+        try {
+          const body = (await response.json()) as { message?: string };
+          detail = body.message ? ` ${body.message}` : '';
+        } catch {
+          detail = '';
+        }
+        throw new Error(`Move rejected.${detail}`);
+      }
+
+      const updated = (await response.json()) as DashboardAppointmentSummary;
+      setAppointments((current) =>
+        uniqueAppointments(
+          current.map((candidate) =>
+            candidate.id === appointmentId ? toSchedulerAppointment(updated) : candidate,
+          ),
+        ),
+      );
+    } catch {
+      setAppointments(previousAppointments);
+      setMoveError('Could not move the appointment. The schedule was restored.');
+    }
   }
 
   return (
@@ -473,23 +749,39 @@ export function SchedulerPage() {
             days={days}
             appointments={filteredAppointments}
             today={today}
+            currentTime={currentTime}
+            appointmentTypes={schedulerConfig.appointmentTypes}
+            slotIntervalMinutes={schedulerConfig.settings.slotIntervalMinutes}
+            slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
+            onAppointmentMove={handleAppointmentMove}
           />
         ) : (
           <DaySchedulerGrid
             day={days[0]!}
             appointments={filteredAppointments}
             today={today}
+            currentTime={currentTime}
+            appointmentTypes={schedulerConfig.appointmentTypes}
+            slotIntervalMinutes={schedulerConfig.settings.slotIntervalMinutes}
+            slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
+            onAppointmentMove={handleAppointmentMove}
           />
         )}
+        {moveError ? (
+          <p className="scheduler-inline-error" role="alert">
+            {moveError}
+          </p>
+        ) : null}
       </div>
       {selectedSlot && (
         <NewAppointmentSlotModal
           slot={selectedSlot}
           providers={providers}
+          appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => setSelectedSlot(null)}
           onCreated={(appointment) => {
             setSelectedSlot(null);
@@ -501,6 +793,7 @@ export function SchedulerPage() {
       {selectedAppointment && (
         <AppointmentDetailPopover
           appointment={selectedAppointment}
+          appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => setSelectedAppointment(null)}
         />
       )}
@@ -545,7 +838,10 @@ function SchedulerToolbar({
       </div>
       <div className="scheduler-toolbar__meta">
         <span className="scheduler-live-status">
-          Live · {loading ? 'Updating' : `Updated ${generatedAt ? formatTime(new Date(generatedAt)) : 'now'}`}
+          Live ·{' '}
+          {loading
+            ? 'Updating'
+            : `Updated ${generatedAt ? formatTime(new Date(generatedAt)) : 'now'}`}
         </span>
         <SchedulerViewToggle view={view} onViewChange={onViewChange} />
       </div>
@@ -596,19 +892,16 @@ function SchedulerFilters({
     <section className="scheduler-filters" aria-label="Scheduler filters">
       <label>
         <span>Doctor / Provider</span>
-        <select value={providerFilter} onChange={(event) => onProviderFilterChange(event.target.value)}>
+        <select
+          value={providerFilter}
+          onChange={(event) => onProviderFilterChange(event.target.value)}
+        >
           <option value="all">All providers</option>
           {providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
               {provider.displayName}
             </option>
           ))}
-        </select>
-      </label>
-      <label>
-        <span>Room</span>
-        <select disabled value="all" aria-label="Room filter unavailable">
-          <option value="all">Rooms not connected yet</option>
         </select>
       </label>
       <label>
@@ -630,15 +923,26 @@ function WeekSchedulerGrid({
   days,
   appointments,
   today,
+  currentTime,
+  appointmentTypes,
+  slotIntervalMinutes,
+  slotTemplates,
   onSlotClick,
   onAppointmentClick,
+  onAppointmentMove,
 }: {
   days: Date[];
   appointments: SchedulerAppointment[];
   today: Date;
+  currentTime: Date;
+  appointmentTypes: AppointmentTypeSetting[];
+  slotIntervalMinutes: number;
+  slotTemplates: SchedulerSlotTemplate[];
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
+  onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
 }) {
+  const todayIndex = days.findIndex((day) => isSameDay(day, currentTime));
   return (
     <section className="scheduler-calendar-card" aria-label="Week appointment calendar">
       <div className="scheduler-week">
@@ -666,11 +970,22 @@ function WeekSchedulerGrid({
               day={day}
               today={today}
               appointments={appointmentsForDay(appointments, day)}
+              appointmentTypes={appointmentTypes}
+              slotIntervalMinutes={slotIntervalMinutes}
+              slotTemplates={slotTemplatesForDay(slotTemplates, day)}
               compact
               onSlotClick={onSlotClick}
               onAppointmentClick={onAppointmentClick}
+              onAppointmentMove={onAppointmentMove}
             />
           ))}
+          {todayIndex >= 0 ? (
+            <CurrentTimeIndicator
+              currentTime={currentTime}
+              todayIndex={todayIndex}
+              columnCount={7}
+            />
+          ) : null}
         </div>
       </div>
     </section>
@@ -681,17 +996,30 @@ function DaySchedulerGrid({
   day,
   appointments,
   today,
+  currentTime,
+  appointmentTypes,
+  slotIntervalMinutes,
+  slotTemplates,
   onSlotClick,
   onAppointmentClick,
+  onAppointmentMove,
 }: {
   day: Date;
   appointments: SchedulerAppointment[];
   today: Date;
+  currentTime: Date;
+  appointmentTypes: AppointmentTypeSetting[];
+  slotIntervalMinutes: number;
+  slotTemplates: SchedulerSlotTemplate[];
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
+  onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
 }) {
   return (
-    <section className="scheduler-calendar-card scheduler-calendar-card--day" aria-label="Day appointment calendar">
+    <section
+      className="scheduler-calendar-card scheduler-calendar-card--day"
+      aria-label="Day appointment calendar"
+    >
       <div
         className={
           isSameDay(day, today)
@@ -711,11 +1039,60 @@ function DaySchedulerGrid({
           day={day}
           today={today}
           appointments={appointmentsForDay(appointments, day)}
+          appointmentTypes={appointmentTypes}
+          slotIntervalMinutes={slotIntervalMinutes}
+          slotTemplates={slotTemplatesForDay(slotTemplates, day)}
           onSlotClick={onSlotClick}
           onAppointmentClick={onAppointmentClick}
+          onAppointmentMove={onAppointmentMove}
         />
+        {isSameDay(day, currentTime) ? (
+          <CurrentTimeIndicator currentTime={currentTime} todayIndex={0} columnCount={1} />
+        ) : null}
       </div>
     </section>
+  );
+}
+
+function currentTimeTopPercent(currentTime: Date): number | null {
+  const minutes = minutesSinceClinicOpen(currentTime);
+  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+  if (minutes < 0 || minutes > total) return null;
+  return (minutes / total) * 100;
+}
+
+function CurrentTimeIndicator({
+  currentTime,
+  todayIndex,
+  columnCount,
+}: {
+  currentTime: Date;
+  todayIndex: number;
+  columnCount: number;
+}) {
+  const top = currentTimeTopPercent(currentTime);
+  if (top === null) return null;
+
+  const segmentWidth = 100 / columnCount;
+  const segmentLeft = todayIndex * segmentWidth;
+
+  return (
+    <div
+      className="scheduler-now-indicator"
+      style={
+        {
+          top: `${top}%`,
+          '--scheduler-now-dot-left': `${segmentLeft}%`,
+          '--scheduler-now-segment-left': `${segmentLeft}%`,
+          '--scheduler-now-segment-width': `${segmentWidth}%`,
+        } as CSSProperties
+      }
+      aria-hidden="true"
+    >
+      <span className="scheduler-now-indicator__line" />
+      <span className="scheduler-now-indicator__today-segment" />
+      <span className="scheduler-now-indicator__dot" />
+    </div>
   );
 }
 
@@ -733,17 +1110,27 @@ function SchedulerDayColumn({
   day,
   today,
   appointments,
+  appointmentTypes,
+  slotIntervalMinutes,
+  slotTemplates,
   compact,
   onSlotClick,
   onAppointmentClick,
+  onAppointmentMove,
 }: {
   day: Date;
   today: Date;
   appointments: SchedulerAppointment[];
+  appointmentTypes: AppointmentTypeSetting[];
+  slotIntervalMinutes: number;
+  slotTemplates: SchedulerSlotTemplate[];
   compact?: boolean;
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
+  onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
 }) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
   return (
     <div
       className={
@@ -751,22 +1138,66 @@ function SchedulerDayColumn({
           ? 'scheduler-day-column scheduler-day-column--today'
           : 'scheduler-day-column'
       }
+      style={{ '--scheduler-slot-count': slotCount(slotIntervalMinutes) } as CSSProperties}
     >
-      <div className="scheduler-day-column__slots">
-        {timeSlotsFor(day).map((slot) => (
-          <button
-            key={slot.startsAt.toISOString()}
-            type="button"
-            className="scheduler-open-slot"
-            aria-label={`New appointment at ${formatTime(slot.startsAt)}`}
-            onClick={() => onSlotClick(slot)}
-          />
-        ))}
+      {slotTemplates.map((template) => (
+        <div
+          key={template.id}
+          className="scheduler-slot-template"
+          style={slotTemplateStyle(template)}
+          aria-hidden="true"
+        >
+          <span>{template.label}</span>
+          {template.room ? <small>{template.room}</small> : null}
+        </div>
+      ))}
+      <div
+        className="scheduler-day-column__slots"
+        style={{ gridTemplateRows: `repeat(${slotCount(slotIntervalMinutes)}, 1fr)` }}
+      >
+        {timeSlotsFor(day, slotIntervalMinutes).map((slot) => {
+          const slotKey = slot.startsAt.toISOString();
+          const isInsideScheduleBlock = slotOverlapsTemplate(slot, slotTemplates);
+          const slotClassName = [
+            'scheduler-open-slot',
+            isInsideScheduleBlock ? 'scheduler-open-slot--inside-block' : null,
+            dropTarget === slotKey ? 'scheduler-open-slot--drop-target' : null,
+          ]
+            .filter(Boolean)
+            .join(' ');
+
+          return (
+            <button
+              key={slotKey}
+              type="button"
+              className={slotClassName}
+              aria-label={`New appointment at ${formatTime(slot.startsAt)}`}
+              onClick={() => onSlotClick(slot)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                setDropTarget(slotKey);
+              }}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDropTarget(null);
+                const appointmentId = event.dataTransfer.getData('text/plain');
+                if (appointmentId) {
+                  onAppointmentMove(appointmentId, slot);
+                }
+              }}
+            >
+              <span>+ Add appointment</span>
+            </button>
+          );
+        })}
       </div>
       {appointments.map((appointment) => (
         <SchedulerAppointmentCard
           key={appointment.id}
           appointment={appointment}
+          appointmentTypes={appointmentTypes}
           compact={compact}
           style={appointmentStyle(appointment)}
           onClick={() => onAppointmentClick(appointment)}
@@ -778,31 +1209,46 @@ function SchedulerDayColumn({
 
 function SchedulerAppointmentCard({
   appointment,
+  appointmentTypes,
   compact = false,
   style,
   onClick,
 }: {
   appointment: SchedulerAppointment;
+  appointmentTypes: AppointmentTypeSetting[];
   compact?: boolean | undefined;
   style: { top: string; height: string };
   onClick: () => void;
 }) {
   const careTeamMeta = appointmentCareTeamMeta(appointment);
-  const colorKey = appointmentColorKey(appointment);
+  const color = appointmentColor(appointment, appointmentTypes);
+  const cardStyle: CSSProperties = {
+    ...style,
+    '--scheduler-card-accent': color,
+    '--scheduler-card-bg': colorWithAlpha(color, '14'),
+  } as CSSProperties;
 
   return (
     <button
       type="button"
-      className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''} scheduler-color--${colorKey}`}
-      style={style}
+      className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''}`}
+      style={cardStyle}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', appointment.id);
+      }}
       onClick={onClick}
     >
+      <span className="scheduler-appointment-card__drag" aria-hidden="true">
+        ::
+      </span>
       <strong>{appointmentPatientName(appointment)}</strong>
+      <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
+        {appointmentPrimaryMeta(appointment, appointmentTypes)}
+      </span>
       <span className="scheduler-appointment-card__client">
         {appointmentClientName(appointment)}
-      </span>
-      <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
-        {appointmentPrimaryMeta(appointment)}
       </span>
       {careTeamMeta ? (
         <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--care-team">
@@ -826,7 +1272,7 @@ function ModalFrame({
 }: {
   title: string;
   subtitle?: string;
-  children: React.ReactNode;
+  children: ReactNode;
   onClose: () => void;
 }) {
   useLockBodyScroll(true);
@@ -858,29 +1304,41 @@ function ModalFrame({
 function NewAppointmentSlotModal({
   slot,
   providers,
+  appointmentTypes,
   onClose,
   onCreated,
 }: {
   slot: SelectedSlot;
   providers: StaffMember[];
+  appointmentTypes: AppointmentTypeSetting[];
   onClose: () => void;
   onCreated: (appointment: SchedulerAppointment) => void;
 }) {
+  const activeAppointmentTypes = useMemo(
+    () =>
+      appointmentTypes
+        .filter((setting) => setting.isActive && setting.appointmentType)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [appointmentTypes],
+  );
+  const defaultAppointmentType =
+    activeAppointmentTypes[0]?.appointmentType ?? 'WellnessPreventiveCare';
   const [patientQuery, setPatientQuery] = useState('');
   const [patientResults, setPatientResults] = useState<PatientSearchResult[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientSearchResult | null>(null);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
-  const [appointmentType, setAppointmentType] = useState<AppointmentTypeValue>(
-    'WellnessPreventiveCare',
+  const [appointmentType, setAppointmentType] =
+    useState<AppointmentTypeValue>(defaultAppointmentType);
+  const [visitReason, setVisitReason] = useState(
+    configuredAppointmentTypeLabel(defaultAppointmentType, appointmentTypes),
   );
-  const [visitReason, setVisitReason] = useState(appointmentTypeLabel('WellnessPreventiveCare'));
-  const [durationMinutes, setDurationMinutes] = useState('30');
+  const [durationMinutes, setDurationMinutes] = useState(
+    String(Math.max(15, Math.round((slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000))),
+  );
   const [assignedProviderId, setAssignedProviderId] = useState(
     providers.length === 1 ? providers[0]!.id : '',
   );
-  const [colorKey, setColorKey] = useState<AppointmentColorKey>(
-    DEFAULT_COLOR_BY_APPOINTMENT_TYPE.WellnessPreventiveCare,
-  );
+  const [manualColorOverride, setManualColorOverride] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -904,7 +1362,9 @@ function NewAppointmentSlotModal({
       fetch(`/api/patients/search?query=${encodeURIComponent(trimmed)}&limit=6`, {
         signal: controller.signal,
       })
-        .then((response) => (response.ok ? (response.json() as Promise<PatientSearchResult[]>) : []))
+        .then((response) =>
+          response.ok ? (response.json() as Promise<PatientSearchResult[]>) : [],
+        )
         .then(setPatientResults)
         .catch((caught) => {
           if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
@@ -922,8 +1382,9 @@ function NewAppointmentSlotModal({
 
   function handleAppointmentTypeChange(value: AppointmentTypeValue) {
     setAppointmentType(value);
-    setColorKey(DEFAULT_COLOR_BY_APPOINTMENT_TYPE[value]);
-    setVisitReason((current) => (current.trim() ? current : appointmentTypeLabel(value)));
+    setVisitReason((current) =>
+      current.trim() ? current : configuredAppointmentTypeLabel(value, appointmentTypes),
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -948,7 +1409,7 @@ function NewAppointmentSlotModal({
           startTime: slot.startsAt.toISOString(),
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: assignedProviderId || undefined,
-          colorKey,
+          colorKey: manualColorOverride ?? undefined,
         }),
       });
 
@@ -959,7 +1420,8 @@ function NewAppointmentSlotModal({
 
       const created = (await response.json()) as CreatedAppointmentResponse;
       const selectedProvider =
-        providers.find((provider) => provider.id === (created.providerId ?? assignedProviderId)) ?? null;
+        providers.find((provider) => provider.id === (created.providerId ?? assignedProviderId)) ??
+        null;
 
       onCreated({
         id: created.id,
@@ -999,6 +1461,11 @@ function NewAppointmentSlotModal({
 
   const endTime = new Date(slot.startsAt.getTime() + Number(durationMinutes) * 60_000);
   const newPatientHref = `/patients/new?scheduledAt=${encodeURIComponent(slot.startsAt.toISOString())}`;
+  const selectedTypeSetting = appointmentTypes.find(
+    (setting) => setting.appointmentType === appointmentType,
+  );
+  const previewColor =
+    manualColorOverride ?? selectedTypeSetting?.color ?? FALLBACK_APPOINTMENT_COLOR;
 
   return (
     <ModalFrame
@@ -1045,9 +1512,7 @@ function NewAppointmentSlotModal({
             placeholder="Search pet, owner, phone, or email"
             autoFocus
           />
-          {patientSearchLoading ? (
-            <p className="scheduler-modal__hint">Searching...</p>
-          ) : null}
+          {patientSearchLoading ? <p className="scheduler-modal__hint">Searching...</p> : null}
           {patientResults.length > 0 ? (
             <div className="scheduler-patient-results">
               {patientResults.map((patient) => (
@@ -1079,7 +1544,9 @@ function NewAppointmentSlotModal({
               <span>
                 {selectedPatient.primaryClient
                   ? `${clientDisplayName(selectedPatient.primaryClient)}${
-                      selectedPatient.primaryClient.phone ? ` · ${selectedPatient.primaryClient.phone}` : ''
+                      selectedPatient.primaryClient.phone
+                        ? ` · ${selectedPatient.primaryClient.phone}`
+                        : ''
                     }`
                   : 'No owner linked'}
               </span>
@@ -1100,11 +1567,22 @@ function NewAppointmentSlotModal({
               }
               required
             >
-              {APPOINTMENT_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {appointmentTypeLabel(type)}
-                </option>
-              ))}
+              {(activeAppointmentTypes.length > 0
+                ? activeAppointmentTypes
+                : DEFAULT_APPOINTMENT_TYPE_SETTINGS
+              )
+                .filter(
+                  (
+                    setting,
+                  ): setting is AppointmentTypeSetting & {
+                    appointmentType: AppointmentTypeValue;
+                  } => Boolean(setting.appointmentType),
+                )
+                .map((setting) => (
+                  <option key={setting.appointmentType} value={setting.appointmentType}>
+                    {setting.name}
+                  </option>
+                ))}
             </select>
           </label>
           <label>
@@ -1155,26 +1633,46 @@ function NewAppointmentSlotModal({
         </div>
 
         <fieldset className="scheduler-color-picker">
-          <legend>Calendar color</legend>
-          <p>Used to make the schedule easier to scan.</p>
-          <div className="scheduler-color-picker__chips">
-            {APPOINTMENT_COLOR_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                className={
-                  colorKey === option.key
-                    ? `scheduler-color-chip scheduler-color-chip--selected scheduler-color-chip--${option.key}`
-                    : `scheduler-color-chip scheduler-color-chip--${option.key}`
-                }
-                aria-pressed={colorKey === option.key}
-                onClick={() => setColorKey(option.key)}
-              >
-                <span aria-hidden="true" />
-                {option.label}
-              </button>
-            ))}
+          <legend>Color preview</legend>
+          <p>Defaults to the configured appointment type color.</p>
+          <div className="scheduler-color-preview">
+            <span style={{ backgroundColor: previewColor }} aria-hidden="true" />
+            <strong>
+              {manualColorOverride
+                ? 'Manual override'
+                : (selectedTypeSetting?.name ?? 'Type color')}
+            </strong>
           </div>
+          <details className="scheduler-color-override">
+            <summary>Manual color override</summary>
+            <div className="scheduler-color-picker__chips">
+              {APPOINTMENT_COLOR_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={
+                    manualColorOverride === LEGACY_COLOR_HEX[option.key]
+                      ? `scheduler-color-chip scheduler-color-chip--selected scheduler-color-chip--${option.key}`
+                      : `scheduler-color-chip scheduler-color-chip--${option.key}`
+                  }
+                  aria-pressed={manualColorOverride === LEGACY_COLOR_HEX[option.key]}
+                  onClick={() => setManualColorOverride(LEGACY_COLOR_HEX[option.key])}
+                >
+                  <span aria-hidden="true" />
+                  {option.label}
+                </button>
+              ))}
+              {manualColorOverride ? (
+                <button
+                  type="button"
+                  className="scheduler-color-chip"
+                  onClick={() => setManualColorOverride(null)}
+                >
+                  Use type color
+                </button>
+              ) : null}
+            </div>
+          </details>
         </fieldset>
 
         {error ? (
@@ -1195,11 +1693,14 @@ function NewAppointmentSlotModal({
 
 function AppointmentDetailPopover({
   appointment,
+  appointmentTypes,
   onClose,
 }: {
   appointment: SchedulerAppointment;
+  appointmentTypes: AppointmentTypeSetting[];
   onClose: () => void;
 }) {
+  const color = appointmentColor(appointment, appointmentTypes);
   return (
     <ModalFrame title={appointmentPatientName(appointment)} onClose={onClose}>
       <dl className="scheduler-detail-list">
@@ -1213,7 +1714,7 @@ function AppointmentDetailPopover({
         </div>
         <div>
           <dt>Visit type</dt>
-          <dd>{appointmentTypeLabel(appointment.type)}</dd>
+          <dd>{configuredAppointmentTypeLabel(appointment.type, appointmentTypes)}</dd>
         </div>
         <div>
           <dt>Doctor</dt>
@@ -1234,8 +1735,11 @@ function AppointmentDetailPopover({
         <div>
           <dt>Calendar color</dt>
           <dd>
-            <span className={`scheduler-color-readout scheduler-color-readout--${appointmentColorKey(appointment)}`}>
-              {appointmentColorLabel(appointmentColorKey(appointment))}
+            <span
+              className="scheduler-color-readout"
+              style={{ '--scheduler-readout-color': color } as CSSProperties}
+            >
+              {appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}
             </span>
           </dd>
         </div>

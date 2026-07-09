@@ -6,6 +6,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
 
+// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
+// sourceSystem and must survive this file's shared-org cleanup — see that
+// script's header comment for why the data is protected and persistent.
+const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
+// `{ sourceSystem: { not: X } }` alone would exclude NULL rows too
+// (SQL three-valued logic), and this file's own fixtures have
+// sourceSystem = null — so the null branch below is required or this
+// filter silently matches nothing.
+const NOT_PROTECTED = {
+  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
+};
+
 describe('Clients (e2e)', () => {
   let app: INestApplication;
   let otherOrganizationId: string;
@@ -29,13 +41,22 @@ describe('Clients (e2e)', () => {
 
   afterAll(async () => {
     await prisma.patientClient.deleteMany({
-      where: { client: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } } },
+      where: {
+        client: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+        patient: NOT_PROTECTED,
+      },
     });
     await prisma.patient.deleteMany({
-      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        ...NOT_PROTECTED,
+      },
     });
     await prisma.client.deleteMany({
-      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        ...NOT_PROTECTED,
+      },
     });
     await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();

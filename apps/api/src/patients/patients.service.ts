@@ -18,6 +18,25 @@ const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
   include: { clients: { include: { client: true } } },
 });
 
+/** Literal fixture-name fragments left behind by interrupted local
+ *  Playwright/vitest runs (see scripts/cleanup-local-test-debris.mjs, which
+ *  is the real fix — this is just a dev-only safety net so a crashed test
+ *  run can't dominate the default Patients directory before someone gets a
+ *  chance to run that cleanup). Never applied outside development, and never
+ *  applied to an explicit search — only the no-query default listing. */
+const TEST_DEBRIS_NAME_FRAGMENTS = ['Playwright', 'Schedule Patient', 'Visit Patient'];
+
+function excludingTestDebris(): Prisma.PatientWhereInput {
+  if (process.env.NODE_ENV === 'production') return {};
+  // AND of NOTs (not a single NOT: [...]), so this unambiguously excludes a
+  // patient whose name contains ANY of the fragments.
+  return {
+    AND: TEST_DEBRIS_NAME_FRAGMENTS.map((fragment) => ({
+      NOT: { name: { contains: fragment } },
+    })),
+  };
+}
+
 type PatientWithClients = Prisma.PatientGetPayload<typeof patientWithClients>;
 
 export interface PatientSearchResult {
@@ -200,7 +219,7 @@ export class PatientsService {
    */
   async list(organizationId: string, limit: number): Promise<PatientSearchResult[]> {
     const patients = await prisma.patient.findMany({
-      where: { organizationId },
+      where: { organizationId, ...excludingTestDebris() },
       ...patientWithClients,
       orderBy: { name: 'asc' },
       take: limit,

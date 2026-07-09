@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -6,8 +6,10 @@ import { AppointmentsService } from './appointments.service';
 import {
   createAppointmentSchema,
   linkAppointmentPatientSchema,
+  moveAppointmentSchema,
   type CreateAppointmentInput,
   type LinkAppointmentPatientInput,
+  type MoveAppointmentInput,
 } from './dto/create-appointment.schema';
 
 @Controller('appointments')
@@ -34,6 +36,15 @@ export class AppointmentsController {
     @Body(new ZodValidationPipe(linkAppointmentPatientSchema)) body: LinkAppointmentPatientInput,
   ) {
     return this.appointments.linkPatient(id, user.organizationId, body);
+  }
+
+  @Patch(':id/move')
+  move(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(moveAppointmentSchema)) body: MoveAppointmentInput,
+  ) {
+    return this.appointments.move(id, user.organizationId, user.locationId, body);
   }
 
   @Post(':id/confirm')

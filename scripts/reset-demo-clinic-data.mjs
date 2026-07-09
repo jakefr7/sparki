@@ -6,6 +6,22 @@ const prisma = new PrismaClient();
 const DEV_ORGANIZATION_ID = 'dev-organization';
 const DEV_LOCATION_ID = 'dev-location';
 
+// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
+// sourceSystem and must never be touched by clearDevClinicalData() below —
+// that script's data is protected, persistent local demo data, not
+// throwaway case fixtures like the ones this file generates.
+//
+// NOTE: `{ sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }` alone is NOT
+// enough — Prisma/SQL's "not equals" on a nullable column excludes NULL rows
+// too (three-valued logic: `NULL <> 'x'` is unknown, not true), and this
+// script's own case data always has sourceSystem = null. Without the
+// `{ sourceSystem: null }` branch below, this filter would silently match
+// zero rows and clearDevClinicalData() would delete nothing at all.
+const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
+const NOT_PROTECTED = {
+  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
+};
+
 function todayAt(hour, minute) {
   const date = new Date();
   date.setHours(hour, minute, 0, 0);
@@ -167,32 +183,36 @@ async function ensureDevClinic() {
 }
 
 async function clearDevClinicalData() {
+  // Every deleteMany below is scoped to DEV_ORGANIZATION_ID *and* excludes
+  // protected local demo data (sourceSystem = 'sparki-local-demo') — see
+  // scripts/seed-local-clinic-demo-data.mjs's header comment for why that
+  // data must survive this reset.
   await prisma.visitIntake.deleteMany({
-    where: { visit: { organizationId: DEV_ORGANIZATION_ID } },
+    where: { visit: { organizationId: DEV_ORGANIZATION_ID, patient: NOT_PROTECTED } },
   });
   await prisma.visitExamFindings.deleteMany({
-    where: { visit: { organizationId: DEV_ORGANIZATION_ID } },
+    where: { visit: { organizationId: DEV_ORGANIZATION_ID, patient: NOT_PROTECTED } },
   });
   await prisma.soapNote.deleteMany({
-    where: { visit: { organizationId: DEV_ORGANIZATION_ID } },
+    where: { visit: { organizationId: DEV_ORGANIZATION_ID, patient: NOT_PROTECTED } },
   });
   await prisma.visit.deleteMany({
-    where: { organizationId: DEV_ORGANIZATION_ID },
+    where: { organizationId: DEV_ORGANIZATION_ID, patient: NOT_PROTECTED },
   });
   await prisma.appointment.deleteMany({
-    where: { organizationId: DEV_ORGANIZATION_ID },
+    where: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED },
   });
   await prisma.medicalRecord.deleteMany({
-    where: { patient: { organizationId: DEV_ORGANIZATION_ID } },
+    where: { patient: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED } },
   });
   await prisma.patientClient.deleteMany({
-    where: { patient: { organizationId: DEV_ORGANIZATION_ID } },
+    where: { patient: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED } },
   });
   await prisma.patient.deleteMany({
-    where: { organizationId: DEV_ORGANIZATION_ID },
+    where: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED },
   });
   await prisma.client.deleteMany({
-    where: { organizationId: DEV_ORGANIZATION_ID },
+    where: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED },
   });
 }
 

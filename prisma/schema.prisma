@@ -57,6 +57,9 @@ model Organization {
   patients     Patient[]
   appointments Appointment[]
   visits       Visit[]
+  appointmentTypeSettings AppointmentTypeSetting[]
+  schedulerSettings       SchedulerSettings[]
+  schedulerSlotTemplates  SchedulerSlotTemplate[]
 
   memberships     OrganizationMembership[]
   locationAccess  ClinicLocationAccess[]
@@ -73,6 +76,9 @@ model Location {
   users        User[]
   appointments Appointment[]
   visits       Visit[]
+  appointmentTypeSettings AppointmentTypeSetting[]
+  schedulerSettings       SchedulerSettings?
+  schedulerSlotTemplates  SchedulerSlotTemplate[]
 
   locationAccess ClinicLocationAccess[]
 
@@ -414,6 +420,64 @@ model Appointment {
   @@index([organizationId])
   @@index([locationId, scheduledAt])
   @@index([patientId])
+}
+
+model AppointmentTypeSetting {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  appointmentType AppointmentType?
+  name           String
+  color          String
+  isActive       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+
+  @@unique([locationId, appointmentType])
+  @@index([organizationId])
+  @@index([locationId, isActive, sortOrder])
+}
+
+model SchedulerSettings {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  locationId          String   @unique
+  slotIntervalMinutes Int      @default(30)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model SchedulerSlotTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  label          String
+  color          String
+  staffId        String?
+  room           String?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+
+  @@index([organizationId])
+  @@index([locationId, dayOfWeek, isActive])
+  @@index([locationId, deletedAt])
 }
 
 // --- Visit -------------------------------------------------------------

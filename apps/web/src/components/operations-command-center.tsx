@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState, type DragEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { DashboardCard, DashboardShell, type DashboardRoute } from './dashboard-shell';
+import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
 import { appointmentHref, clientLabel } from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
@@ -199,6 +201,13 @@ interface ClinicTask {
   dueAt?: string;
 }
 
+interface TaskDraft {
+  title: string;
+  assignee: string;
+  dueAt: string;
+  assignedBy: string;
+}
+
 const DEV_STICKY_NOTES: StickyNote[] = [
   {
     id: 'dev-note-callbacks',
@@ -279,6 +288,41 @@ function formatDateTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function toDateTimeInputValue(value: string) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - offset * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function fromDateTimeInputValue(value: string) {
+  return value ? new Date(value).toISOString() : undefined;
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+      <path d="M10 4.25v11.5M4.25 10h11.5" />
+    </svg>
+  );
+}
+
+function GripIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+      <path d="M7 5.5h.01M13 5.5h.01M7 10h.01M13 10h.01M7 14.5h.01M13 14.5h.01" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
+      <path d="M4.5 6h11M8 6V4.75h4V6M6 6l.55 9.25h6.9L14 6" />
+    </svg>
+  );
 }
 
 function roomLabelFromLocation(location?: string) {
@@ -584,7 +628,10 @@ function PatientClientCell({
 }
 
 function QuickActionsWidget() {
-  const actions = [
+  const router = useRouter();
+  const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+
+  const linkActions = [
     {
       href: '/scheduler',
       label: 'New Appointment',
@@ -603,24 +650,23 @@ function QuickActionsWidget() {
       description: 'Open a profile.',
       tone: 'purple',
     },
-    {
-      href: '/patients/new',
-      label: 'New Client',
-      description: 'Create a client profile.',
-      tone: 'orange',
-    },
   ] as const;
+
+  function handleOpenCreatedProfile(result: NewPatientCreationResult) {
+    setIsNewPatientModalOpen(false);
+    router.push(`/patients/${result.id}`);
+  }
 
   return (
     <DashboardCard className="home-widget--actions" aria-labelledby="quick-actions-heading">
       <div className="home-widget__header">
         <div>
-          <p className="eyebrow">Role-aware</p>
+          <p className="eyebrow">Shortcuts</p>
           <h2 id="quick-actions-heading">Quick Actions</h2>
         </div>
       </div>
       <div className="quick-action-grid">
-        {actions.map((action) => (
+        {linkActions.map((action) => (
           <Link
             key={action.label}
             href={action.href}
@@ -631,7 +677,22 @@ function QuickActionsWidget() {
             <span>{action.description}</span>
           </Link>
         ))}
+        <button
+          type="button"
+          className="quick-action"
+          data-tone="orange"
+          onClick={() => setIsNewPatientModalOpen(true)}
+        >
+          <strong>New Patient</strong>
+          <span>Create a patient profile.</span>
+        </button>
       </div>
+      <NewPatientModal
+        open={isNewPatientModalOpen}
+        onClose={() => setIsNewPatientModalOpen(false)}
+        onCreated={() => {}}
+        onOpenProfile={handleOpenCreatedProfile}
+      />
     </DashboardCard>
   );
 }
@@ -695,7 +756,6 @@ function ClinicVisitRow({
       />
       <span className="clinic-table__location">{row.location}</span>
       <StatusChip row={row} onChanged={onStatusChanged} />
-      <RowActionsButton label={`Open actions for ${row.patientName}`} />
     </div>
   );
 }
@@ -818,65 +878,161 @@ function TodaySchedulePreviewWidget({
 function StickyNotesWidget() {
   const [notes, setNotes] = useState<StickyNote[]>(DEV_STICKY_NOTES);
   const [draft, setDraft] = useState('');
-
-  function updateNote(id: string, body: string) {
-    setNotes((current) =>
-      current.map((note) =>
-        note.id === id ? { ...note, body, updatedAt: new Date().toISOString() } : note,
-      ),
-    );
-  }
+  const [isComposing, setIsComposing] = useState(false);
+  const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
 
   function createNote() {
     const body = draft.trim();
     if (!body) return;
+    // TODO: Persist shift notes through the dashboard API once a ShiftNote model exists.
     setNotes((current) => [
       { id: `note-${Date.now()}`, body, updatedAt: new Date().toISOString() },
       ...current,
     ]);
     setDraft('');
+    setIsComposing(false);
+  }
+
+  function cancelNote() {
+    setDraft('');
+    setIsComposing(false);
+  }
+
+  function deleteNote(note: StickyNote) {
+    const shouldConfirm = note.body.trim().length > 120;
+    if (shouldConfirm && !window.confirm('Delete this shift note?')) return;
+    // TODO: Delete persisted shift notes through the dashboard API once backend support exists.
+    setNotes((current) => current.filter((item) => item.id !== note.id));
+  }
+
+  function moveNote(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    // TODO: Persist shift note sort order when backend support is added.
+    setNotes((current) => {
+      const sourceIndex = current.findIndex((note) => note.id === sourceId);
+      const targetIndex = current.findIndex((note) => note.id === targetId);
+      if (sourceIndex === -1 || targetIndex === -1) return current;
+      const next = [...current];
+      const [moved] = next.splice(sourceIndex, 1);
+      if (!moved) return current;
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  }
+
+  function handleDragEnterNote(event: DragEvent<HTMLElement>, targetId: string) {
+    event.preventDefault();
+    const sourceId = draggedNoteId ?? event.dataTransfer.getData('text/plain');
+    if (sourceId) moveNote(sourceId, targetId);
+  }
+
+  function handleDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    setDraggedNoteId(null);
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelNote();
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault();
+      createNote();
+    }
   }
 
   return (
     <DashboardCard className="sticky-notes-widget" aria-labelledby="sticky-notes-heading">
       <div className="home-widget__header">
         <div>
-          <p className="eyebrow">Shift memory</p>
+          <p className="eyebrow">SHIFT MEMORY</p>
           <h2 id="sticky-notes-heading">Shift Notes</h2>
           <p className="home-widget__helper">Handoff notes for today&apos;s team.</p>
         </div>
-      </div>
-      <div className="sticky-note-composer">
-        <textarea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Add a handoff note..."
-          aria-label="New sticky note"
-        />
-        <button type="button" className="button-secondary" onClick={createNote}>
-          Add note
+        <button
+          type="button"
+          className="dashboard-icon-button"
+          onClick={() => setIsComposing(true)}
+          aria-label="Add shift note"
+          title="Add shift note"
+        >
+          <PlusIcon />
         </button>
       </div>
+      {isComposing && (
+        <div className="sticky-note-composer">
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            placeholder="Leave a handoff note..."
+            aria-label="New shift note"
+            autoFocus
+          />
+          <div className="sticky-note-composer__actions">
+            <button type="button" className="button-secondary" onClick={cancelNote}>
+              Cancel
+            </button>
+            <button type="button" className="button-primary" onClick={createNote} disabled={!draft.trim()}>
+              Save
+            </button>
+          </div>
+        </div>
+      )}
       <div className="sticky-note-grid">
         {notes.map((note) => (
-          <article className="sticky-note-card" key={note.id}>
-            <textarea
-              value={note.body}
-              onChange={(event) => updateNote(note.id, event.target.value)}
-              aria-label={`Edit sticky note updated ${formatDateTime(note.updatedAt)}`}
-            />
+          <article
+            className="sticky-note-card"
+            key={note.id}
+            draggable
+            data-dragging={draggedNoteId === note.id ? 'true' : undefined}
+            onDragStart={(event) => {
+              setDraggedNoteId(note.id);
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', note.id);
+            }}
+            onDragEnter={(event) => handleDragEnterNote(event, note.id)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleDrop}
+            onDragEnd={() => setDraggedNoteId(null)}
+          >
+            <div className="sticky-note-card__topline">
+              <span className="sticky-note-card__grip" aria-hidden="true" title="Drag to reorder">
+                <GripIcon />
+              </span>
+              <button
+                type="button"
+                className="sticky-note-card__delete"
+                onClick={() => deleteNote(note)}
+                aria-label="Delete shift note"
+                title="Delete shift note"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+            <p>{note.body}</p>
             <time dateTime={note.updatedAt}>Updated {formatDateTime(note.updatedAt)}</time>
           </article>
         ))}
+        {notes.length === 0 && <EmptyQueue label="No shift notes yet." />}
       </div>
     </DashboardCard>
   );
 }
 
 function TasksWidget() {
+  const { user: currentUser } = useCurrentUser();
   const [filter, setFilter] = useState<TaskState>('pending');
-  const filteredTasks = DEV_TASKS.filter((task) => task.status === filter);
-  const taskCounts = DEV_TASKS.reduce<Record<TaskState, number>>(
+  const [tasks, setTasks] = useState<ClinicTask[]>(DEV_TASKS);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const assignedByDefault = currentUser?.name ?? 'Reception';
+  const assigneeOptions = useMemo(
+    () => Array.from(new Set(['Front Desk', 'Care Team', ...tasks.map((task) => task.assignee)])).sort(),
+    [tasks],
+  );
+  const filteredTasks = tasks.filter((task) => task.status === filter);
+  const taskCounts = tasks.reduce<Record<TaskState, number>>(
     (counts, task) => ({ ...counts, [task.status]: counts[task.status] + 1 }),
     { overdue: 0, pending: 0, completed: 0 },
   );
@@ -886,13 +1042,43 @@ function TasksWidget() {
     { label: 'Completed', value: 'completed', count: taskCounts.completed },
   ];
 
+  function createTask(draft: TaskDraft) {
+    const title = draft.title.trim();
+    const assignee = draft.assignee.trim();
+    if (!title || !assignee) return;
+    const dueAt = fromDateTimeInputValue(draft.dueAt);
+    const task: ClinicTask = {
+      id: `task-${Date.now()}`,
+      title,
+      assignee,
+      assignedBy: draft.assignedBy.trim() || assignedByDefault,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+      ...(dueAt ? { dueAt } : {}),
+    };
+    // TODO: Persist dashboard tasks through the operations dashboard API once a Task model exists.
+    setTasks((current) => [task, ...current]);
+    setFilter('pending');
+    setIsCreatingTask(false);
+  }
+
   return (
     <DashboardCard className="tasks-widget" aria-labelledby="tasks-heading">
       <div className="home-widget__header">
         <div>
-          <p className="eyebrow">Work queue</p>
+          <p className="eyebrow">WORK QUEUE</p>
           <h2 id="tasks-heading">Tasks</h2>
         </div>
+        <button
+          type="button"
+          className="button-primary task-create-button"
+          onClick={() => setIsCreatingTask(true)}
+          aria-label="Create task"
+          title="Create task"
+        >
+          <PlusIcon />
+          <span>Task</span>
+        </button>
       </div>
       <div className="task-filter-tabs" role="tablist" aria-label="Task filters">
         {filters.map((item) => (
@@ -912,28 +1098,139 @@ function TasksWidget() {
         {filteredTasks.map((task) => (
           <article className="task-line-item" data-state={task.status} key={task.id}>
             <div className="task-line-item__main">
-              <strong>{task.title}</strong>
-              <span>Created {formatDateTime(task.createdAt)}</span>
+              <div>
+                <strong>{task.title}</strong>
+                <span>Created {formatDateTime(task.createdAt)}</span>
+              </div>
             </div>
-            <dl className="task-line-item__meta">
-              <div>
-                <dt>Assigned by</dt>
-                <dd>{task.assignedBy}</dd>
-              </div>
-              <div>
-                <dt>Assignee</dt>
-                <dd>{task.assignee}</dd>
-              </div>
-              <div>
-                <dt>Due</dt>
-                <dd>{task.dueAt ? formatDateTime(task.dueAt) : 'No due date'}</dd>
-              </div>
-            </dl>
+            <p className="task-line-item__meta">
+              <span>{task.assignee}</span>
+              <span>{task.dueAt ? `Due ${formatDateTime(task.dueAt)}` : 'No due date'}</span>
+              <span>By {task.assignedBy}</span>
+            </p>
           </article>
         ))}
         {filteredTasks.length === 0 && <EmptyQueue label={`No ${filter} tasks.`} />}
       </div>
+      {isCreatingTask && (
+        <TaskCreateDialog
+          assignedByDefault={assignedByDefault}
+          assigneeOptions={assigneeOptions}
+          onCancel={() => setIsCreatingTask(false)}
+          onCreate={createTask}
+        />
+      )}
     </DashboardCard>
+  );
+}
+
+function TaskCreateDialog({
+  assignedByDefault,
+  assigneeOptions,
+  onCancel,
+  onCreate,
+}: {
+  assignedByDefault: string;
+  assigneeOptions: string[];
+  onCancel: () => void;
+  onCreate: (draft: TaskDraft) => void;
+}) {
+  const [draft, setDraft] = useState<TaskDraft>({
+    title: '',
+    assignee: assigneeOptions[0] ?? '',
+    dueAt: '',
+    assignedBy: assignedByDefault,
+  });
+
+  useEffect(() => {
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') onCancel();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
+  function submitTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onCreate(draft);
+  }
+
+  return (
+    <div className="task-create-backdrop" role="presentation" onMouseDown={onCancel}>
+      <form
+        className="task-create-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-create-title"
+        onSubmit={submitTask}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="task-create-dialog__header">
+          <div>
+            <p className="eyebrow">Quick task</p>
+            <h3 id="task-create-title">Create Task</h3>
+          </div>
+          <button
+            type="button"
+            className="dashboard-icon-button dashboard-icon-button--close"
+            onClick={onCancel}
+            aria-label="Close task form"
+          >
+            <PlusIcon />
+          </button>
+        </div>
+        <label>
+          <span>Title</span>
+          <input
+            value={draft.title}
+            onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+            placeholder="What needs to happen?"
+            required
+            autoFocus
+          />
+        </label>
+        <label>
+          <span>Assignee</span>
+          <input
+            value={draft.assignee}
+            onChange={(event) => setDraft((current) => ({ ...current, assignee: event.target.value }))}
+            list="dashboard-task-assignees"
+            required
+          />
+        </label>
+        <datalist id="dashboard-task-assignees">
+          {assigneeOptions.map((assignee) => (
+            <option value={assignee} key={assignee} />
+          ))}
+        </datalist>
+        <div className="task-create-dialog__split">
+          <label>
+            <span>Due</span>
+            <input
+              type="datetime-local"
+              value={draft.dueAt}
+              min={toDateTimeInputValue(new Date().toISOString())}
+              onChange={(event) => setDraft((current) => ({ ...current, dueAt: event.target.value }))}
+            />
+          </label>
+          <label>
+            <span>Assigned by</span>
+            <input
+              value={draft.assignedBy}
+              onChange={(event) => setDraft((current) => ({ ...current, assignedBy: event.target.value }))}
+            />
+          </label>
+        </div>
+        <div className="task-create-dialog__actions">
+          <button type="button" className="button-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="button-primary" disabled={!draft.title.trim() || !draft.assignee.trim()}>
+            Create
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

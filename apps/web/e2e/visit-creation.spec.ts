@@ -1,23 +1,36 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { fixtureId } from './support/fixture-id';
+import { pickClientName, pickPatientName } from './support/fixture-names';
+import { cleanupFixture } from './support/cleanup-fixture';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 const RUN_ID = fixtureId();
 
+const createdPatientIds: string[] = [];
+const createdClientIds: string[] = [];
+
+test.afterAll(async () => {
+  await cleanupFixture({ patientIds: createdPatientIds, clientIds: createdClientIds });
+});
+
 async function createPatient(request: APIRequestContext, suffix: string) {
+  const clientNamePair = pickClientName(`visit-creation-client-${suffix}-${RUN_ID}`);
   const clientResponse = await request.post(`${API_URL}/clients`, {
     data: {
-      firstName: 'Visit',
-      lastName: `Client ${RUN_ID} ${suffix}`,
-      phone: '555-0177',
+      firstName: clientNamePair.firstName,
+      lastName: clientNamePair.lastName,
+      // Phone carries the per-run uniqueness (internal field only) — the
+      // visible name stays a plain realistic name, never a random suffix.
+      phone: `555-0${RUN_ID.slice(-3)}`,
     },
   });
   expect(clientResponse.ok()).toBe(true);
   const client: { id: string } = await clientResponse.json();
+  createdClientIds.push(client.id);
 
   const patientResponse = await request.post(`${API_URL}/patients`, {
     data: {
-      name: `Visit Patient ${RUN_ID} ${suffix}`,
+      name: pickPatientName(`visit-creation-patient-${suffix}-${RUN_ID}`),
       species: 'Canine',
       breed: 'Spaniel',
       clients: [{ clientId: client.id, isPrimary: true }],
@@ -25,12 +38,14 @@ async function createPatient(request: APIRequestContext, suffix: string) {
   });
   expect(patientResponse.ok()).toBe(true);
   const patient: { id: string; name: string } = await patientResponse.json();
+  createdPatientIds.push(patient.id);
 
-  return { client, patient };
+  const clientName = `${clientNamePair.firstName} ${clientNamePair.lastName}`;
+  return { client, patient, clientName };
 }
 
 test('appointment -> start visit -> visit workspace', async ({ page, request }) => {
-  const { patient } = await createPatient(request, 'Appointment');
+  const { patient, clientName } = await createPatient(request, 'Appointment');
   const visitReason = `Appointment start ${RUN_ID}`;
 
   const appointmentResponse = await request.post(`${API_URL}/appointments`, {
@@ -54,7 +69,7 @@ test('appointment -> start visit -> visit workspace', async ({ page, request }) 
   await expect(page.getByRole('heading', { level: 1, name: patient.name })).toBeVisible();
   const contextSummary = page.getByRole('list', { name: 'Visit context summary' });
   await expect(contextSummary).toContainText(visitReason);
-  await expect(contextSummary).toContainText(`Visit Client ${RUN_ID} Appointment`);
+  await expect(contextSummary).toContainText(clientName);
 
   await page.getByText('Appointment & assignment details').click();
   await expect(page.getByText('Sick Visit')).toBeVisible();

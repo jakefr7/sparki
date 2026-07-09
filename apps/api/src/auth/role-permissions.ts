@@ -1,4 +1,5 @@
 import type { UserRole } from '@sparki/db';
+import { MANAGE_SCHEDULER_SETTINGS } from './permissions';
 
 /**
  * Coarse capability tags surfaced to the web client for UI affordances only.
@@ -14,6 +15,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'visits:manage',
     'clinical:complete',
     'settings:manage',
+    MANAGE_SCHEDULER_SETTINGS,
   ],
   PRACTICE_MANAGER: [
     'dashboard:view',
@@ -21,8 +23,15 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'patients:manage',
     'visits:manage',
     'settings:manage',
+    MANAGE_SCHEDULER_SETTINGS,
   ],
-  FRONT_DESK: ['dashboard:view', 'scheduler:view', 'patients:manage', 'visits:create'],
+  FRONT_DESK: [
+    'dashboard:view',
+    'scheduler:view',
+    'patients:manage',
+    'visits:create',
+    MANAGE_SCHEDULER_SETTINGS,
+  ],
   VETERINARIAN: ['dashboard:view', 'scheduler:view', 'visits:view', 'clinical:complete'],
   TECHNICIAN: ['dashboard:view', 'scheduler:view', 'visits:view', 'intake:manage'],
   ASSISTANT: ['dashboard:view', 'scheduler:view', 'visits:view'],

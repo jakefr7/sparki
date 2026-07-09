@@ -26,7 +26,9 @@ export const createAppointmentSchema = z.object({
     .max(24 * 60)
     .optional(),
   assignedProviderId: z.string().min(1).optional(),
-  colorKey: z.enum(APPOINTMENT_COLOR_KEYS).optional(),
+  colorKey: z
+    .union([z.enum(APPOINTMENT_COLOR_KEYS), z.string().regex(/^#[0-9A-Fa-f]{6}$/)])
+    .optional(),
 });
 
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
@@ -37,3 +39,16 @@ export const linkAppointmentPatientSchema = z.object({
 });
 
 export type LinkAppointmentPatientInput = z.infer<typeof linkAppointmentPatientSchema>;
+
+export const moveAppointmentSchema = z.object({
+  startTime: z.coerce.date(),
+  expectedDurationMinutes: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(24 * 60)
+    .optional(),
+  assignedProviderId: z.string().min(1).optional().nullable(),
+});
+
+export type MoveAppointmentInput = z.infer<typeof moveAppointmentSchema>;

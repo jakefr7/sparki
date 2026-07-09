@@ -10,6 +10,18 @@ import {
   DEV_USER_ID,
 } from '../src/auth/development-user.service';
 
+// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
+// sourceSystem and must survive this file's shared-org cleanup — see that
+// script's header comment for why the data is protected and persistent.
+const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
+// `{ sourceSystem: { not: X } }` alone would exclude NULL rows too
+// (SQL three-valued logic), and this file's own fixtures have
+// sourceSystem = null — so the null branch below is required or this
+// filter silently matches nothing.
+const NOT_PROTECTED = {
+  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
+};
+
 describe('Appointments (e2e)', () => {
   let app: INestApplication;
   let otherOrganizationId: string;
@@ -69,7 +81,10 @@ describe('Appointments (e2e)', () => {
 
   afterAll(async () => {
     await prisma.appointment.deleteMany({
-      where: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        ...NOT_PROTECTED,
+      },
     });
     await prisma.patientClient.deleteMany({ where: { patientId } });
     await prisma.patient.deleteMany({ where: { id: patientId } });

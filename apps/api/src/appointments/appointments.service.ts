@@ -9,8 +9,9 @@ import { assertBelongsToOrganization } from '../common/assert-organization-scope
 import type {
   CreateAppointmentInput,
   LinkAppointmentPatientInput,
+  MoveAppointmentInput,
 } from './dto/create-appointment.schema';
-import { APPOINTMENT_COLOR_KEYS } from './dto/create-appointment.schema';
+import { SchedulerConfigService } from '../scheduler-config/scheduler-config.service';
 
 /**
  * This slice creates appointments directly as committed bookings from
@@ -28,22 +29,6 @@ const DEFAULT_STATE: AppointmentState = 'Scheduled';
 const DEFAULT_SOURCE: AppointmentSource = 'Phone';
 
 const UPCOMING_EXCLUDED_STATES: AppointmentState[] = ['Cancelled', 'NoShow', 'Completed'];
-
-type AppointmentColorKey = (typeof APPOINTMENT_COLOR_KEYS)[number];
-
-const DEFAULT_COLOR_BY_APPOINTMENT_TYPE: Record<CreateAppointmentInput['appointmentType'], AppointmentColorKey> = {
-  WellnessPreventiveCare: 'teal',
-  SickVisit: 'blue',
-  Recheck: 'green',
-  TechnicianAppointment: 'amber',
-  Vaccination: 'teal',
-  SurgeryProcedure: 'purple',
-  DropOff: 'slate',
-  EmergencyUrgent: 'orange',
-  Telemedicine: 'blue',
-  Euthanasia: 'rose',
-  BoardingNonMedical: 'slate',
-};
 
 /** [start of day, start of next day) in local server time, for "today" queries. */
 function dayBoundsFor(date: Date): { start: Date; end: Date } {
@@ -76,6 +61,8 @@ const ALLOWED_PREDECESSORS: Record<
 
 @Injectable()
 export class AppointmentsService {
+  constructor(private readonly schedulerConfig: SchedulerConfigService) {}
+
   async create(
     organizationId: string,
     locationId: string,
@@ -116,7 +103,7 @@ export class AppointmentsService {
         state: DEFAULT_STATE,
         scheduledAt: input.startTime,
         expectedDurationMinutes: input.expectedDurationMinutes ?? null,
-        colorKey: input.colorKey ?? DEFAULT_COLOR_BY_APPOINTMENT_TYPE[input.appointmentType],
+        colorKey: input.colorKey ?? null,
         providerId: input.assignedProviderId ?? null,
         createdById,
       },
@@ -162,6 +149,52 @@ export class AppointmentsService {
         clientId: appointment.clientId ?? clientId,
       },
     });
+  }
+
+  async move(id: string, organizationId: string, locationId: string, input: MoveAppointmentInput) {
+    const appointment = await prisma.appointment.findFirst({
+      where: { id, organizationId, locationId },
+    });
+    if (!appointment) {
+      throw new NotFoundException(`Appointment ${id} not found`);
+    }
+
+    if (input.assignedProviderId) {
+      await assertBelongsToOrganization(
+        prisma.user,
+        'Provider',
+        input.assignedProviderId,
+        organizationId,
+      );
+    }
+
+    return prisma.appointment.update({
+      where: { id },
+      data: {
+        scheduledAt: input.startTime,
+        expectedDurationMinutes:
+          input.expectedDurationMinutes ?? appointment.expectedDurationMinutes,
+        providerId:
+          input.assignedProviderId === undefined
+            ? appointment.providerId
+            : input.assignedProviderId || null,
+      },
+      include: { patient: true, client: true, provider: true },
+    });
+  }
+
+  resolveColor(
+    organizationId: string,
+    locationId: string,
+    appointmentType: CreateAppointmentInput['appointmentType'],
+    manualColor: string | null | undefined,
+  ) {
+    return this.schedulerConfig.resolveAppointmentColor(
+      organizationId,
+      locationId,
+      appointmentType,
+      manualColor,
+    );
   }
 
   async listUpcomingForPatient(patientId: string, organizationId: string, limit = 5) {

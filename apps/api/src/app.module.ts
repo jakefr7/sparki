@@ -7,6 +7,7 @@ import { ClientsModule } from './clients/clients.module';
 import { HealthModule } from './health/health.module';
 import { OperationsModule } from './operations/operations.module';
 import { PatientsModule } from './patients/patients.module';
+import { SchedulerConfigModule } from './scheduler-config/scheduler-config.module';
 import { StaffModule } from './staff/staff.module';
 import { VisitsModule } from './visits/visits.module';
 
@@ -18,6 +19,7 @@ import { VisitsModule } from './visits/visits.module';
     ClientsModule,
     AppointmentsModule,
     PatientsModule,
+    SchedulerConfigModule,
     StaffModule,
     VisitsModule,
     OperationsModule,

@@ -1,21 +1,28 @@
 import { expect, test } from '@playwright/test';
 import { fixtureId } from './support/fixture-id';
+import { pickClientName, pickPatientName } from './support/fixture-names';
+import { cleanupFixture } from './support/cleanup-fixture';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 const RUN_ID = fixtureId();
-const CLIENT_FIRST_NAME = 'Schedule';
-const CLIENT_LAST_NAME = `Client ${RUN_ID}`;
-const PATIENT_NAME = `Schedule Patient ${RUN_ID}`;
+const CLIENT_NAME_PAIR = pickClientName(`schedule-appointment-client-${RUN_ID}`);
+const CLIENT_FIRST_NAME = CLIENT_NAME_PAIR.firstName;
+const CLIENT_LAST_NAME = CLIENT_NAME_PAIR.lastName;
+const PATIENT_NAME = pickPatientName(`schedule-appointment-patient-${RUN_ID}`);
 const VISIT_REASON = `Wellness checkup ${RUN_ID}`;
 
 let patientId: string;
+let clientId: string;
 
 test.beforeAll(async ({ request }) => {
   const clientResponse = await request.post(`${API_URL}/clients`, {
-    data: { firstName: CLIENT_FIRST_NAME, lastName: CLIENT_LAST_NAME, phone: '555-0155' },
+    // Phone carries the per-run uniqueness (internal field only) — the
+    // visible name stays a plain realistic name, never a random suffix.
+    data: { firstName: CLIENT_FIRST_NAME, lastName: CLIENT_LAST_NAME, phone: `555-0${RUN_ID.slice(-3)}` },
   });
   expect(clientResponse.ok()).toBe(true);
   const client: { id: string } = await clientResponse.json();
+  clientId = client.id;
 
   const patientResponse = await request.post(`${API_URL}/patients`, {
     data: {
@@ -28,6 +35,10 @@ test.beforeAll(async ({ request }) => {
   expect(patientResponse.ok()).toBe(true);
   const patient: { id: string } = await patientResponse.json();
   patientId = patient.id;
+});
+
+test.afterAll(async () => {
+  await cleanupFixture({ patientIds: [patientId], clientIds: [clientId] });
 });
 
 test('search patient, open workspace, schedule an appointment, and it persists after reload', async ({

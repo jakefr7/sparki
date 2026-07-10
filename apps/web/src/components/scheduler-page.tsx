@@ -18,6 +18,9 @@ import {
 import {
   appointmentTypeLabel,
   clientDisplayName,
+  confirmationStatusLabel,
+  recordsPrepStatusLabel,
+  CONFIRMATION_STATUSES,
   type DashboardAppointmentSummary,
   type AppointmentTypeValue,
   type OperationsDashboard,
@@ -405,6 +408,18 @@ function isFallbackAppointment(appointment: SchedulerAppointment): boolean {
   return appointment.id.startsWith('fallback-');
 }
 
+/** Records-prep and confirmation fields don't exist for demo-only fallback
+ *  rows (no real Appointment backs them), so every fallback appointment gets
+ *  the same untouched defaults. */
+const DEFAULT_APPOINTMENT_STATUS_FIELDS = {
+  primaryCareVetName: null,
+  previousClinicName: null,
+  previousRecordsSource: null,
+  lastSeenAt: null,
+  recordsPrepStatus: 'NotStarted',
+  confirmationStatus: 'NotSent',
+} as const;
+
 function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
   if (process.env.NODE_ENV === 'production') {
     return [];
@@ -429,6 +444,7 @@ function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
       patient: { id: 'fallback-patient-bella', name: 'Bella', species: 'Canine' },
       client: { id: 'fallback-client-sarah', firstName: 'Sarah', lastName: 'Johnson' },
       provider: { id: 'fallback-provider-patel', displayName: 'Dr. Patel', role: 'VETERINARIAN' },
+      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
       room: 'Exam Room 1',
     },
     {
@@ -442,6 +458,7 @@ function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
       patient: { id: 'fallback-patient-milo', name: 'Milo', species: 'Feline' },
       client: { id: 'fallback-client-lee', firstName: 'Jordan', lastName: 'Lee' },
       provider: { id: 'fallback-provider-kim', displayName: 'Dr. Kim', role: 'VETERINARIAN' },
+      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
       room: 'Exam Room 2',
     },
     {
@@ -455,6 +472,7 @@ function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
       patient: { id: 'fallback-patient-daisy', name: 'Daisy', species: 'Canine' },
       client: { id: 'fallback-client-morgan', firstName: 'Morgan', lastName: 'Reed' },
       provider: { id: 'fallback-provider-carter', displayName: 'Ben Carter', role: 'TECHNICIAN' },
+      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
       room: 'Treatment',
     },
     {
@@ -468,6 +486,7 @@ function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
       patient: { id: 'fallback-patient-pepper', name: 'Pepper', species: 'Rabbit' },
       client: { id: 'fallback-client-nguyen', firstName: 'Avery', lastName: 'Nguyen' },
       provider: null,
+      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
       room: 'Consult',
     },
   ];
@@ -571,6 +590,7 @@ export function SchedulerPage() {
   const [providerFilter, setProviderFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState<SchedulerAppointment | null>(null);
+  const [bookingNote, setBookingNote] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
 
   const loadSchedulerData = useCallback(
@@ -655,6 +675,42 @@ export function SchedulerPage() {
 
   function move(offset: number) {
     setAnchorDate((current) => addDays(current, view === 'week' ? offset * 7 : offset));
+  }
+
+  useEffect(() => {
+    if (!bookingNote) return;
+    const timeout = window.setTimeout(() => setBookingNote(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [bookingNote]);
+
+  async function handleConfirmationStatusChange(appointmentId: string, nextStatus: string) {
+    const response = await fetch(
+      `/api/appointments/${encodeURIComponent(appointmentId)}/confirmation-status`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmationStatus: nextStatus }),
+      },
+    );
+    if (!response.ok) {
+      throw new Error('Could not update confirmation status.');
+    }
+    // The PATCH response is the raw Appointment row (no patient/client/
+    // provider relations), unlike the dashboard summary this list is built
+    // from — merge just the changed field rather than replacing the whole
+    // card, or patient/client/provider would disappear from the UI.
+    setAppointments((current) =>
+      uniqueAppointments(
+        current.map((candidate) =>
+          candidate.id === appointmentId
+            ? { ...candidate, confirmationStatus: nextStatus }
+            : candidate,
+        ),
+      ),
+    );
+    setSelectedAppointment((current) =>
+      current && current.id === appointmentId ? { ...current, confirmationStatus: nextStatus } : current,
+    );
   }
 
   async function handleAppointmentMove(appointmentId: string, slot: SelectedSlot) {
@@ -779,6 +835,11 @@ export function SchedulerPage() {
             {moveError}
           </p>
         ) : null}
+        {bookingNote ? (
+          <p className="scheduler-inline-note" role="status">
+            {bookingNote}
+          </p>
+        ) : null}
       </div>
       {selectedSlot && (
         <NewAppointmentModal
@@ -798,6 +859,7 @@ export function SchedulerPage() {
               uniqueAppointments([...current, toSchedulerCreatedAppointment(appointment)]),
             );
             setGeneratedAt(new Date().toISOString());
+            setBookingNote('Appointment created. Confirmation not sent yet.');
           }}
         />
       )}
@@ -806,6 +868,7 @@ export function SchedulerPage() {
           appointment={selectedAppointment}
           appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => setSelectedAppointment(null)}
+          onConfirmationStatusChange={handleConfirmationStatusChange}
         />
       )}
     </DashboardShell>
@@ -815,7 +878,11 @@ export function SchedulerPage() {
 function toSchedulerCreatedAppointment(
   appointment: NewAppointmentCreatedSummary,
 ): SchedulerAppointment {
-  return appointment;
+  // A freshly booked appointment always starts at these defaults (see
+  // AppointmentsService.create) — the create response doesn't echo them back,
+  // so fill them in rather than widening NewAppointmentCreatedSummary for a
+  // value that's never actually variable at creation time.
+  return { ...appointment, ...DEFAULT_APPOINTMENT_STATUS_FIELDS };
 }
 
 function SchedulerToolbar({
@@ -1332,12 +1399,37 @@ function AppointmentDetailPopover({
   appointment,
   appointmentTypes,
   onClose,
+  onConfirmationStatusChange,
 }: {
   appointment: SchedulerAppointment;
   appointmentTypes: AppointmentTypeSetting[];
   onClose: () => void;
+  onConfirmationStatusChange: (appointmentId: string, nextStatus: string) => Promise<void>;
 }) {
   const color = appointmentColor(appointment, appointmentTypes);
+  const [confirmationSaving, setConfirmationSaving] = useState(false);
+  const [confirmationError, setConfirmationError] = useState<string | null>(null);
+  const recordsContext = [
+    appointment.primaryCareVetName ? `Primary care vet: ${appointment.primaryCareVetName}` : null,
+    appointment.previousClinicName ? `Previous clinic: ${appointment.previousClinicName}` : null,
+    appointment.previousRecordsSource ? `Records source: ${appointment.previousRecordsSource}` : null,
+    appointment.lastSeenAt
+      ? `Last seen: ${new Date(appointment.lastSeenAt).toLocaleDateString()}`
+      : null,
+  ].filter((line): line is string => Boolean(line));
+
+  async function handleConfirmationChange(nextStatus: string) {
+    setConfirmationSaving(true);
+    setConfirmationError(null);
+    try {
+      await onConfirmationStatusChange(appointment.id, nextStatus);
+    } catch {
+      setConfirmationError('Could not update confirmation status. Try again.');
+    } finally {
+      setConfirmationSaving(false);
+    }
+  }
+
   return (
     <ModalFrame title={appointmentPatientName(appointment)} onClose={onClose}>
       <dl className="scheduler-detail-list">
@@ -1378,6 +1470,49 @@ function AppointmentDetailPopover({
             >
               {appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}
             </span>
+          </dd>
+        </div>
+        <div>
+          <dt>Confirmation / Reminder</dt>
+          <dd>
+            <select
+              value={appointment.confirmationStatus}
+              disabled={confirmationSaving}
+              onChange={(event) => void handleConfirmationChange(event.target.value)}
+              aria-label="Confirmation / reminder status"
+            >
+              {CONFIRMATION_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {confirmationStatusLabel(status)}
+                </option>
+              ))}
+            </select>
+            <small className="scheduler-modal__hint">
+              Manual status tracking only — no confirmation or reminder is sent automatically.
+            </small>
+            {confirmationError ? (
+              <small className="new-appointment-field-error">{confirmationError}</small>
+            ) : null}
+          </dd>
+        </div>
+        <div>
+          <dt>Records prep</dt>
+          <dd>
+            <span className="scheduler-status-chip">
+              {recordsPrepStatusLabel(appointment.recordsPrepStatus)}
+            </span>
+            {recordsContext.length > 0 ? (
+              <ul className="scheduler-records-context">
+                {recordsContext.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            ) : (
+              <small className="scheduler-modal__hint">No records-request context on file.</small>
+            )}
+            <small className="scheduler-modal__hint">
+              Update the checklist from the patient&apos;s visit workspace.
+            </small>
           </dd>
         </div>
       </dl>

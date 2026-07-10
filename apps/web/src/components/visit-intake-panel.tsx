@@ -8,16 +8,37 @@ const STARTABLE_STATES = new Set(['Arrived', 'ReadyForIntake']);
 
 const APPETITE_OPTIONS = ['Normal', 'Decreased', 'Increased', 'Not Eating'] as const;
 
+const GUM_COLOR_OPTIONS = [
+  'Pink',
+  'Pale',
+  'White',
+  'Blue/Purple',
+  'Red/Injected',
+  'Yellow/Icteric',
+  'Other',
+] as const;
+
+const WEIGHT_UNIT_OPTIONS = [
+  { value: 'LB', label: 'lb' },
+  { value: 'KG', label: 'kg' },
+] as const;
+
+function weightUnitLabel(unit: string): string {
+  return unit === 'KG' ? 'kg' : 'lb';
+}
+
 type VisitIntake = NonNullable<VisitDetail['intake']>;
 
 interface IntakePayload {
   chiefComplaint?: string | null;
   historyNotes?: string | null;
   weight?: number | null;
+  weightUnit?: string | null;
   temperature?: number | null;
   heartRate?: number | null;
   respiratoryRate?: number | null;
   crtSeconds?: number | null;
+  gumColor?: string | null;
   appetite?: string | null;
   vomiting?: boolean;
   diarrhea?: boolean;
@@ -46,10 +67,12 @@ function intakePayload(formData: FormData): IntakePayload {
     chiefComplaint: textOrNull(formData, 'chiefComplaint'),
     historyNotes: textOrNull(formData, 'historyNotes'),
     weight: numberOrNull(formData, 'weight'),
+    weightUnit: textOrNull(formData, 'weightUnit'),
     temperature: numberOrNull(formData, 'temperature'),
     heartRate: numberOrNull(formData, 'heartRate'),
     respiratoryRate: numberOrNull(formData, 'respiratoryRate'),
     crtSeconds: numberOrNull(formData, 'crtSeconds'),
+    gumColor: textOrNull(formData, 'gumColor'),
     appetite: textOrNull(formData, 'appetite'),
     vomiting: yesNo(formData, 'vomiting'),
     diarrhea: yesNo(formData, 'diarrhea'),
@@ -87,11 +110,12 @@ function YesNoToggle({
 
 function IntakeSummary({ intake }: { intake: VisitIntake }) {
   const vitals = [
-    intake.weight ? `${intake.weight} lb` : null,
+    intake.weight ? `${intake.weight} ${weightUnitLabel(intake.weightUnit)}` : null,
     intake.temperature ? `${intake.temperature} F` : null,
     intake.heartRate ? `${intake.heartRate} bpm` : null,
     intake.respiratoryRate ? `${intake.respiratoryRate} rpm` : null,
     intake.crtSeconds ? `CRT ${intake.crtSeconds} sec` : null,
+    intake.gumColor ? `Gums: ${intake.gumColor}` : null,
   ].filter(Boolean);
 
   return (
@@ -233,13 +257,23 @@ export function VisitIntakePanel({
             <legend>Vitals</legend>
             <div className="visit-intake-form__vitals">
               <label>
-                Weight (lb)
+                Weight
                 <input
                   name="weight"
                   type="number"
                   step="0.1"
                   defaultValue={intake?.weight ?? ''}
                 />
+              </label>
+              <label>
+                Weight unit
+                <select name="weightUnit" defaultValue={intake?.weightUnit ?? 'LB'}>
+                  {WEIGHT_UNIT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Temp (F)
@@ -270,6 +304,17 @@ export function VisitIntakePanel({
                   step="0.1"
                   defaultValue={intake?.crtSeconds ?? ''}
                 />
+              </label>
+              <label>
+                Gum color
+                <select name="gumColor" defaultValue={intake?.gumColor ?? ''}>
+                  <option value="">Not assessed</option>
+                  {GUM_COLOR_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
           </fieldset>

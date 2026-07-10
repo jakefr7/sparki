@@ -8,8 +8,11 @@ import { prisma, type AppointmentSource, type AppointmentState } from '@sparki/d
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import type {
   CreateAppointmentInput,
+  CreateAppointmentWithNewPatientInput,
   LinkAppointmentPatientInput,
   MoveAppointmentInput,
+  UpdateConfirmationStatusInput,
+  UpdateRecordsPrepStatusInput,
 } from './dto/create-appointment.schema';
 import { SchedulerConfigService } from '../scheduler-config/scheduler-config.service';
 
@@ -105,8 +108,110 @@ export class AppointmentsService {
         expectedDurationMinutes: input.expectedDurationMinutes ?? null,
         colorKey: input.colorKey ?? null,
         providerId: input.assignedProviderId ?? null,
+        primaryCareVetName: input.primaryCareVetName ?? null,
+        previousClinicName: input.previousClinicName ?? null,
+        previousRecordsSource: input.previousRecordsSource ?? null,
+        lastSeenAt: input.lastSeenAt ?? null,
         createdById,
       },
+    });
+  }
+
+  /**
+   * Anna's receptionist "New Patient" workflow: the scheduler form submits
+   * owner + patient + appointment details together, and the clinic has never
+   * seen this pet before. Client, Patient, PatientClient, and Appointment are
+   * created inside one transaction so a failure anywhere (most commonly the
+   * Appointment insert) can never leave an orphaned Client/Patient behind —
+   * the previous three-separate-fetches approach could.
+   */
+  async createWithNewPatient(
+    organizationId: string,
+    locationId: string,
+    createdById: string,
+    input: CreateAppointmentWithNewPatientInput,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      // Checked inside the transaction (not before it, unlike the plain
+      // create() above) so a bad provider rolls back the Client/Patient this
+      // same call just created, instead of only guarding writes that hadn't
+      // happened yet.
+      if (input.appointment.assignedProviderId) {
+        await assertBelongsToOrganization(
+          tx.user,
+          'Provider',
+          input.appointment.assignedProviderId,
+          organizationId,
+        );
+      }
+
+      const client = await tx.client.create({
+        data: {
+          organizationId,
+          firstName: input.client.firstName,
+          lastName: input.client.lastName,
+          email: input.client.email ?? null,
+          phone: input.client.phone ?? null,
+          alternatePhone: input.client.alternatePhone ?? null,
+          preferredContactMethod: input.client.preferredContactMethod ?? null,
+          addressLine1: input.client.addressLine1 ?? null,
+          addressLine2: input.client.addressLine2 ?? null,
+          city: input.client.city ?? null,
+          state: input.client.state ?? null,
+          postalCode: input.client.postalCode ?? null,
+          country: input.client.country ?? null,
+          formattedAddress: input.client.formattedAddress ?? null,
+          addressPlaceId: input.client.addressPlaceId ?? null,
+          addressLatitude: input.client.addressLatitude ?? null,
+          addressLongitude: input.client.addressLongitude ?? null,
+        },
+      });
+
+      // Pet last name is inherited from the owner, same as PatientsService.create.
+      const patient = await tx.patient.create({
+        data: {
+          organizationId,
+          name: input.patient.name,
+          lastName: client.lastName,
+          species: input.patient.species,
+          breed: input.patient.breed ?? null,
+          sex: input.patient.sex ?? null,
+          dateOfBirth: input.patient.dateOfBirth ?? null,
+          estimatedAge: input.patient.estimatedAge ?? null,
+          weight: input.patient.weight ?? null,
+          color: input.patient.color ?? null,
+        },
+      });
+
+      await tx.patientClient.create({
+        data: { patientId: patient.id, clientId: client.id, isPrimary: true },
+      });
+
+      return tx.appointment.create({
+        data: {
+          organizationId,
+          locationId,
+          patientId: patient.id,
+          clientId: client.id,
+          type: input.appointment.appointmentType,
+          reason: input.appointment.visitReason,
+          source: DEFAULT_SOURCE,
+          state: DEFAULT_STATE,
+          scheduledAt: input.appointment.startTime,
+          expectedDurationMinutes: input.appointment.expectedDurationMinutes ?? null,
+          colorKey: input.appointment.colorKey ?? null,
+          providerId: input.appointment.assignedProviderId ?? null,
+          primaryCareVetName: input.appointment.primaryCareVetName ?? null,
+          previousClinicName: input.appointment.previousClinicName ?? null,
+          previousRecordsSource: input.appointment.previousRecordsSource ?? null,
+          lastSeenAt: input.appointment.lastSeenAt ?? null,
+          createdById,
+        },
+        include: {
+          patient: { select: { id: true, name: true, species: true } },
+          client: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
     });
   }
 
@@ -116,6 +221,35 @@ export class AppointmentsService {
       throw new NotFoundException(`Appointment ${id} not found`);
     }
     return appointment;
+  }
+
+  /** Tech/assistant records-research tracking — see prisma/schema.prisma's
+   *  Appointment.recordsPrepStatus comment. */
+  async updateRecordsPrepStatus(
+    id: string,
+    organizationId: string,
+    input: UpdateRecordsPrepStatusInput,
+  ) {
+    await this.findById(id, organizationId);
+    return prisma.appointment.update({
+      where: { id },
+      data: { recordsPrepStatus: input.recordsPrepStatus },
+    });
+  }
+
+  /** Manual confirmation/reminder status only — no message is ever actually
+   *  sent by this call. See prisma/schema.prisma's Appointment.
+   *  confirmationStatus comment. */
+  async updateConfirmationStatus(
+    id: string,
+    organizationId: string,
+    input: UpdateConfirmationStatusInput,
+  ) {
+    await this.findById(id, organizationId);
+    return prisma.appointment.update({
+      where: { id },
+      data: { confirmationStatus: input.confirmationStatus },
+    });
   }
 
   async linkPatient(id: string, organizationId: string, input: LinkAppointmentPatientInput) {

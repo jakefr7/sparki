@@ -9,10 +9,13 @@ import {
   appointmentTypeLabel,
   clientDisplayName,
   type AppointmentTypeValue,
+  type ClientSearchResult,
   type PatientSearchResult,
   type PrimaryClientSummary,
   type StaffMember,
 } from '../lib/patient-types';
+
+const CLIENT_DUPLICATE_DEBOUNCE_MS = 220;
 
 export interface AppointmentTypeSetting {
   id: string;
@@ -48,23 +51,20 @@ interface CreatedAppointmentResponse {
   providerId: string | null;
 }
 
-interface CreatedClientResponse {
+/** Shape returned by POST /appointments/new-patient — the created Appointment
+ *  plus the linked Patient/Client the transaction just created, so the
+ *  scheduler can refresh without a second round trip. */
+interface CreatedAppointmentWithNewPatientResponse {
   id: string;
-  firstName: string;
-  lastName: string;
-  phone: string | null;
-  email: string | null;
-}
-
-interface CreatedPatientResponse {
-  id: string;
-  name: string;
-  species: string;
-  breed: string | null;
-  sex: string | null;
-  dateOfBirth: string | null;
-  weight: number | null;
-  color: string | null;
+  type: string;
+  reason: string;
+  state: string;
+  scheduledAt: string;
+  expectedDurationMinutes: number | null;
+  colorKey: string | null;
+  providerId: string | null;
+  patient: { id: string; name: string; species: string };
+  client: { id: string; firstName: string; lastName: string };
 }
 
 interface InitialPatient {
@@ -239,6 +239,13 @@ export function NewAppointmentModal({
   const [clientLastName, setClientLastName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
+  const [clientAddressLine1, setClientAddressLine1] = useState('');
+  const [clientAddressLine2, setClientAddressLine2] = useState('');
+  const [clientCity, setClientCity] = useState('');
+  const [clientState, setClientState] = useState('');
+  const [clientPostalCode, setClientPostalCode] = useState('');
+  const [clientCountry, setClientCountry] = useState('');
+  const [clientDuplicateHint, setClientDuplicateHint] = useState<string | null>(null);
   const [patientName, setPatientName] = useState('');
   const [species, setSpecies] = useState('Dog');
   const [breed, setBreed] = useState('');
@@ -247,6 +254,10 @@ export function NewAppointmentModal({
   const [estimatedAge, setEstimatedAge] = useState('');
   const [color, setColor] = useState('');
   const [weight, setWeight] = useState('');
+  const [primaryCareVetName, setPrimaryCareVetName] = useState('');
+  const [previousClinicName, setPreviousClinicName] = useState('');
+  const [previousRecordsSource, setPreviousRecordsSource] = useState('');
+  const [lastSeenAt, setLastSeenAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -289,6 +300,47 @@ export function NewAppointmentModal({
     };
   }, [patientMode, patientQuery, selectedPatient?.name]);
 
+  // Best-effort duplicate-client advisory for the "New Patient" path —
+  // mirrors the hint in new-patient-modal.tsx, reusing the same client
+  // search endpoint. Non-blocking: it only warns, never prevents submission,
+  // and there is still no hard backend uniqueness constraint.
+  useEffect(() => {
+    if (patientMode !== 'new') {
+      setClientDuplicateHint(null);
+      return;
+    }
+    const name = `${clientFirstName.trim()} ${clientLastName.trim()}`.trim();
+    const phone = clientPhone.trim();
+    const email = clientEmail.trim();
+    const query = phone || email || name;
+    if (!query) {
+      setClientDuplicateHint(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      fetch(`/api/clients/search?query=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then((response) => (response.ok ? (response.json() as Promise<ClientSearchResult[]>) : []))
+        .then((data) => {
+          const match = data[0];
+          setClientDuplicateHint(
+            match ? `${clientDisplayName(match)} · ${match.phone ?? match.email ?? 'no contact on file'}` : null,
+          );
+        })
+        .catch((caught: unknown) => {
+          if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
+            setClientDuplicateHint(null);
+          }
+        });
+    }, CLIENT_DUPLICATE_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [patientMode, clientFirstName, clientLastName, clientPhone, clientEmail]);
+
   const startsAt = dateFromParts(appointmentDate, startTime);
   const endTime = startsAt
     ? new Date(startsAt.getTime() + Number(durationMinutes || 0) * 60_000)
@@ -329,66 +381,59 @@ export function NewAppointmentModal({
     );
   }
 
-  async function createNewPatient(): Promise<PatientSearchResult> {
-    const clientResponse = await fetch('/api/clients', {
+  /** The "New Patient" path — one request to the transactional endpoint,
+   *  which creates Client + Patient + PatientClient + Appointment together
+   *  (see AppointmentsService.createWithNewPatient). Replaces the old
+   *  three-separate-fetches sequence so a failure can never leave an
+   *  orphaned client/patient with no appointment. */
+  async function createAppointmentWithNewPatient(
+    startsAtDate: Date,
+  ): Promise<CreatedAppointmentWithNewPatientResponse> {
+    const response = await fetch('/api/appointments/new-patient', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        firstName: clientFirstName.trim(),
-        lastName: clientLastName.trim(),
-        phone: clientPhone.trim() || undefined,
-        email: clientEmail.trim() || undefined,
+        client: {
+          firstName: clientFirstName.trim(),
+          lastName: clientLastName.trim(),
+          phone: clientPhone.trim() || undefined,
+          email: clientEmail.trim() || undefined,
+          addressLine1: clientAddressLine1.trim() || undefined,
+          addressLine2: clientAddressLine2.trim() || undefined,
+          city: clientCity.trim() || undefined,
+          state: clientState.trim() || undefined,
+          postalCode: clientPostalCode.trim() || undefined,
+          country: clientCountry.trim() || undefined,
+        },
+        patient: {
+          name: patientName.trim(),
+          species,
+          breed: breed.trim() || undefined,
+          sex: sex || undefined,
+          dateOfBirth: dateOfBirth || undefined,
+          estimatedAge: estimatedAge.trim() || undefined,
+          color: color.trim() || undefined,
+          weight: weight.trim() ? Number(weight) : undefined,
+        },
+        appointment: {
+          appointmentType,
+          visitReason: visitReason.trim(),
+          startTime: startsAtDate.toISOString(),
+          expectedDurationMinutes: Number(durationMinutes),
+          assignedProviderId: assignedProviderId || undefined,
+          primaryCareVetName: primaryCareVetName.trim() || undefined,
+          previousClinicName: previousClinicName.trim() || undefined,
+          previousRecordsSource: previousRecordsSource.trim() || undefined,
+          lastSeenAt: lastSeenAt || undefined,
+        },
       }),
     });
 
-    if (!clientResponse.ok) {
-      throw new Error('client-create');
+    if (!response.ok) {
+      throw new Error('new-patient-appointment-create');
     }
 
-    const client = (await clientResponse.json()) as CreatedClientResponse;
-    const patientResponse = await fetch('/api/patients', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: patientName.trim(),
-        species,
-        breed: breed.trim() || undefined,
-        sex: sex || undefined,
-        dateOfBirth: dateOfBirth || undefined,
-        estimatedAge: estimatedAge.trim() || undefined,
-        color: color.trim() || undefined,
-        weight: weight.trim() ? Number(weight) : undefined,
-        clients: [{ clientId: client.id, isPrimary: true }],
-      }),
-    });
-
-    if (!patientResponse.ok) {
-      throw new Error('patient-create');
-    }
-
-    const patient = (await patientResponse.json()) as CreatedPatientResponse;
-    return {
-      id: patient.id,
-      name: patient.name,
-      species: patient.species,
-      breed: patient.breed,
-      sex: patient.sex,
-      dateOfBirth: patient.dateOfBirth,
-      weight: patient.weight,
-      color: patient.color,
-      imageUrl: null,
-      status: 'Active',
-      primaryClient: {
-        id: client.id,
-        firstName: client.firstName,
-        lastName: client.lastName,
-        phone: client.phone,
-        email: client.email,
-        preferredContactMethod: null,
-      },
-      activeVisit: null,
-      nextAppointment: null,
-    };
+    return (await response.json()) as CreatedAppointmentWithNewPatientResponse;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -397,14 +442,37 @@ export function NewAppointmentModal({
     if (!validate() || !startsAt) return;
 
     setSubmitting(true);
-    let appointmentPatient = selectedPatient;
 
     try {
       if (patientMode === 'new') {
-        appointmentPatient = await createNewPatient();
+        const created = await createAppointmentWithNewPatient(startsAt);
+        const selectedProvider =
+          providers.find((provider) => provider.id === (created.providerId ?? assignedProviderId)) ??
+          null;
+
+        onCreated({
+          id: created.id,
+          type: created.type,
+          reason: created.reason,
+          state: created.state,
+          scheduledAt: created.scheduledAt,
+          expectedDurationMinutes: created.expectedDurationMinutes,
+          colorKey: created.colorKey,
+          patient: created.patient,
+          client: created.client,
+          provider: selectedProvider
+            ? {
+                id: selectedProvider.id,
+                displayName: selectedProvider.displayName,
+                role: selectedProvider.role,
+              }
+            : null,
+          room: null,
+        });
+        return;
       }
 
-      if (!appointmentPatient) {
+      if (!selectedPatient) {
         setError('Choose a patient before booking the appointment.');
         return;
       }
@@ -413,8 +481,8 @@ export function NewAppointmentModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patientId: appointmentPatient.id,
-          clientId: appointmentPatient.primaryClient?.id,
+          patientId: selectedPatient.id,
+          clientId: selectedPatient.primaryClient?.id,
           appointmentType,
           visitReason: visitReason.trim(),
           startTime: startsAt.toISOString(),
@@ -424,7 +492,7 @@ export function NewAppointmentModal({
       });
 
       if (!appointmentResponse.ok) {
-        throw new Error(patientMode === 'new' ? 'appointment-create-after-records' : 'appointment-create');
+        throw new Error('appointment-create');
       }
 
       const created = (await appointmentResponse.json()) as CreatedAppointmentResponse;
@@ -441,15 +509,15 @@ export function NewAppointmentModal({
         expectedDurationMinutes: created.expectedDurationMinutes,
         colorKey: created.colorKey,
         patient: {
-          id: appointmentPatient.id,
-          name: appointmentPatient.name,
-          species: appointmentPatient.species,
+          id: selectedPatient.id,
+          name: selectedPatient.name,
+          species: selectedPatient.species,
         },
-        client: appointmentPatient.primaryClient
+        client: selectedPatient.primaryClient
           ? {
-              id: appointmentPatient.primaryClient.id,
-              firstName: appointmentPatient.primaryClient.firstName,
-              lastName: appointmentPatient.primaryClient.lastName,
+              id: selectedPatient.primaryClient.id,
+              firstName: selectedPatient.primaryClient.firstName,
+              lastName: selectedPatient.primaryClient.lastName,
             }
           : null,
         provider: selectedProvider
@@ -461,18 +529,12 @@ export function NewAppointmentModal({
           : null,
         room: null,
       });
-    } catch (caught) {
-      if (caught instanceof Error && caught.message === 'appointment-create-after-records') {
-        setError(
-          'Client and patient were created, but the appointment was not booked. Please try booking again from the existing patient search.',
-        );
-      } else if (caught instanceof Error && caught.message === 'client-create') {
-        setError('Could not create the client. Check the contact fields and try again.');
-      } else if (caught instanceof Error && caught.message === 'patient-create') {
-        setError('Client was created, but patient creation failed. Check the patient fields and try again.');
-      } else {
-        setError('Could not create the appointment. Check the fields and try again.');
-      }
+    } catch {
+      setError(
+        patientMode === 'new'
+          ? 'We could not create this appointment. No new patient was saved. Please try again.'
+          : 'We could not create this appointment. Please check the fields and try again.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -481,13 +543,13 @@ export function NewAppointmentModal({
   return (
     <ModalFrame
       title="New Appointment"
-      subtitle="Book a real appointment for an existing patient, or add a new client and patient without leaving the flow."
+      subtitle="Book an appointment for an existing patient, or start a New Patient visit without leaving the flow."
       onClose={onClose}
     >
       <form className="scheduler-booking-form new-appointment-form" onSubmit={handleSubmit}>
         <section className="new-appointment-section" aria-labelledby="appointment-details-heading">
           <div className="new-appointment-section__header">
-            <h3 id="appointment-details-heading">Appointment details</h3>
+            <h3 id="appointment-details-heading">Appointment Information</h3>
             <span className="status-badge status-badge--scheduled">Upcoming</span>
           </div>
           <div className="scheduler-booking-grid">
@@ -577,14 +639,14 @@ export function NewAppointmentModal({
 
         <section className="new-appointment-section" aria-labelledby="client-patient-heading">
           <div className="new-appointment-section__header">
-            <h3 id="client-patient-heading">Client / Patient</h3>
-            <div className="new-appointment-toggle" aria-label="Client and patient mode">
+            <h3 id="client-patient-heading">Patient</h3>
+            <div className="new-appointment-toggle" aria-label="Patient mode">
               <button
                 type="button"
                 className={patientMode === 'existing' ? 'new-appointment-toggle__button--active' : undefined}
                 onClick={() => setPatientMode('existing')}
               >
-                Existing
+                Existing Patient
               </button>
               <button
                 type="button"
@@ -594,14 +656,14 @@ export function NewAppointmentModal({
                   setSelectedPatient(null);
                 }}
               >
-                New client / patient
+                New Patient
               </button>
             </div>
           </div>
 
           {patientMode === 'existing' ? (
             <fieldset className="scheduler-booking-fieldset">
-              <FieldError label="Search existing client or patient" error={fieldErrors.patientSearch}>
+              <FieldError label="Search existing patient" error={fieldErrors.patientSearch}>
                 <input
                   type="search"
                   value={patientQuery}
@@ -643,78 +705,154 @@ export function NewAppointmentModal({
               {selectedPatient ? (
                 <SelectedPatientSummary selectedPatient={selectedPatient} />
               ) : (
-                <p className="scheduler-modal__hint">Pet not found? Use New client / patient.</p>
+                <p className="scheduler-modal__hint">Pet not found? Use New Patient.</p>
               )}
             </fieldset>
           ) : (
-            <div className="new-appointment-inline-form">
-              <FieldError label="Client first name" error={fieldErrors.clientFirstName}>
-                <input value={clientFirstName} onChange={(event) => setClientFirstName(event.target.value)} />
-              </FieldError>
-              <FieldError label="Client last name" error={fieldErrors.clientLastName}>
-                <input value={clientLastName} onChange={(event) => setClientLastName(event.target.value)} />
-              </FieldError>
-              <FieldError label="Phone number" error={fieldErrors.clientPhone}>
-                <input value={clientPhone} onChange={(event) => setClientPhone(event.target.value)} />
-              </FieldError>
-              <FieldError label="Email" error={fieldErrors.clientEmail}>
-                <input
-                  type="email"
-                  value={clientEmail}
-                  onChange={(event) => setClientEmail(event.target.value)}
-                />
-              </FieldError>
-              <FieldError label="Patient name" error={fieldErrors.patientName}>
-                <input value={patientName} onChange={(event) => setPatientName(event.target.value)} />
-              </FieldError>
-              <FieldError label="Species" error={fieldErrors.species}>
-                <select value={species} onChange={(event) => setSpecies(event.target.value)}>
-                  {SPECIES_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </FieldError>
-              <FieldError label="Breed" error={fieldErrors.breed}>
-                <input value={breed} onChange={(event) => setBreed(event.target.value)} />
-              </FieldError>
-              <FieldError label="Sex" error={fieldErrors.sex}>
-                <select value={sex} onChange={(event) => setSex(event.target.value)}>
-                  <option value="">Unknown</option>
-                  {SEX_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </FieldError>
-              <FieldError label="Date of birth" error={fieldErrors.dateOfBirth}>
-                <input
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(event) => setDateOfBirth(event.target.value)}
-                />
-              </FieldError>
-              <FieldError label="Age estimate" error={fieldErrors.estimatedAge}>
-                <input
-                  value={estimatedAge}
-                  onChange={(event) => setEstimatedAge(event.target.value)}
-                  placeholder="e.g. 4 years"
-                />
-              </FieldError>
-              <FieldError label="Color / description" error={fieldErrors.color}>
-                <input value={color} onChange={(event) => setColor(event.target.value)} />
-              </FieldError>
-              <FieldError label="Weight" error={fieldErrors.weight}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={weight}
-                  onChange={(event) => setWeight(event.target.value)}
-                />
-              </FieldError>
+            <div className="new-appointment-new-patient-form">
+              <h4 className="new-appointment-subheading">Owner Information</h4>
+              <div className="new-appointment-inline-form">
+                <FieldError label="First name" error={fieldErrors.clientFirstName}>
+                  <input value={clientFirstName} onChange={(event) => setClientFirstName(event.target.value)} />
+                </FieldError>
+                <FieldError label="Last name" error={fieldErrors.clientLastName}>
+                  <input value={clientLastName} onChange={(event) => setClientLastName(event.target.value)} />
+                </FieldError>
+                <FieldError label="Phone number" error={fieldErrors.clientPhone}>
+                  <input value={clientPhone} onChange={(event) => setClientPhone(event.target.value)} />
+                </FieldError>
+                <FieldError label="Email" error={fieldErrors.clientEmail}>
+                  <input
+                    type="email"
+                    value={clientEmail}
+                    onChange={(event) => setClientEmail(event.target.value)}
+                  />
+                </FieldError>
+                <FieldError label="Address line 1" error={fieldErrors.clientAddressLine1}>
+                  <input
+                    value={clientAddressLine1}
+                    onChange={(event) => setClientAddressLine1(event.target.value)}
+                    placeholder="Street address"
+                  />
+                </FieldError>
+                <FieldError label="Address line 2" error={fieldErrors.clientAddressLine2}>
+                  <input
+                    value={clientAddressLine2}
+                    onChange={(event) => setClientAddressLine2(event.target.value)}
+                    placeholder="Apartment, suite, unit"
+                  />
+                </FieldError>
+                <FieldError label="City" error={fieldErrors.clientCity}>
+                  <input value={clientCity} onChange={(event) => setClientCity(event.target.value)} />
+                </FieldError>
+                <FieldError label="State" error={fieldErrors.clientState}>
+                  <input value={clientState} onChange={(event) => setClientState(event.target.value)} />
+                </FieldError>
+                <FieldError label="ZIP/postal code" error={fieldErrors.clientPostalCode}>
+                  <input
+                    value={clientPostalCode}
+                    onChange={(event) => setClientPostalCode(event.target.value)}
+                  />
+                </FieldError>
+                <FieldError label="Country" error={fieldErrors.clientCountry}>
+                  <input value={clientCountry} onChange={(event) => setClientCountry(event.target.value)} />
+                </FieldError>
+              </div>
+              {clientDuplicateHint ? (
+                <p className="scheduler-modal__hint new-appointment-duplicate-hint" role="status">
+                  Possible existing client found: {clientDuplicateHint}. Review before creating a new client.
+                </p>
+              ) : null}
+
+              <h4 className="new-appointment-subheading">Patient Information</h4>
+              <div className="new-appointment-inline-form">
+                <FieldError label="Patient name" error={fieldErrors.patientName}>
+                  <input value={patientName} onChange={(event) => setPatientName(event.target.value)} />
+                </FieldError>
+                <FieldError label="Species" error={fieldErrors.species}>
+                  <select value={species} onChange={(event) => setSpecies(event.target.value)}>
+                    {SPECIES_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </FieldError>
+                <FieldError label="Breed" error={fieldErrors.breed}>
+                  <input value={breed} onChange={(event) => setBreed(event.target.value)} />
+                </FieldError>
+                <FieldError label="Sex" error={fieldErrors.sex}>
+                  <select value={sex} onChange={(event) => setSex(event.target.value)}>
+                    <option value="">Unknown</option>
+                    {SEX_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </FieldError>
+                <FieldError label="Date of birth" error={fieldErrors.dateOfBirth}>
+                  <input
+                    type="date"
+                    value={dateOfBirth}
+                    onChange={(event) => setDateOfBirth(event.target.value)}
+                  />
+                </FieldError>
+                <FieldError label="Age estimate" error={fieldErrors.estimatedAge}>
+                  <input
+                    value={estimatedAge}
+                    onChange={(event) => setEstimatedAge(event.target.value)}
+                    placeholder="e.g. 4 years"
+                  />
+                </FieldError>
+                <FieldError label="Color / description" error={fieldErrors.color}>
+                  <input value={color} onChange={(event) => setColor(event.target.value)} />
+                </FieldError>
+                <FieldError label="Weight" error={fieldErrors.weight}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={weight}
+                    onChange={(event) => setWeight(event.target.value)}
+                  />
+                </FieldError>
+              </div>
+
+              <h4 className="new-appointment-subheading">Records Request</h4>
+              <p className="new-appointment-subheading__helper">
+                Optional — only needed if this clinic hasn&apos;t seen this pet before.
+              </p>
+              <div className="new-appointment-inline-form">
+                <FieldError label="Primary care vet" error={fieldErrors.primaryCareVetName}>
+                  <input
+                    value={primaryCareVetName}
+                    onChange={(event) => setPrimaryCareVetName(event.target.value)}
+                    placeholder="Optional"
+                  />
+                </FieldError>
+                <FieldError label="Previous clinic" error={fieldErrors.previousClinicName}>
+                  <input
+                    value={previousClinicName}
+                    onChange={(event) => setPreviousClinicName(event.target.value)}
+                    placeholder="Optional"
+                  />
+                </FieldError>
+                <FieldError label="Records source" error={fieldErrors.previousRecordsSource}>
+                  <input
+                    value={previousRecordsSource}
+                    onChange={(event) => setPreviousRecordsSource(event.target.value)}
+                    placeholder="e.g. will fax records"
+                  />
+                </FieldError>
+                <FieldError label="Date/time last seen" error={fieldErrors.lastSeenAt}>
+                  <input
+                    type="datetime-local"
+                    value={lastSeenAt}
+                    onChange={(event) => setLastSeenAt(event.target.value)}
+                  />
+                </FieldError>
+              </div>
             </div>
           )}
         </section>

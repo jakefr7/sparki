@@ -128,6 +128,12 @@ function toDashboardAppointment(appointment: AppointmentWithContext): DashboardA
     patient: toPatientSummary(appointment.patient),
     client: toClientSummary(appointment.client),
     provider: toPersonSummary(appointment.provider),
+    primaryCareVetName: appointment.primaryCareVetName,
+    previousClinicName: appointment.previousClinicName,
+    previousRecordsSource: appointment.previousRecordsSource,
+    lastSeenAt: appointment.lastSeenAt,
+    recordsPrepStatus: appointment.recordsPrepStatus,
+    confirmationStatus: appointment.confirmationStatus,
   };
 }
 

@@ -5,11 +5,17 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AppointmentsService } from './appointments.service';
 import {
   createAppointmentSchema,
+  createAppointmentWithNewPatientSchema,
   linkAppointmentPatientSchema,
   moveAppointmentSchema,
+  updateConfirmationStatusSchema,
+  updateRecordsPrepStatusSchema,
   type CreateAppointmentInput,
+  type CreateAppointmentWithNewPatientInput,
   type LinkAppointmentPatientInput,
   type MoveAppointmentInput,
+  type UpdateConfirmationStatusInput,
+  type UpdateRecordsPrepStatusInput,
 } from './dto/create-appointment.schema';
 
 @Controller('appointments')
@@ -24,9 +30,42 @@ export class AppointmentsController {
     return this.appointments.create(user.organizationId, user.locationId, user.id, body);
   }
 
+  /** Scheduler's "New Patient" flow — see AppointmentsService.createWithNewPatient. */
+  @Post('new-patient')
+  createWithNewPatient(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createAppointmentWithNewPatientSchema))
+    body: CreateAppointmentWithNewPatientInput,
+  ) {
+    return this.appointments.createWithNewPatient(
+      user.organizationId,
+      user.locationId,
+      user.id,
+      body,
+    );
+  }
+
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.appointments.findById(id, user.organizationId);
+  }
+
+  @Patch(':id/records-prep-status')
+  updateRecordsPrepStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateRecordsPrepStatusSchema)) body: UpdateRecordsPrepStatusInput,
+  ) {
+    return this.appointments.updateRecordsPrepStatus(id, user.organizationId, body);
+  }
+
+  @Patch(':id/confirmation-status')
+  updateConfirmationStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateConfirmationStatusSchema)) body: UpdateConfirmationStatusInput,
+  ) {
+    return this.appointments.updateConfirmationStatus(id, user.organizationId, body);
   }
 
   @Post(':id/link-patient')

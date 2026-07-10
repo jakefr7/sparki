@@ -710,17 +710,19 @@ describe('Visits (e2e)', () => {
       });
     }
 
-    it('saves intake data and returns it on the Visit payload', async () => {
-      const visit = await createVisit('Save Intake Patient');
+    it('saves intake data with weight in LB and gum color, and returns it on the Visit payload', async () => {
+      const visit = await createVisit('Save Intake Patient LB');
 
       const response = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
         chiefComplaint: 'Limping on left rear leg',
         historyNotes: 'Started yesterday after daycare.',
         weight: 42.5,
+        weightUnit: 'LB',
         temperature: 101.2,
         heartRate: 88,
         respiratoryRate: 24,
         crtSeconds: 1.5,
+        gumColor: 'Pink',
         appetite: 'Normal',
         vomiting: false,
         diarrhea: true,
@@ -735,10 +737,12 @@ describe('Visits (e2e)', () => {
           chiefComplaint: 'Limping on left rear leg',
           historyNotes: 'Started yesterday after daycare.',
           weight: 42.5,
+          weightUnit: 'LB',
           temperature: 101.2,
           heartRate: 88,
           respiratoryRate: 24,
           crtSeconds: 1.5,
+          gumColor: 'Pink',
           appetite: 'Normal',
           vomiting: false,
           diarrhea: true,
@@ -749,6 +753,74 @@ describe('Visits (e2e)', () => {
 
       const saved = await prisma.visitIntake.findUniqueOrThrow({ where: { visitId: visit.id } });
       expect(saved.chiefComplaint).toBe('Limping on left rear leg');
+      expect(saved.gumColor).toBe('Pink');
+      expect(saved.weight).toBe(42.5);
+      expect(saved.weightUnit).toBe('LB');
+    });
+
+    it('saves intake data with weight in KG', async () => {
+      const visit = await createVisit('Save Intake Patient KG');
+
+      const response = await request(app.getHttpServer())
+        .put(`/visits/${visit.id}/intake`)
+        .send({ weight: 19.3, weightUnit: 'KG' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.intake).toMatchObject({ weight: 19.3, weightUnit: 'KG' });
+
+      const saved = await prisma.visitIntake.findUniqueOrThrow({ where: { visitId: visit.id } });
+      expect(saved.weight).toBe(19.3);
+      expect(saved.weightUnit).toBe('KG');
+    });
+
+    it('reloading the visit (GET) after saving intake still shows the persisted gum color and weight unit', async () => {
+      const visit = await createVisit('Reload Gum Color Patient');
+
+      await request(app.getHttpServer())
+        .put(`/visits/${visit.id}/intake`)
+        .send({ gumColor: 'Pale', heartRate: 90, weight: 30, weightUnit: 'KG' });
+
+      const response = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.intake).toMatchObject({
+        gumColor: 'Pale',
+        heartRate: 90,
+        weight: 30,
+        weightUnit: 'KG',
+      });
+    });
+
+    it('saves intake without gumColor or an explicit weightUnit — gumColor stays null, weightUnit defaults to LB, nothing is blocked', async () => {
+      const visit = await createVisit('No Gum Color Patient');
+
+      const response = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Annual wellness check',
+        weight: 8.2,
+        heartRate: 100,
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.intake).toMatchObject({
+        chiefComplaint: 'Annual wellness check',
+        weight: 8.2,
+        heartRate: 100,
+        gumColor: null,
+        weightUnit: 'LB',
+      });
+    });
+
+    it('a pre-existing intake row saved without specifying a unit defaults to LB, never silently KG', async () => {
+      const visit = await createVisit('Legacy Weight Unit Patient');
+      // Simulates a row from before weightUnit existed: written directly via
+      // Prisma without the field, same as any INSERT the old service code
+      // would have produced — the column's DB-level DEFAULT 'LB' applies.
+      await prisma.visitIntake.create({ data: { visitId: visit.id, weight: 55 } });
+
+      const response = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.intake).toMatchObject({ weight: 55, weightUnit: 'LB' });
     });
 
     it('normalizes omitted intake checkbox flags to false when updating', async () => {

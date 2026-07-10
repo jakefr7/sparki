@@ -1131,11 +1131,52 @@ body {
   overflow-wrap: anywhere;
 }
 
-.visit-intake-panel {
+.visit-intake-panel,
+.records-prep-panel {
   margin-top: 0.75rem;
   padding: 1rem 1.1rem 1.1rem;
   border-radius: 0.6rem;
   background: var(--surface-secondary);
+}
+
+.records-prep-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.records-prep-panel__header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.records-prep-panel__context {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.records-prep-panel__context dt {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, CanvasText 55%, transparent);
+}
+
+.records-prep-panel__context dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+}
+
+.records-prep-panel__empty {
+  margin: 0;
+  font-size: 0.86rem;
+  color: color-mix(in srgb, CanvasText 55%, transparent);
 }
 
 .visit-intake-panel__header,
@@ -6518,6 +6559,30 @@ img.pet-photo-placeholder {
   font-weight: 750;
 }
 
+.new-appointment-duplicate-hint {
+  grid-column: 1 / -1;
+}
+
+.new-appointment-new-patient-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.new-appointment-subheading {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #667586;
+}
+
+.new-appointment-subheading__helper {
+  margin: -0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #8a95a6;
+}
+
 .new-appointment-actions {
   justify-content: flex-end;
 }
@@ -6590,6 +6655,27 @@ img.pet-photo-placeholder {
   background: #fff1f4;
   color: #9f1239;
   font-weight: 800;
+}
+
+.scheduler-inline-note {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(31, 169, 160, 0.24);
+  border-radius: 0.65rem;
+  background: #f1fbfb;
+  color: #177f79;
+  font-weight: 700;
+}
+
+.scheduler-records-context {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.84rem;
+  color: #475569;
+}
+
+.scheduler-records-context li {
+  margin-bottom: 0.15rem;
 }
 
 .scheduler-color-chip {

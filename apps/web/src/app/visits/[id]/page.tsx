@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
+import { RecordsPrepPanel } from '../../../components/records-prep-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { env } from '../../../lib/env';
@@ -131,6 +132,8 @@ export default async function VisitWorkspacePage({
           {personLabel(visit.assignedTechnician)}
         </li>
       </ul>
+
+      {visit.appointment && <RecordsPrepPanel appointment={visit.appointment} />}
 
       <VisitIntakePanel visitId={visit.id} state={visit.state} intake={visit.intake} />
 

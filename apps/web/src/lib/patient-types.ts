@@ -183,6 +183,12 @@ export interface DashboardAppointmentSummary {
   patient: DashboardPatientSummary | null;
   client: DashboardClientSummary | null;
   provider: DashboardPersonSummary | null;
+  primaryCareVetName: string | null;
+  previousClinicName: string | null;
+  previousRecordsSource: string | null;
+  lastSeenAt: string | null;
+  recordsPrepStatus: string;
+  confirmationStatus: string;
 }
 
 export interface DashboardVisitSummary {
@@ -307,16 +313,24 @@ export interface VisitDetail {
     reason: string;
     scheduledAt: string;
     state: string;
+    primaryCareVetName: string | null;
+    previousClinicName: string | null;
+    previousRecordsSource: string | null;
+    lastSeenAt: string | null;
+    recordsPrepStatus: string;
+    confirmationStatus: string;
   } | null;
   intake: {
     id: string;
     chiefComplaint: string | null;
     historyNotes: string | null;
     weight: number | null;
+    weightUnit: 'LB' | 'KG';
     temperature: number | null;
     heartRate: number | null;
     respiratoryRate: number | null;
     crtSeconds: number | null;
+    gumColor: string | null;
     appetite: string | null;
     vomiting: boolean;
     diarrhea: boolean;
@@ -374,3 +388,46 @@ export const SEX_OPTIONS = ['Male', 'Female', 'Spayed Female', 'Neutered Male'] 
 
 /** Mirrors Clinic Provisioning v1's communication defaults (Phone default). */
 export const CONTACT_METHOD_OPTIONS = ['Phone', 'Text', 'Email'] as const;
+
+/** Mirrors Prisma's RecordsPrepStatus enum — tech/assistant records-research
+ *  tracking on an Appointment (Anna: "researches available medical records
+ *  before the appointment"). */
+export const RECORDS_PREP_STATUSES = [
+  'NotStarted',
+  'Requested',
+  'Received',
+  'Reviewed',
+  'NotAvailable',
+] as const;
+
+export type RecordsPrepStatusValue = (typeof RECORDS_PREP_STATUSES)[number];
+
+const RECORDS_PREP_STATUS_LABELS: Record<RecordsPrepStatusValue, string> = {
+  NotStarted: 'Not started',
+  Requested: 'Records requested',
+  Received: 'Records received',
+  Reviewed: 'Records reviewed',
+  NotAvailable: 'No prior records available',
+};
+
+export function recordsPrepStatusLabel(status: string): string {
+  return RECORDS_PREP_STATUS_LABELS[status as RecordsPrepStatusValue] ?? status;
+}
+
+/** Mirrors Prisma's ConfirmationStatus enum — manual status tracking only.
+ *  No messaging vendor is integrated; "SentManually" and "Confirmed" record
+ *  that staff did it by phone/in person, not that Sparki sent anything. */
+export const CONFIRMATION_STATUSES = ['NotSent', 'Queued', 'SentManually', 'Confirmed'] as const;
+
+export type ConfirmationStatusValue = (typeof CONFIRMATION_STATUSES)[number];
+
+const CONFIRMATION_STATUS_LABELS: Record<ConfirmationStatusValue, string> = {
+  NotSent: 'Not sent',
+  Queued: 'Queued',
+  SentManually: 'Sent manually',
+  Confirmed: 'Confirmed',
+};
+
+export function confirmationStatusLabel(status: string): string {
+  return CONFIRMATION_STATUS_LABELS[status as ConfirmationStatusValue] ?? status;
+}

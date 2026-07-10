@@ -425,10 +425,15 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
     chiefComplaint: input.chiefComplaint ?? null,
     historyNotes: input.historyNotes ?? null,
     weight: input.weight ?? null,
+    // Every save carries an explicit unit, defaulting to LB (matching the
+    // form's own default and the historical "Weight (lb)" label) rather than
+    // leaving it unset — see the WeightUnit migration for why.
+    weightUnit: input.weightUnit ?? 'LB',
     temperature: input.temperature ?? null,
     heartRate: input.heartRate ?? null,
     respiratoryRate: input.respiratoryRate ?? null,
     crtSeconds: input.crtSeconds ?? null,
+    gumColor: input.gumColor ?? null,
     appetite: input.appetite ?? null,
     vomiting: input.vomiting ?? false,
     diarrhea: input.diarrhea ?? false,

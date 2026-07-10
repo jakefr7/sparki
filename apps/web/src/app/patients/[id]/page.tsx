@@ -7,6 +7,7 @@ import {
 import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
 import { BackButton } from '../../../components/back-button';
 import { PatientAlertsPanel } from '../../../components/patient-alerts-panel';
+import { PatientNewAppointmentButton } from '../../../components/patient-new-appointment-button';
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
@@ -204,6 +205,21 @@ export default async function PatientWorkspacePage({
               Start New Visit
             </a>
           )}
+          <PatientNewAppointmentButton
+            patient={{
+              id: patient.id,
+              name: patient.name,
+              species: patient.species,
+              breed: patient.breed,
+              sex: patient.sex,
+              dateOfBirth: patient.dateOfBirth,
+              weight: patient.weight,
+              color: patient.color,
+            }}
+            primaryClient={primaryClient ?? null}
+            className="button-secondary"
+            label="Set Appointment"
+          />
           <PatientProfileEditPanel
             patient={{
               id: patient.id,

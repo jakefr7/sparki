@@ -393,6 +393,26 @@ enum AppointmentState {
   NoShow
 }
 
+// Tech/assistant records-research tracking — see Appointment.recordsPrepStatus.
+enum RecordsPrepStatus {
+  NotStarted
+  Requested
+  Received
+  Reviewed
+  NotAvailable
+}
+
+// Manual confirmation/reminder status tracking only — see Appointment.
+// confirmationStatus. No messaging vendor is wired up; "SentManually" means
+// staff confirmed by phone/in person and recorded it, not that Sparki sent
+// anything.
+enum ConfirmationStatus {
+  NotSent
+  Queued
+  SentManually
+  Confirmed
+}
+
 model Appointment {
   id                     String  @id @default(cuid())
   organizationId         String
@@ -412,6 +432,23 @@ model Appointment {
   scheduledAt             DateTime
   expectedDurationMinutes Int?
   colorKey                String?
+
+  // Records-request context gathered at booking time for a New Patient
+  // (Anna's receptionist workflow) — all optional, since most existing-
+  // patient bookings won't need them.
+  primaryCareVetName     String?
+  previousClinicName     String?
+  previousRecordsSource  String?
+  lastSeenAt             DateTime?
+
+  // Tech/assistant records-prep tracking (Anna: "researches available
+  // medical records before the appointment") and receptionist-facing
+  // confirmation/reminder status tracking (Anna: "confirmation and/or
+  // reminder can be sent or queued"). Both are manual status fields only —
+  // no messaging vendor is integrated, so ConfirmationStatus never implies a
+  // message was actually delivered.
+  recordsPrepStatus  RecordsPrepStatus  @default(NotStarted)
+  confirmationStatus ConfirmationStatus @default(NotSent)
 
   providerId String?
 
@@ -701,17 +738,29 @@ model Visit {
   @@index([assignedTechnicianId])
 }
 
+enum WeightUnit {
+  LB
+  KG
+}
+
 model VisitIntake {
   id      String @id @default(cuid())
   visitId String @unique
 
-  chiefComplaint       String?
-  historyNotes         String?
-  weight               Float?
+  chiefComplaint String?
+  historyNotes   String?
+  weight         Float?
+  // Explicit unit, not inferred — clinics use either. Defaults (and, via this
+  // migration, backfills every pre-existing row) to LB: the intake UI's
+  // label was "Weight (lb)" before this field existed, so that's the only
+  // unit historical values can safely be assumed to be in. Never silently
+  // treat an old value as KG.
+  weightUnit           WeightUnit @default(LB)
   temperature          Float?
   heartRate            Int?
   respiratoryRate      Int?
   crtSeconds           Float?
+  gumColor             String?
   appetite             String?
   vomiting             Boolean @default(false)
   diarrhea             Boolean @default(false)

@@ -27,6 +27,12 @@ export interface DashboardAppointmentSummary {
   patient: DashboardPatientSummary | null;
   client: DashboardClientSummary | null;
   provider: DashboardPersonSummary | null;
+  primaryCareVetName: string | null;
+  previousClinicName: string | null;
+  previousRecordsSource: string | null;
+  lastSeenAt: Date | null;
+  recordsPrepStatus: string;
+  confirmationStatus: string;
 }
 
 export interface DashboardVisitSummary {

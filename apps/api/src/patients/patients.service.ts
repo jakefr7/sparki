@@ -4,6 +4,9 @@ import {
   prisma,
   type AppointmentState,
   type AppointmentType,
+  type PatientAlertCategory,
+  type PatientAlertSeverity,
+  type PatientMedicationStatus,
   type PatientStatus,
   type VisitState,
   type VisitType,
@@ -12,6 +15,11 @@ import { AppointmentsService } from '../appointments/appointments.service';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
+import type { CreatePatientAlertInput, UpdatePatientAlertInput } from './dto/patient-alert.schema';
+import type {
+  CreatePatientMedicationInput,
+  UpdatePatientMedicationInput,
+} from './dto/patient-medication.schema';
 import type { UpdatePatientInput } from './dto/update-patient.schema';
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
@@ -25,6 +33,39 @@ const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
  *  chance to run that cleanup). Never applied outside development, and never
  *  applied to an explicit search — only the no-query default listing. */
 const TEST_DEBRIS_NAME_FRAGMENTS = ['Playwright', 'Schedule Patient', 'Visit Patient'];
+
+const MEDICATION_CATALOG = [
+  'Amoxicillin',
+  'Amoxicillin-clavulanate / Clavamox',
+  'Cephalexin',
+  'Cefpodoxime',
+  'Enrofloxacin / Baytril',
+  'Metronidazole',
+  'Gabapentin',
+  'Trazodone',
+  'Carprofen / Rimadyl',
+  'Meloxicam',
+  'Prednisone',
+  'Prednisolone',
+  'Apoquel',
+  'Cytopoint',
+  'Simparica',
+  'NexGard',
+  'Bravecto',
+  'Revolution',
+  'Heartgard',
+  'Interceptor',
+  'Fluoxetine',
+  'Levothyroxine',
+  'Methimazole',
+  'Pimobendan / Vetmedin',
+  'Furosemide',
+  'Cerenia',
+  'Ondansetron',
+  'Famotidine',
+  'Omeprazole',
+  'Insulin',
+];
 
 function excludingTestDebris(): Prisma.PatientWhereInput {
   if (process.env.NODE_ENV === 'production') return {};
@@ -292,7 +333,7 @@ export class PatientsService {
    */
   async getWorkspaceSummary(id: string, organizationId: string) {
     const patient = await this.findById(id, organizationId);
-    const [upcomingAppointments, activeVisit, recentVisits] = await Promise.all([
+    const [upcomingAppointments, activeVisit, recentVisits, patientAlerts, patientMedications] = await Promise.all([
       this.appointments.listUpcomingForPatient(patient.id, organizationId),
       prisma.visit.findFirst({
         where: {
@@ -300,7 +341,13 @@ export class PatientsService {
           organizationId,
           state: { notIn: TERMINAL_VISIT_STATES },
         },
-        include: { client: true, appointment: true },
+        include: {
+          client: true,
+          appointment: true,
+          location: true,
+          primaryVeterinarian: true,
+          assignedTechnician: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
       // Most-recent-first, capped small — this is a profile summary, not a
@@ -312,6 +359,14 @@ export class PatientsService {
         include: { primaryVeterinarian: true, intake: true },
         orderBy: { createdAt: 'desc' },
         take: 5,
+      }),
+      prisma.patientAlert.findMany({
+        where: { patientId: patient.id, organizationId, isActive: true },
+        orderBy: [{ severity: 'desc' }, { updatedAt: 'desc' }],
+      }),
+      prisma.patientMedication.findMany({
+        where: { patientId: patient.id, organizationId },
+        orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       }),
     ]);
 
@@ -333,6 +388,7 @@ export class PatientsService {
         imageUrl: patient.imageUrl,
         status: patient.status,
         alerts: patient.alerts,
+        patientAlerts: patientAlerts.map(toPatientAlertSummary),
         sourceSystem: patient.sourceSystem,
         sourceConfidence: patient.sourceConfidence,
       },
@@ -399,23 +455,135 @@ export class PatientsService {
                       type: activeVisit.appointment.type,
                     }
                   : null,
+                location: activeVisit.location
+                  ? {
+                      id: activeVisit.location.id,
+                      name: activeVisit.location.name,
+                    }
+                  : null,
+                primaryVeterinarian: activeVisit.primaryVeterinarian
+                  ? {
+                      id: activeVisit.primaryVeterinarian.id,
+                      firstName: activeVisit.primaryVeterinarian.firstName,
+                      lastName: activeVisit.primaryVeterinarian.lastName,
+                      displayName: activeVisit.primaryVeterinarian.displayName,
+                    }
+                  : null,
+                assignedTechnician: activeVisit.assignedTechnician
+                  ? {
+                      id: activeVisit.assignedTechnician.id,
+                      firstName: activeVisit.assignedTechnician.firstName,
+                      lastName: activeVisit.assignedTechnician.lastName,
+                      displayName: activeVisit.assignedTechnician.displayName,
+                    }
+                  : null,
               },
             }
           : unavailableSection('No active visit.'),
-        medications: medicationsSource?.intake?.medicationsAllergies
-          ? {
-              status: 'available' as const,
-              notes: medicationsSource.intake.medicationsAllergies,
-              recordedAt: medicationsSource.intake.updatedAt,
-              visitId: medicationsSource.id,
-            }
-          : unavailableSection('No medications on file yet.'),
+        medications: {
+          status: 'available' as const,
+          items: patientMedications.map(toMedicationSummary),
+          legacyNotes: medicationsSource?.intake?.medicationsAllergies
+            ? {
+                notes: medicationsSource.intake.medicationsAllergies,
+                recordedAt: medicationsSource.intake.updatedAt,
+                visitId: medicationsSource.id,
+              }
+            : null,
+          catalog: MEDICATION_CATALOG,
+        },
         workItems: unavailableSection('Work system is not yet implemented.'),
         communication: unavailableSection('Communication module is not yet implemented.'),
         financial: unavailableSection('Billing/financial module is not yet implemented.'),
         attachments: unavailableSection('Attachments are not yet implemented.'),
       },
     };
+  }
+
+  async createAlert(id: string, organizationId: string, input: CreatePatientAlertInput) {
+    await this.findById(id, organizationId);
+
+    return prisma.patientAlert.create({
+      data: {
+        organizationId,
+        patientId: id,
+        message: input.message,
+        category: input.category,
+        severity: input.severity,
+      },
+    });
+  }
+
+  async updateAlert(
+    id: string,
+    alertId: string,
+    organizationId: string,
+    input: UpdatePatientAlertInput,
+  ) {
+    await this.assertAlertBelongsToPatient(id, alertId, organizationId);
+    const data: Prisma.PatientAlertUpdateInput = compactUndefined({
+      message: input.message,
+      category: input.category,
+      severity: input.severity,
+      isActive: input.isActive,
+      archivedAt: input.isActive === false ? new Date() : input.isActive === true ? null : undefined,
+    });
+
+    return prisma.patientAlert.update({
+      where: { id: alertId },
+      data,
+    });
+  }
+
+  async createMedication(id: string, organizationId: string, input: CreatePatientMedicationInput) {
+    await this.findById(id, organizationId);
+
+    return prisma.patientMedication.create({
+      data: {
+        organizationId,
+        patientId: id,
+        medicationName: input.medicationName,
+        genericName: input.genericName ?? null,
+        strength: input.strength ?? null,
+        dose: input.dose ?? null,
+        route: input.route ?? null,
+        frequency: input.frequency ?? null,
+        instructions: input.instructions ?? null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
+        status: input.status,
+        prescribedBy: input.prescribedBy ?? null,
+        source: input.source ?? null,
+      },
+    });
+  }
+
+  async updateMedication(
+    id: string,
+    medicationId: string,
+    organizationId: string,
+    input: UpdatePatientMedicationInput,
+  ) {
+    await this.assertMedicationBelongsToPatient(id, medicationId, organizationId);
+    const data: Prisma.PatientMedicationUpdateInput = compactUndefined({
+      medicationName: input.medicationName,
+      genericName: input.genericName,
+      strength: input.strength,
+      dose: input.dose,
+      route: input.route,
+      frequency: input.frequency,
+      instructions: input.instructions,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status,
+      prescribedBy: input.prescribedBy,
+      source: input.source,
+    });
+
+    return prisma.patientMedication.update({
+      where: { id: medicationId },
+      data,
+    });
   }
 
   private async assertClientsBelongToOrganization(
@@ -433,6 +601,34 @@ export class PatientsService {
       throw new BadRequestException(
         `Client(s) not found in organization ${organizationId}: ${missing.join(', ')}`,
       );
+    }
+  }
+
+  private async assertAlertBelongsToPatient(
+    patientId: string,
+    alertId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const alert = await prisma.patientAlert.findFirst({
+      where: { id: alertId, patientId, organizationId },
+      select: { id: true },
+    });
+    if (!alert) {
+      throw new NotFoundException(`Alert ${alertId} not found`);
+    }
+  }
+
+  private async assertMedicationBelongsToPatient(
+    patientId: string,
+    medicationId: string,
+    organizationId: string,
+  ): Promise<void> {
+    const medication = await prisma.patientMedication.findFirst({
+      where: { id: medicationId, patientId, organizationId },
+      select: { id: true },
+    });
+    if (!medication) {
+      throw new NotFoundException(`Medication ${medicationId} not found`);
     }
   }
 }
@@ -502,4 +698,66 @@ function toSearchResult(
 
 function unavailableSection(reason: string) {
   return { status: 'unavailable' as const, reason };
+}
+
+function compactUndefined<T extends Record<string, unknown>>(input: T) {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  ) as { [K in keyof T as undefined extends T[K] ? K : K]: Exclude<T[K], undefined> };
+}
+
+function toPatientAlertSummary(alert: {
+  id: string;
+  message: string;
+  category: PatientAlertCategory;
+  severity: PatientAlertSeverity;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: alert.id,
+    message: alert.message,
+    category: alert.category,
+    severity: alert.severity,
+    isActive: alert.isActive,
+    createdAt: alert.createdAt,
+    updatedAt: alert.updatedAt,
+  };
+}
+
+function toMedicationSummary(medication: {
+  id: string;
+  medicationName: string;
+  genericName: string | null;
+  strength: string | null;
+  dose: string | null;
+  route: string | null;
+  frequency: string | null;
+  instructions: string | null;
+  startDate: Date | null;
+  endDate: Date | null;
+  status: PatientMedicationStatus;
+  prescribedBy: string | null;
+  source: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: medication.id,
+    medicationName: medication.medicationName,
+    genericName: medication.genericName,
+    strength: medication.strength,
+    dose: medication.dose,
+    route: medication.route,
+    frequency: medication.frequency,
+    instructions: medication.instructions,
+    startDate: medication.startDate,
+    endDate: medication.endDate,
+    status: medication.status,
+    prescribedBy: medication.prescribedBy,
+    source: medication.source,
+    createdAt: medication.createdAt,
+    updatedAt: medication.updatedAt,
+  };
 }

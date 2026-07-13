@@ -55,6 +55,8 @@ model Organization {
   users        User[]
   clients      Client[]
   patients     Patient[]
+  patientAlerts PatientAlert[]
+  patientMedications PatientMedication[]
   appointments Appointment[]
   visits       Visit[]
   appointmentTypeSettings AppointmentTypeSetting[]
@@ -332,6 +334,8 @@ model Patient {
   appointments  Appointment[]
   visits        Visit[]
   medicalRecord MedicalRecord?
+  patientAlerts PatientAlert[]
+  medications   PatientMedication[]
 
   @@index([organizationId])
   @@index([organizationId, name])
@@ -339,6 +343,70 @@ model Patient {
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
   // Same, for the inherited/stored pet lastName (see PatientsService.search).
   @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+enum PatientAlertCategory {
+  Behavior
+  Allergy
+  Handling
+  Medical
+  BillingAdmin
+  Other
+}
+
+enum PatientAlertSeverity {
+  Info
+  Caution
+  Critical
+}
+
+model PatientAlert {
+  id             String               @id @default(cuid())
+  organizationId String
+  patientId      String
+  message        String
+  category       PatientAlertCategory @default(Other)
+  severity       PatientAlertSeverity @default(Caution)
+  isActive       Boolean              @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  patient      Patient      @relation(fields: [patientId], references: [id])
+
+  @@index([organizationId, patientId, isActive])
+}
+
+enum PatientMedicationStatus {
+  Active
+  Discontinued
+  Completed
+}
+
+model PatientMedication {
+  id             String                  @id @default(cuid())
+  organizationId String
+  patientId      String
+  medicationName String
+  genericName    String?
+  strength       String?
+  dose           String?
+  route          String?
+  frequency      String?
+  instructions   String?
+  startDate      DateTime?
+  endDate        DateTime?
+  status         PatientMedicationStatus @default(Active)
+  prescribedBy   String?
+  source         String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  patient      Patient      @relation(fields: [patientId], references: [id])
+
+  @@index([organizationId, patientId, status])
 }
 
 model PatientClient {

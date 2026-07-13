@@ -54,6 +54,8 @@ export async function cleanupFixture({
 
   await deleteWithRetry(() => prisma.visit.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.appointment.deleteMany({ where: linkedWhere }));
+  await deleteWithRetry(() => prisma.patientAlert.deleteMany({ where: { patientId: { in: patientIds } } }));
+  await deleteWithRetry(() => prisma.patientMedication.deleteMany({ where: { patientId: { in: patientIds } } }));
   await deleteWithRetry(() => prisma.patientClient.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.patient.deleteMany({ where: { id: { in: patientIds } } }));
   await deleteWithRetry(() => prisma.client.deleteMany({ where: { id: { in: clientIds } } }));

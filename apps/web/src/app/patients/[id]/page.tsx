@@ -7,6 +7,7 @@ import {
 import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
 import { BackButton } from '../../../components/back-button';
 import { PatientAlertsPanel } from '../../../components/patient-alerts-panel';
+import { PatientMedicationsPanel } from '../../../components/patient-medications-panel';
 import { PatientNewAppointmentButton } from '../../../components/patient-new-appointment-button';
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
@@ -95,6 +96,9 @@ export default async function PatientWorkspacePage({
   const currentVisit = sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
   const medications = sections.medications.status === 'available' ? sections.medications : null;
   const nextAppointment = upcomingAppointments[0] ?? null;
+  const headerAlert = patient.patientAlerts[0]?.message ?? patient.alerts;
+  const alertCount = patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
+  const activeMedicationCount = medications?.items.filter((item) => item.status === 'Active').length ?? 0;
   const ageLine = patientDobLine(patient.dateOfBirth, patient.estimatedAge);
   const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
   const patientDetails = [
@@ -152,18 +156,24 @@ export default async function PatientWorkspacePage({
             <span className={`patient-status patient-status--${patient.status.toLowerCase()}`}>
               {patient.status}
             </span>
-            {currentVisit && <span className="status-badge status-badge--active">Active Visit</span>}
+            {currentVisit && <span className="status-badge status-badge--active">Current Visit</span>}
             {!currentVisit && nextAppointment && (
               <span className="status-badge status-badge--scheduled">Upcoming Appointment</span>
             )}
-            {patient.alerts && <span className="status-badge status-badge--alert">⚠ Alert</span>}
           </div>
+          {headerAlert ? (
+            <div className="patient-profile-hero__alert" role="note">
+              <strong>Alert:</strong>
+              <span>{headerAlert}</span>
+              {alertCount > 1 ? <a href="#patient-profile-tab-alerts">View all</a> : null}
+            </div>
+          ) : null}
         </div>
         <div className="patient-profile-actions" aria-label="Patient care actions">
           <section className="patient-care-status-card" aria-labelledby="patient-care-status-heading">
-            <p className="eyebrow" id="patient-care-status-heading">Care Status</p>
+            <p className="eyebrow" id="patient-care-status-heading">Care Flow</p>
             <div className="patient-care-status-card__row patient-care-status-card__row--active">
-              <span>Active visit</span>
+              <span>Now</span>
               {currentVisit ? (
                 <>
                   <strong>{visitStateLabel(currentVisit.state)}</strong>
@@ -257,25 +267,21 @@ export default async function PatientWorkspacePage({
       <section className="patient-alert-strip" aria-label="Clinical alerts">
         <div className="patient-alert-strip__item patient-alert-strip__item--medications">
           <span>Medications</span>
-          <strong>{medications ? medications.notes : 'No active medications on file.'}</strong>
-          {medications && (
-            <Link href={`/visits/${medications.visitId}`}>Updated {visitDate(medications.recordedAt)}</Link>
+          <strong>
+            {activeMedicationCount > 0
+              ? `${activeMedicationCount} active medication${activeMedicationCount === 1 ? '' : 's'}`
+              : 'No active medications on file.'}
+          </strong>
+          {medications?.legacyNotes && activeMedicationCount === 0 && (
+            <Link href={`/visits/${medications.legacyNotes.visitId}`}>
+              Legacy note updated {visitDate(medications.legacyNotes.recordedAt)}
+            </Link>
           )}
         </div>
         <div className="patient-alert-strip__item">
           <span>Allergies / Alerts</span>
-          <strong>{patient.alerts ?? 'No alerts on file.'}</strong>
-        </div>
-        <div className="patient-alert-strip__item">
-          <span>Visit status</span>
-          <strong>{currentVisit ? visitStateLabel(currentVisit.state) : 'No active visit.'}</strong>
-          {currentVisit && (
-            <ActiveVisitDetailsButton
-              visit={currentVisit}
-              className="patient-alert-strip__button"
-              label="View Visit"
-            />
-          )}
+          <strong>{headerAlert ?? 'No alerts on file.'}</strong>
+          {alertCount > 1 ? <a href="#patient-profile-tab-alerts">View all alerts</a> : null}
         </div>
       </section>
 
@@ -421,7 +427,7 @@ export default async function PatientWorkspacePage({
           {
             id: 'alerts',
             label: 'Alerts',
-            panel: <PatientAlertsPanel patientId={patient.id} alerts={patient.alerts} />,
+            panel: <PatientAlertsPanel patientId={patient.id} alerts={patient.patientAlerts} legacyAlert={patient.alerts} />,
           },
           {
             id: 'records',
@@ -492,30 +498,7 @@ export default async function PatientWorkspacePage({
           {
             id: 'medications',
             label: 'Medications',
-            panel: (
-              <section className="profile-card profile-card--wide profile-card--medications" aria-labelledby="medications-heading">
-                <div className="profile-card__header">
-                  <p className="eyebrow">Medication profile</p>
-                  <h2 id="medications-heading">Medications</h2>
-                </div>
-                {medications ? (
-                  <div className="profile-medications">
-                    <div className="profile-medications__row">
-                      <strong>{medications.notes}</strong>
-                      <span>
-                        Active · Last updated {visitDate(medications.recordedAt)} ·{' '}
-                        <Link href={`/visits/${medications.visitId}`}>View visit</Link>
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="profile-medications profile-medications--empty">
-                    <p>No active medications on file.</p>
-                    <span>Use New Visit details to capture medication and allergy notes.</span>
-                  </div>
-                )}
-              </section>
-            ),
+            panel: medications ? <PatientMedicationsPanel patientId={patient.id} medications={medications} /> : null,
           },
           {
             id: 'owner',

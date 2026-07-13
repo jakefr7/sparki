@@ -62,6 +62,18 @@ describe('Patients (e2e)', () => {
         patient: NOT_PROTECTED,
       },
     });
+    await prisma.patientAlert.deleteMany({
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        patient: NOT_PROTECTED,
+      },
+    });
+    await prisma.patientMedication.deleteMany({
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        patient: NOT_PROTECTED,
+      },
+    });
     await prisma.appointment.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
@@ -388,7 +400,15 @@ describe('Patients (e2e)', () => {
       expect(response.body.upcomingAppointments).toEqual([]);
       expect(response.body.recentVisits).toEqual([]);
       expect(response.body.sections.currentVisit).toMatchObject({ status: 'unavailable' });
-      expect(response.body.sections.medications).toMatchObject({ status: 'unavailable' });
+      expect(response.body.patient.patientAlerts).toEqual([]);
+      expect(response.body.sections.medications).toMatchObject({
+        status: 'available',
+        items: [],
+        legacyNotes: null,
+      });
+      expect(response.body.sections.medications.catalog).toEqual(
+        expect.arrayContaining(['Gabapentin', 'Carprofen / Rimadyl', 'Insulin']),
+      );
       expect(response.body.sections.workItems).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.communication).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.financial).toMatchObject({ status: 'unavailable' });
@@ -493,7 +513,7 @@ describe('Patients (e2e)', () => {
       ]);
     });
 
-    it('surfaces recent visits and medications from the latest visit intake', async () => {
+    it('surfaces recent visits, structured medications, alert data, and legacy medication notes', async () => {
       const created = await request(app.getHttpServer())
         .post('/patients')
         .send({
@@ -533,6 +553,24 @@ describe('Patients (e2e)', () => {
       await prisma.visitIntake.create({
         data: { visitId: latestVisit.id, medicationsAllergies: 'Amoxicillin 250mg twice daily' },
       });
+      const alert = await prisma.patientAlert.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          patientId,
+          message: 'Caution handling',
+          category: 'Handling',
+          severity: 'Critical',
+        },
+      });
+      const medication = await prisma.patientMedication.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          patientId,
+          medicationName: 'Gabapentin',
+          frequency: 'Every 12 hours',
+          instructions: 'Give with food',
+        },
+      });
 
       const response = await request(app.getHttpServer()).get(`/patients/${patientId}/workspace`);
 
@@ -541,11 +579,33 @@ describe('Patients (e2e)', () => {
         expect.objectContaining({ id: latestVisit.id, reason: 'Recheck' }),
         expect.objectContaining({ id: olderVisit.id, reason: 'Old checkup' }),
       ]);
+      expect(response.body.patient.patientAlerts).toEqual([
+        expect.objectContaining({
+          id: alert.id,
+          message: 'Caution handling',
+          category: 'Handling',
+          severity: 'Critical',
+        }),
+      ]);
       expect(response.body.sections.medications).toMatchObject({
         status: 'available',
-        notes: 'Amoxicillin 250mg twice daily',
-        visitId: latestVisit.id,
+        items: [
+          expect.objectContaining({
+            id: medication.id,
+            medicationName: 'Gabapentin',
+            frequency: 'Every 12 hours',
+            instructions: 'Give with food',
+            status: 'Active',
+          }),
+        ],
+        legacyNotes: {
+          notes: 'Amoxicillin 250mg twice daily',
+          visitId: latestVisit.id,
+        },
       });
+      expect(response.body.sections.medications.catalog).toEqual(
+        expect.arrayContaining(['Amoxicillin', 'NexGard', 'Pimobendan / Vetmedin']),
+      );
     });
 
     it('returns 404 when the patient belongs to a different organization', async () => {
@@ -560,6 +620,120 @@ describe('Patients (e2e)', () => {
       const response = await request(app.getHttpServer()).get(`/patients/${created.id}/workspace`);
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('Patient alerts', () => {
+    it('creates, edits, and archives an alert', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Alert Workflow Patient',
+          species: 'Canine',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+
+      const createResponse = await request(app.getHttpServer())
+        .post(`/patients/${created.body.id}/alerts`)
+        .send({
+          message: 'Barks when nervous',
+          category: 'Behavior',
+          severity: 'Caution',
+        });
+
+      expect(createResponse.status).toBe(201);
+      expect(createResponse.body).toMatchObject({
+        patientId: created.body.id,
+        message: 'Barks when nervous',
+        category: 'Behavior',
+        severity: 'Caution',
+        isActive: true,
+      });
+
+      const editResponse = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}/alerts/${createResponse.body.id}`)
+        .send({ message: 'Owner reports biting when nervous', severity: 'Critical' });
+
+      expect(editResponse.status).toBe(200);
+      expect(editResponse.body).toMatchObject({
+        message: 'Owner reports biting when nervous',
+        severity: 'Critical',
+        isActive: true,
+      });
+
+      const archiveResponse = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}/alerts/${createResponse.body.id}`)
+        .send({ isActive: false });
+
+      expect(archiveResponse.status).toBe(200);
+      expect(archiveResponse.body).toMatchObject({ isActive: false });
+      expect(archiveResponse.body.archivedAt).toBeTruthy();
+
+      const workspace = await request(app.getHttpServer()).get(`/patients/${created.body.id}/workspace`);
+      expect(workspace.status).toBe(200);
+      expect(workspace.body.patient.patientAlerts).toEqual([]);
+    });
+  });
+
+  describe('Patient medications', () => {
+    it('creates, edits, and discontinues a medication', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Medication Workflow Patient',
+          species: 'Feline',
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+
+      const createResponse = await request(app.getHttpServer())
+        .post(`/patients/${created.body.id}/medications`)
+        .send({
+          medicationName: 'Custom free-text med',
+          dose: '1 tablet',
+          frequency: 'Daily',
+          instructions: 'Give at breakfast',
+        });
+
+      expect(createResponse.status).toBe(201);
+      expect(createResponse.body).toMatchObject({
+        patientId: created.body.id,
+        medicationName: 'Custom free-text med',
+        dose: '1 tablet',
+        frequency: 'Daily',
+        status: 'Active',
+      });
+
+      const editResponse = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}/medications/${createResponse.body.id}`)
+        .send({ medicationName: 'Gabapentin', route: 'Oral', strength: '100 mg' });
+
+      expect(editResponse.status).toBe(200);
+      expect(editResponse.body).toMatchObject({
+        medicationName: 'Gabapentin',
+        route: 'Oral',
+        strength: '100 mg',
+        status: 'Active',
+      });
+
+      const discontinueResponse = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}/medications/${createResponse.body.id}`)
+        .send({ status: 'Discontinued', endDate: new Date('2026-07-10T00:00:00.000Z') });
+
+      expect(discontinueResponse.status).toBe(200);
+      expect(discontinueResponse.body).toMatchObject({
+        medicationName: 'Gabapentin',
+        status: 'Discontinued',
+      });
+
+      const workspace = await request(app.getHttpServer()).get(`/patients/${created.body.id}/workspace`);
+      expect(workspace.status).toBe(200);
+      expect(workspace.body.sections.medications.items).toEqual([
+        expect.objectContaining({
+          id: createResponse.body.id,
+          medicationName: 'Gabapentin',
+          status: 'Discontinued',
+        }),
+      ]);
     });
   });
 

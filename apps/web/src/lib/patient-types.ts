@@ -117,6 +117,22 @@ export interface ActiveVisitSummary {
     scheduledAt: string;
     type: string;
   } | null;
+  location: {
+    id: string;
+    name: string;
+  } | null;
+  primaryVeterinarian: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    displayName: string | null;
+  } | null;
+  assignedTechnician: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    displayName: string | null;
+  } | null;
 }
 
 export type CurrentVisitSection =
@@ -126,10 +142,42 @@ export type CurrentVisitSection =
       visit: ActiveVisitSummary;
     };
 
+export interface PatientAlertSummary {
+  id: string;
+  message: string;
+  category: string;
+  severity: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PatientMedicationSummary {
+  id: string;
+  medicationName: string;
+  genericName: string | null;
+  strength: string | null;
+  dose: string | null;
+  route: string | null;
+  frequency: string | null;
+  instructions: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  status: string;
+  prescribedBy: string | null;
+  source: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MedicationsSummary {
-  notes: string;
-  recordedAt: string;
-  visitId: string;
+  items: PatientMedicationSummary[];
+  legacyNotes: {
+    notes: string;
+    recordedAt: string;
+    visitId: string;
+  } | null;
+  catalog: string[];
 }
 
 export type MedicationsSection =
@@ -238,6 +286,7 @@ export interface PatientWorkspace {
     imageUrl: string | null;
     status: string;
     alerts: string | null;
+    patientAlerts: PatientAlertSummary[];
     sourceSystem: string | null;
     sourceConfidence: number | null;
   };

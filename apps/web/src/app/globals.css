@@ -7394,6 +7394,39 @@ body:has(.patient-profile-hub) {
   margin-top: 0.78rem;
 }
 
+.patient-profile-hero__alert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  align-items: center;
+  width: min(100%, 42rem);
+  margin-top: 0.72rem;
+  padding: 0.62rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, rgba(211, 225, 227, 0.85));
+  border-radius: 0.72rem;
+  background: color-mix(in srgb, var(--warning) 12%, #ffffff);
+  color: #172633;
+  line-height: 1.35;
+}
+
+.patient-profile-hero__alert strong {
+  font-weight: 900;
+}
+
+.patient-profile-hero__alert span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+  font-weight: 760;
+}
+
+.patient-profile-hero__alert a {
+  color: #8b5c13;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .patient-profile-hub .patient-profile-actions {
   display: flex;
   min-width: 15rem;
@@ -7470,7 +7503,7 @@ body:has(.patient-profile-hub) {
 
 .patient-alert-strip {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.7rem;
 }
 
@@ -7534,38 +7567,47 @@ body:has(.patient-profile-hub) {
   gap: 1.1rem;
 }
 
-.active-visit-details__list {
+.active-visit-details__header-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.55rem;
+  color: #667586;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.active-visit-details__grid {
   display: grid;
-  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
   margin: 0;
 }
 
-.active-visit-details__list div {
+.active-visit-details__grid div {
   display: grid;
-  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: baseline;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid rgba(211, 225, 227, 0.8);
+  gap: 0.18rem;
+  min-width: 0;
+  padding: 0.72rem;
+  border: 1px solid rgba(211, 225, 227, 0.86);
+  border-radius: 0.72rem;
+  background: #f8fbfb;
 }
 
-.active-visit-details__list div:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-
-.active-visit-details__list dt {
+.active-visit-details__grid dt {
   color: #70808d;
   font-size: 0.76rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.active-visit-details__list dd {
+.active-visit-details__grid dd {
   min-width: 0;
   margin: 0;
   color: #172633;
   font-weight: 750;
+  overflow-wrap: anywhere;
 }
 
 .active-visit-details__actions {
@@ -7694,6 +7736,14 @@ body:has(.patient-profile-hub) {
 
 .patient-profile-hub .profile-card__header--subtle {
   margin: 0 0 0.7rem;
+}
+
+.patient-profile-hub .profile-card__header--with-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .patient-profile-hub .profile-card--medications {
@@ -8002,6 +8052,202 @@ body:has(.patient-profile-hub) {
   margin-top: 0.4rem;
 }
 
+.profile-compact-empty--roomy {
+  gap: 0.35rem;
+  padding: 1rem;
+}
+
+.patient-inline-form {
+  display: grid;
+  gap: 0.72rem;
+  margin-bottom: 0.9rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(196, 216, 219, 0.92);
+  border-radius: 0.82rem;
+  background: #f8fbfb;
+}
+
+.patient-inline-form label {
+  display: grid;
+  gap: 0.28rem;
+  color: #526577;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.patient-inline-form input,
+.patient-inline-form select,
+.patient-inline-form textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.55rem;
+  padding: 0.56rem 0.65rem;
+  border: 1px solid rgba(188, 207, 211, 0.95);
+  border-radius: 0.62rem;
+  background: #ffffff;
+  color: #172633;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.patient-inline-form textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.patient-inline-form input:focus-visible,
+.patient-inline-form select:focus-visible,
+.patient-inline-form textarea:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.patient-inline-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.patient-inline-form__grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.patient-alert-card-list,
+.patient-medication-list,
+.patient-medications-sections {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.patient-alert-card,
+.patient-medication-card,
+.patient-medication-legacy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: start;
+  padding: 0.9rem;
+  border: 1px solid rgba(211, 225, 227, 0.9);
+  border-radius: 0.82rem;
+  background: #ffffff;
+}
+
+.patient-alert-card--caution,
+.patient-alert-card--legacy {
+  border-left: 0.34rem solid #d99423;
+  background: linear-gradient(90deg, rgba(217, 148, 35, 0.08), transparent 48%), #ffffff;
+}
+
+.patient-alert-card--critical {
+  border-left: 0.34rem solid #c84b42;
+  background: linear-gradient(90deg, rgba(200, 75, 66, 0.08), transparent 48%), #ffffff;
+}
+
+.patient-alert-card--info {
+  border-left: 0.34rem solid #4aa3c7;
+}
+
+.patient-alert-card__body,
+.patient-medication-card > div:first-child {
+  min-width: 0;
+}
+
+.patient-alert-card__chips,
+.patient-medication-card__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.patient-alert-card__chips span,
+.medication-status {
+  display: inline-flex;
+  min-height: 1.55rem;
+  align-items: center;
+  padding: 0.2rem 0.48rem;
+  border-radius: 999px;
+  background: #eef5f5;
+  color: #526577;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.patient-alert-card p,
+.patient-medication-card p,
+.patient-medication-legacy p {
+  margin: 0.48rem 0 0;
+  overflow-wrap: anywhere;
+  color: #172633;
+  line-height: 1.42;
+}
+
+.patient-alert-card small,
+.patient-medication-card small {
+  display: block;
+  margin-top: 0.42rem;
+  color: #667586;
+  font-size: 0.78rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.patient-alert-card__actions,
+.patient-medication-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+.patient-medications-sections h3 {
+  margin: 0 0 0.45rem;
+  color: #172633;
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.patient-medication-card {
+  border-left: 0.34rem solid #4aa3c7;
+}
+
+.patient-medication-card__title strong {
+  color: #172633;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.medication-status--active {
+  background: #eaf8f4;
+  color: #287a55;
+}
+
+.medication-status--discontinued,
+.medication-status--completed {
+  background: #eef2f4;
+  color: #667586;
+}
+
+.patient-medication-legacy {
+  grid-template-columns: 1fr;
+  border-style: dashed;
+  background: #f8fbfb;
+}
+
+.patient-medication-legacy strong {
+  color: #172633;
+}
+
+.patient-medication-legacy a {
+  width: fit-content;
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .patient-alerts-current {
   display: grid;
   gap: 0.65rem;
@@ -8080,6 +8326,19 @@ body:has(.patient-profile-hub) {
 
   .patient-profile-hub .walk-in-form {
     grid-template-columns: 1fr;
+  }
+
+  .active-visit-details__grid,
+  .patient-inline-form__grid,
+  .patient-inline-form__grid--three,
+  .patient-alert-card,
+  .patient-medication-card {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-alert-card__actions,
+  .patient-medication-card__actions {
+    justify-content: flex-start;
   }
 
   .profile-visit-history__row {

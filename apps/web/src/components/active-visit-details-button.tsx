@@ -22,6 +22,22 @@ interface ActiveVisitSummaryForModal {
     scheduledAt: string;
     type: string;
   } | null;
+  location?: {
+    id: string;
+    name: string;
+  } | null;
+  primaryVeterinarian?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    displayName: string | null;
+  } | null;
+  assignedTechnician?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    displayName: string | null;
+  } | null;
 }
 
 function visitDateTime(value: string): string {
@@ -42,6 +58,12 @@ function ActiveVisitDetailsModal({
   onClose: () => void;
 }) {
   useLockBodyScroll(true);
+  const doctor = visit.primaryVeterinarian
+    ? visit.primaryVeterinarian.displayName ?? `Dr. ${visit.primaryVeterinarian.firstName} ${visit.primaryVeterinarian.lastName}`
+    : null;
+  const technician = visit.assignedTechnician
+    ? visit.assignedTechnician.displayName ?? `${visit.assignedTechnician.firstName} ${visit.assignedTechnician.lastName}`
+    : null;
 
   return (
     <div className="patient-profile-modal-overlay" role="presentation" onClick={onClose}>
@@ -62,22 +84,17 @@ function ActiveVisitDetailsModal({
             ×
           </button>
           <div>
-            <p className="eyebrow">Active Visit</p>
-            <h2 id="active-visit-details-heading">{visitStateLabel(visit.state)}</h2>
-            <p className="patient-profile-modal-header__details">{visit.reason}</p>
+            <p className="eyebrow">Current Visit</p>
+            <h2 id="active-visit-details-heading">{visit.reason}</h2>
+            <div className="active-visit-details__header-line">
+              <span className="status-badge status-badge--active">{visitStateLabel(visit.state)}</span>
+              <span>{visit.visitType}</span>
+            </div>
           </div>
         </div>
 
         <div className="active-visit-details">
-          {/* Status and Reason are already shown prominently in the header
-           * above (title + subtitle) — repeating them here as list rows was
-           * pure duplication, so this list covers only what the header
-           * doesn't. */}
-          <dl className="active-visit-details__list">
-            <div>
-              <dt>Visit type</dt>
-              <dd>{visit.visitType}</dd>
-            </div>
+          <dl className="active-visit-details__grid">
             <div>
               <dt>Client</dt>
               <dd>{visit.client ? clientDisplayName(visit.client) : 'No client linked'}</dd>
@@ -89,6 +106,18 @@ function ActiveVisitDetailsModal({
             <div>
               <dt>Appointment</dt>
               <dd>{visit.appointment ? visitDateTime(visit.appointment.scheduledAt) : 'Walk-in / no appointment'}</dd>
+            </div>
+            <div>
+              <dt>Doctor</dt>
+              <dd>{doctor ?? 'Unassigned'}</dd>
+            </div>
+            <div>
+              <dt>Technician</dt>
+              <dd>{technician ?? 'Unassigned'}</dd>
+            </div>
+            <div>
+              <dt>Room / location</dt>
+              <dd>{visit.location?.name ?? 'Not assigned'}</dd>
             </div>
           </dl>
 

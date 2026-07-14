@@ -12,6 +12,7 @@ import {
 import { DashboardShell } from './dashboard-shell';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import {
+  AppointmentConfirmationModal,
   NewAppointmentModal,
   type NewAppointmentCreatedSummary,
 } from './new-appointment-modal';
@@ -48,6 +49,9 @@ interface AppointmentTypeSetting {
   color: string;
   isActive: boolean;
   sortOrder: number;
+  defaultDurationMinutes: number;
+  providers?: Array<{ id: string; displayName: string; role: string; isActive: boolean }>;
+  isBookable?: boolean;
 }
 
 interface SchedulerSlotTemplate {
@@ -129,100 +133,9 @@ const APPOINTMENT_COLOR_OPTIONS: { key: AppointmentColorKey; label: string }[] =
   { key: 'rose', label: 'Rose' },
 ];
 
-const DEFAULT_APPOINTMENT_TYPE_SETTINGS: AppointmentTypeSetting[] = [
-  {
-    id: 'default-WellnessPreventiveCare',
-    appointmentType: 'WellnessPreventiveCare',
-    name: 'Consultation',
-    color: '#2563EB',
-    isActive: true,
-    sortOrder: 10,
-  },
-  {
-    id: 'default-Recheck',
-    appointmentType: 'Recheck',
-    name: 'Recheck',
-    color: '#7C3AED',
-    isActive: true,
-    sortOrder: 20,
-  },
-  {
-    id: 'default-SurgeryProcedure',
-    appointmentType: 'SurgeryProcedure',
-    name: 'Surgery',
-    color: '#16A34A',
-    isActive: true,
-    sortOrder: 30,
-  },
-  {
-    id: 'default-TechnicianAppointment',
-    appointmentType: 'TechnicianAppointment',
-    name: 'Technician',
-    color: '#D97706',
-    isActive: true,
-    sortOrder: 40,
-  },
-  {
-    id: 'default-EmergencyUrgent',
-    appointmentType: 'EmergencyUrgent',
-    name: 'Emergency',
-    color: '#DC2626',
-    isActive: true,
-    sortOrder: 50,
-  },
-  {
-    id: 'default-SickVisit',
-    appointmentType: 'SickVisit',
-    name: 'Sick visit',
-    color: '#0891B2',
-    isActive: true,
-    sortOrder: 60,
-  },
-  {
-    id: 'default-Vaccination',
-    appointmentType: 'Vaccination',
-    name: 'Vaccination',
-    color: '#0D9488',
-    isActive: true,
-    sortOrder: 70,
-  },
-  {
-    id: 'default-DropOff',
-    appointmentType: 'DropOff',
-    name: 'Drop-off / Post-op',
-    color: '#CA8A04',
-    isActive: true,
-    sortOrder: 80,
-  },
-  {
-    id: 'default-Telemedicine',
-    appointmentType: 'Telemedicine',
-    name: 'Telemedicine',
-    color: '#4F46E5',
-    isActive: true,
-    sortOrder: 90,
-  },
-  {
-    id: 'default-Euthanasia',
-    appointmentType: 'Euthanasia',
-    name: 'Euthanasia',
-    color: '#BE123C',
-    isActive: true,
-    sortOrder: 100,
-  },
-  {
-    id: 'default-BoardingNonMedical',
-    appointmentType: 'BoardingNonMedical',
-    name: 'Boarding',
-    color: '#475569',
-    isActive: true,
-    sortOrder: 110,
-  },
-];
-
 const FALLBACK_SCHEDULER_CONFIG: SchedulerConfig = {
   settings: { slotIntervalMinutes: 30 },
-  appointmentTypes: DEFAULT_APPOINTMENT_TYPE_SETTINGS,
+  appointmentTypes: [],
   slotTemplates: [],
   canManage: false,
 };
@@ -275,7 +188,7 @@ function formatHour(hour: number): string {
 function timeRange(appointment: SchedulerAppointment): string {
   const startsAt = new Date(appointment.scheduledAt);
   const endsAt = new Date(
-    startsAt.getTime() + (appointment.expectedDurationMinutes ?? 30) * 60_000,
+    startsAt.getTime() + (appointment.expectedDurationMinutes ?? 0) * 60_000,
   );
   const startLabel = formatTime(startsAt);
   const endLabel = formatTime(endsAt);
@@ -378,7 +291,7 @@ function inVisibleHours(appointment: SchedulerAppointment): boolean {
 
 function appointmentStyle(appointment: SchedulerAppointment): { top: string; height: string } {
   const minutes = minutesSinceClinicOpen(new Date(appointment.scheduledAt));
-  const duration = Math.max(30, appointment.expectedDurationMinutes ?? 30);
+  const duration = appointment.expectedDurationMinutes ?? 0;
   const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
   return {
     top: `${(minutes / total) * 100}%`,
@@ -592,6 +505,8 @@ export function SchedulerPage() {
   const [selectedAppointment, setSelectedAppointment] = useState<SchedulerAppointment | null>(null);
   const [bookingNote, setBookingNote] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
+  const [confirmedAppointment, setConfirmedAppointment] = useState<NewAppointmentCreatedSummary | null>(null);
+  const [editingAppointment, setEditingAppointment] = useState<NewAppointmentCreatedSummary | null>(null);
 
   const loadSchedulerData = useCallback(
     async (signal?: AbortSignal) => {
@@ -747,7 +662,7 @@ export function SchedulerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           startTime: slot.startsAt.toISOString(),
-          expectedDurationMinutes: appointment.expectedDurationMinutes ?? 30,
+          expectedDurationMinutes: appointment.expectedDurationMinutes ?? undefined,
           assignedProviderId: appointment.provider?.id ?? null,
         }),
       });
@@ -843,18 +758,32 @@ export function SchedulerPage() {
       </div>
       {selectedSlot && (
         <NewAppointmentModal
+          editingAppointmentId={editingAppointment?.id ?? null}
+          initialVisitReason={editingAppointment?.reason ?? null}
+          initialPatient={editingAppointment?.patient ? {
+            ...editingAppointment.patient,
+            primaryClient: editingAppointment.client ? {
+              ...editingAppointment.client,
+              phone: null,
+              email: null,
+              preferredContactMethod: null,
+            } : null,
+          } : null}
           initialDate={selectedSlot.startsAt}
           initialStartTime={selectedSlot.startsAt}
           initialDurationMinutes={Math.max(
             15,
             Math.round((selectedSlot.endsAt.getTime() - selectedSlot.startsAt.getTime()) / 60_000),
           )}
-          initialProviderId={providerFilter === 'all' ? null : providerFilter}
+          initialProviderId={editingAppointment?.provider?.id ?? (providerFilter === 'all' ? null : providerFilter)}
+          initialAppointmentTypeId={editingAppointment?.appointmentType ?? null}
           providers={providers}
           appointmentTypes={schedulerConfig.appointmentTypes}
-          onClose={() => setSelectedSlot(null)}
+          onClose={() => { setSelectedSlot(null); setEditingAppointment(null); }}
           onCreated={(appointment) => {
             setSelectedSlot(null);
+            setEditingAppointment(null);
+            setConfirmedAppointment(appointment);
             setAppointments((current) =>
               uniqueAppointments([...current, toSchedulerCreatedAppointment(appointment)]),
             );
@@ -863,12 +792,48 @@ export function SchedulerPage() {
           }}
         />
       )}
+      {confirmedAppointment && (
+        <AppointmentConfirmationModal
+          appointment={confirmedAppointment}
+          onClose={() => setConfirmedAppointment(null)}
+          onEdit={() => {
+            const appointment = confirmedAppointment;
+            const start = new Date(appointment.scheduledAt);
+            setConfirmedAppointment(null);
+            setEditingAppointment(appointment);
+            setSelectedSlot({
+              startsAt: start,
+              endsAt: new Date(start.getTime() + (appointment.expectedDurationMinutes ?? 30) * 60_000),
+            });
+          }}
+        />
+      )}
       {selectedAppointment && (
         <AppointmentDetailPopover
           appointment={selectedAppointment}
           appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => setSelectedAppointment(null)}
-          onConfirmationStatusChange={handleConfirmationStatusChange}
+          onChanged={(updated) => {
+            setAppointments((current) => current.map((item) => item.id === updated.id ? updated : item));
+            setSelectedAppointment(updated);
+          }}
+          onReschedule={() => {
+            const appointment = selectedAppointment;
+            const setting = schedulerConfig.appointmentTypes.find((item) => item.appointmentType === appointment.type || item.name === appointment.type);
+            const start = new Date(appointment.scheduledAt);
+            setSelectedAppointment(null);
+            setEditingAppointment({
+              ...appointment,
+              appointmentType: setting?.appointmentType ?? 'WellnessPreventiveCare',
+              appointmentTypeSettingId: setting?.id ?? '',
+            });
+            setSelectedSlot({ startsAt: start, endsAt: new Date(start.getTime() + (appointment.expectedDurationMinutes ?? 30) * 60_000) });
+          }}
+          onCancelled={(id) => {
+            setAppointments((current) => current.filter((item) => item.id !== id));
+            setSelectedAppointment(null);
+            setBookingNote('Appointment cancelled.');
+          }}
         />
       )}
     </DashboardShell>
@@ -1399,132 +1364,94 @@ function AppointmentDetailPopover({
   appointment,
   appointmentTypes,
   onClose,
-  onConfirmationStatusChange,
+  onChanged,
+  onReschedule,
+  onCancelled,
 }: {
   appointment: SchedulerAppointment;
   appointmentTypes: AppointmentTypeSetting[];
   onClose: () => void;
-  onConfirmationStatusChange: (appointmentId: string, nextStatus: string) => Promise<void>;
+  onChanged: (appointment: SchedulerAppointment) => void;
+  onReschedule: () => void;
+  onCancelled: (appointmentId: string) => void;
 }) {
   const color = appointmentColor(appointment, appointmentTypes);
-  const [confirmationSaving, setConfirmationSaving] = useState(false);
-  const [confirmationError, setConfirmationError] = useState<string | null>(null);
-  const recordsContext = [
-    appointment.primaryCareVetName ? `Primary care vet: ${appointment.primaryCareVetName}` : null,
-    appointment.previousClinicName ? `Previous clinic: ${appointment.previousClinicName}` : null,
-    appointment.previousRecordsSource ? `Records source: ${appointment.previousRecordsSource}` : null,
-    appointment.lastSeenAt
-      ? `Last seen: ${new Date(appointment.lastSeenAt).toLocaleDateString()}`
-      : null,
-  ].filter((line): line is string => Boolean(line));
+  const startsAt = new Date(appointment.scheduledAt);
+  const [note, setNote] = useState(appointment.reason ?? '');
+  const [savingNote, setSavingNote] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  async function handleConfirmationChange(nextStatus: string) {
-    setConfirmationSaving(true);
-    setConfirmationError(null);
+  async function saveNote() {
+    setSavingNote(true);
+    setActionError(null);
     try {
-      await onConfirmationStatusChange(appointment.id, nextStatus);
+      const response = await fetch(`/api/appointments/${encodeURIComponent(appointment.id)}/note`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note }),
+      });
+      if (!response.ok) throw new Error('note');
+      onChanged({ ...appointment, reason: note.trim() || appointment.type });
     } catch {
-      setConfirmationError('Could not update confirmation status. Try again.');
+      setActionError('Could not save the note. Please try again.');
     } finally {
-      setConfirmationSaving(false);
+      setSavingNote(false);
+    }
+  }
+
+  async function cancelAppointment() {
+    setCancelling(true);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/appointments/${encodeURIComponent(appointment.id)}/cancel`, { method: 'POST' });
+      if (response.ok) onCancelled(appointment.id);
+      else setActionError('Could not cancel the appointment. Please try again.');
+    } finally {
+      setCancelling(false);
+      setConfirmCancel(false);
     }
   }
 
   return (
-    <ModalFrame title={appointmentPatientName(appointment)} onClose={onClose}>
-      <dl className="scheduler-detail-list">
-        <div>
-          <dt>Client</dt>
-          <dd>{appointmentClientName(appointment)}</dd>
+    <ModalFrame title={appointmentPatientName(appointment)} subtitle={configuredAppointmentTypeLabel(appointment.type, appointmentTypes)} onClose={onClose}>
+      <div className="appointment-viewer">
+        <div className="appointment-viewer__hero" style={{ '--appointment-color': color } as CSSProperties}>
+          <div><span>{startsAt.toLocaleDateString([], { weekday: 'long' })}</span><strong>{startsAt.toLocaleDateString([], { month: 'short', day: 'numeric' })}</strong></div>
+          <div><span>Appointment time</span><strong>{timeRange(appointment)}</strong><small>{appointment.expectedDurationMinutes ?? 0} minutes</small></div>
+          <span className={`scheduler-status-chip ${statusClass(appointment.state)}`}>{STATUS_LABELS[appointment.state] ?? appointment.state}</span>
         </div>
-        <div>
-          <dt>Time</dt>
-          <dd>{timeRange(appointment)}</dd>
+        <dl className="appointment-viewer__facts">
+          <div><dt>Patient</dt><dd>{appointmentPatientName(appointment)}</dd></div>
+          <div><dt>Client</dt><dd>{appointmentClientName(appointment)}</dd></div>
+          <div><dt>Appointment type</dt><dd>{configuredAppointmentTypeLabel(appointment.type, appointmentTypes)}</dd></div>
+          <div><dt>Provider</dt><dd>{appointmentProviderName(appointment) ?? 'Unassigned'}</dd></div>
+          <div><dt>Room</dt><dd>{appointment.room ?? 'Not assigned'}</dd></div>
+          <div><dt>Schedule color</dt><dd><span className="scheduler-color-readout" style={{ '--scheduler-readout-color': color } as CSSProperties}>{appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}</span></dd></div>
+        </dl>
+        <div className="appointment-viewer__note">
+          <div><label htmlFor="appointment-note">Appointment note</label><small>Visible to the clinic team</small></div>
+          <textarea id="appointment-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for this appointment" />
+          <button type="button" onClick={() => void saveNote()} disabled={savingNote || note === appointment.reason}>{savingNote ? 'Saving…' : 'Save Note'}</button>
         </div>
-        <div>
-          <dt>Visit type</dt>
-          <dd>{configuredAppointmentTypeLabel(appointment.type, appointmentTypes)}</dd>
+        {actionError ? <p className="scheduler-modal__error" role="alert">{actionError}</p> : null}
+        <div className="appointment-viewer__actions">
+          <button type="button" className="scheduler-primary-action" onClick={onReschedule}>Reschedule</button>
+          {appointment.patient ? <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}>Open Patient Profile</Link> : null}
+          <button type="button" className="appointment-viewer__cancel" onClick={() => setConfirmCancel(true)}>Cancel Appointment</button>
         </div>
-        <div>
-          <dt>Doctor</dt>
-          <dd>{appointmentProviderName(appointment) ?? 'Unassigned'}</dd>
-        </div>
-        <div>
-          <dt>Room</dt>
-          <dd>{appointment.room ?? 'Not assigned'}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>
-            <span className={`scheduler-status-chip ${statusClass(appointment.state)}`}>
-              {STATUS_LABELS[appointment.state] ?? appointment.state}
-            </span>
-          </dd>
-        </div>
-        <div>
-          <dt>Calendar color</dt>
-          <dd>
-            <span
-              className="scheduler-color-readout"
-              style={{ '--scheduler-readout-color': color } as CSSProperties}
-            >
-              {appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}
-            </span>
-          </dd>
-        </div>
-        <div>
-          <dt>Confirmation / Reminder</dt>
-          <dd>
-            <select
-              value={appointment.confirmationStatus}
-              disabled={confirmationSaving}
-              onChange={(event) => void handleConfirmationChange(event.target.value)}
-              aria-label="Confirmation / reminder status"
-            >
-              {CONFIRMATION_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {confirmationStatusLabel(status)}
-                </option>
-              ))}
-            </select>
-            <small className="scheduler-modal__hint">
-              Manual status tracking only — no confirmation or reminder is sent automatically.
-            </small>
-            {confirmationError ? (
-              <small className="new-appointment-field-error">{confirmationError}</small>
-            ) : null}
-          </dd>
-        </div>
-        <div>
-          <dt>Records prep</dt>
-          <dd>
-            <span className="scheduler-status-chip">
-              {recordsPrepStatusLabel(appointment.recordsPrepStatus)}
-            </span>
-            {recordsContext.length > 0 ? (
-              <ul className="scheduler-records-context">
-                {recordsContext.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            ) : (
-              <small className="scheduler-modal__hint">No records-request context on file.</small>
-            )}
-            <small className="scheduler-modal__hint">
-              Update the checklist from the patient&apos;s visit workspace.
-            </small>
-          </dd>
-        </div>
-      </dl>
-      <div className="scheduler-modal__actions">
-        {appointment.patient && (
-          <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}>
-            Open Patient Profile
-          </Link>
-        )}
-        <Link href="/today" onClick={onClose}>
-          View Today Flow
-        </Link>
+        {confirmCancel ? (
+          <div className="appointment-cancel-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="cancel-appointment-title">
+            <div className="appointment-cancel-confirmation__panel">
+              <span className="appointment-cancel-confirmation__icon" aria-hidden="true">!</span>
+              <h3 id="cancel-appointment-title">Cancel this appointment?</h3>
+              <p>{appointmentPatientName(appointment)} will be removed from the schedule. This cannot be undone.</p>
+              <div>
+                <button type="button" className="scheduler-secondary-action" disabled={cancelling} onClick={() => setConfirmCancel(false)}>No, Keep It</button>
+                <button type="button" className="appointment-cancel-confirmation__yes" disabled={cancelling} onClick={() => void cancelAppointment()}>{cancelling ? 'Cancelling…' : 'Yes, Cancel'}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </ModalFrame>
   );

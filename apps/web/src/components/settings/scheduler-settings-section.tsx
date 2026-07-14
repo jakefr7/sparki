@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { appointmentTypeLabel, type AppointmentTypeValue } from '../../lib/patient-types';
+import { type AppointmentTypeValue } from '../../lib/patient-types';
 
 const INTERVAL_OPTIONS = [15, 20, 30, 45, 60] as const;
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -10,9 +10,13 @@ interface AppointmentTypeSetting {
   id: string;
   appointmentType: AppointmentTypeValue | null;
   name: string;
+  description: string | null;
+  defaultDurationMinutes: number;
   color: string;
   isActive: boolean;
   sortOrder: number;
+  providers: Array<{ id: string; displayName: string; role: string; isActive: boolean }>;
+  isBookable: boolean;
 }
 
 interface SchedulerSlotTemplate {
@@ -45,24 +49,6 @@ const EMPTY_TEMPLATE: SchedulerSlotTemplate = {
   room: '',
   isActive: true,
 };
-
-function systemTypeDescription(type: AppointmentTypeValue | null): string {
-  if (!type) return 'Custom scheduler category';
-  const labels: Record<AppointmentTypeValue, string> = {
-    WellnessPreventiveCare: 'Used for wellness / preventive care',
-    SickVisit: 'Used for sick visits and medical concerns',
-    Recheck: 'Used for follow-up and progress checks',
-    TechnicianAppointment: 'Used for technician appointments',
-    Vaccination: 'Used for vaccines and boosters',
-    SurgeryProcedure: 'Used for surgery and procedure visits',
-    DropOff: 'Used for drop-off and post-op workflows',
-    EmergencyUrgent: 'Used for urgent and emergency visits',
-    Telemedicine: 'Used for virtual appointments',
-    Euthanasia: 'Used for end-of-life appointments',
-    BoardingNonMedical: 'Used for boarding or non-medical stays',
-  };
-  return labels[type] ?? appointmentTypeLabel(type);
-}
 
 function shortDay(dayOfWeek: number): string {
   return DAY_LABELS[dayOfWeek]?.slice(0, 3) ?? 'Day';
@@ -125,6 +111,7 @@ export function SchedulerSettingsSection() {
   const [typeDraft, setTypeDraft] = useState<AppointmentTypeSetting | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [eligibleProviders, setEligibleProviders] = useState<Array<{ id: string; displayName: string; role: string }>>([]);
 
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [draftTemplate, setDraftTemplate] = useState<SchedulerSlotTemplate>(EMPTY_TEMPLATE);
@@ -166,6 +153,14 @@ export function SchedulerSettingsSection() {
   }, []);
 
   useEffect(() => {
+    if (!config?.canManage) return;
+    fetch('/api/scheduler-config/appointment-types/eligible-providers', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() as Promise<typeof eligibleProviders> : [])
+      .then(setEligibleProviders)
+      .catch(() => setEligibleProviders([]));
+  }, [config?.canManage]);
+
+  useEffect(() => {
     return () => {
       if (blockFeedbackTimeout.current) clearTimeout(blockFeedbackTimeout.current);
     };
@@ -204,11 +199,15 @@ export function SchedulerSettingsSection() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        id: setting.id || undefined,
         appointmentType: setting.appointmentType,
         name: setting.name,
+        description: setting.description,
+        defaultDurationMinutes: setting.defaultDurationMinutes,
         color: setting.color,
         isActive: setting.isActive,
         sortOrder: setting.sortOrder,
+        providerIds: setting.providers.map((provider) => provider.id),
       }),
     });
     if (response.ok) {
@@ -236,6 +235,11 @@ export function SchedulerSettingsSection() {
     setEditingTypeId(setting.id);
     setTypeDraft(setting);
     setMessage(null);
+  }
+
+  function beginTypeCreate() {
+    setEditingTypeId('');
+    setTypeDraft({ id: '', appointmentType: null, name: '', description: null, defaultDurationMinutes: 0, color: '#1FA9A0', isActive: true, sortOrder: (sortedAppointmentTypes.length + 1) * 10, providers: [], isBookable: false });
   }
 
   function openAddBlock() {
@@ -414,11 +418,12 @@ export function SchedulerSettingsSection() {
           <div className="scheduler-settings-card__header">
             <div>
               <h2 id="appointment-types-heading">Appointment Types</h2>
-              <p>Colors are applied automatically when appointments are scheduled.</p>
+              <p>Manage duration, color, availability, and which doctors can perform each appointment.</p>
             </div>
+            {canManage ? <button type="button" className="scheduler-primary-action" onClick={beginTypeCreate}>New Appointment Type</button> : null}
           </div>
           <div className="scheduler-type-list">
-            {sortedAppointmentTypes.map((setting) => {
+            {[...sortedAppointmentTypes, ...(editingTypeId === '' && typeDraft ? [typeDraft] : [])].map((setting) => {
               const editorDraft = editingTypeId === setting.id ? typeDraft : null;
               const displaySetting = editorDraft ?? setting;
               return (
@@ -432,9 +437,7 @@ export function SchedulerSettingsSection() {
                     <div>
                       <strong>{displaySetting.name}</strong>
                       <span>
-                        {setting.appointmentType
-                          ? systemTypeDescription(setting.appointmentType)
-                          : 'Custom appointment category'}
+                        {displaySetting.defaultDurationMinutes} min · {displaySetting.providers.length} doctor{displaySetting.providers.length === 1 ? '' : 's'} · {displaySetting.providers.length > 0 ? 'Bookable' : 'Not bookable'}
                       </span>
                     </div>
                   </div>
@@ -486,6 +489,14 @@ export function SchedulerSettingsSection() {
                         />
                       </label>
                       <label>
+                        <span>Description (optional)</span>
+                        <input value={editorDraft.description ?? ''} onChange={(event) => setTypeDraft((current) => current ? { ...current, description: event.target.value } : current)} />
+                      </label>
+                      <label>
+                        <span>Default duration</span>
+                        <input type="number" min="5" max="1440" step="5" value={editorDraft.defaultDurationMinutes} onChange={(event) => setTypeDraft((current) => current ? { ...current, defaultDurationMinutes: Number(event.target.value) } : current)} />
+                      </label>
+                      <label>
                         <span>Color</span>
                         <input
                           type="color"
@@ -497,6 +508,15 @@ export function SchedulerSettingsSection() {
                           }
                         />
                       </label>
+                      <fieldset className="appointment-type-doctors">
+                        <legend>Doctors who can perform this appointment</legend>
+                        <div className="appointment-type-doctors__actions">
+                          <button type="button" onClick={() => setTypeDraft((current) => current ? { ...current, providers: eligibleProviders.map((provider) => ({ ...provider, isActive: true })) } : current)}>Select all eligible doctors</button>
+                          <button type="button" onClick={() => setTypeDraft((current) => current ? { ...current, providers: [] } : current)}>Clear all</button>
+                        </div>
+                        {eligibleProviders.map((provider) => <label key={provider.id}><input type="checkbox" checked={editorDraft.providers.some((selected) => selected.id === provider.id)} onChange={(event) => setTypeDraft((current) => current ? { ...current, providers: event.target.checked ? [...current.providers, { ...provider, isActive: true }] : current.providers.filter((selected) => selected.id !== provider.id) } : current)} />{provider.displayName}</label>)}
+                        {editorDraft.providers.length === 0 ? <p role="alert">This appointment type will not be available for new appointments until at least one doctor is assigned.</p> : null}
+                      </fieldset>
                       <label className="scheduler-type-editor__toggle">
                         <input
                           type="checkbox"

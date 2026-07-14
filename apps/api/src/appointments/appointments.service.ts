@@ -11,10 +11,13 @@ import type {
   CreateAppointmentWithNewPatientInput,
   LinkAppointmentPatientInput,
   MoveAppointmentInput,
+  UpdateAppointmentNoteInput,
   UpdateConfirmationStatusInput,
   UpdateRecordsPrepStatusInput,
 } from './dto/create-appointment.schema';
 import { SchedulerConfigService } from '../scheduler-config/scheduler-config.service';
+import { AppointmentAvailabilityService } from './appointment-availability.service';
+import type { AppointmentAvailabilityInput } from './dto/appointment-availability.schema';
 
 /**
  * This slice creates appointments directly as committed bookings from
@@ -64,7 +67,14 @@ const ALLOWED_PREDECESSORS: Record<
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly schedulerConfig: SchedulerConfigService) {}
+  constructor(
+    private readonly schedulerConfig: SchedulerConfigService,
+    private readonly appointmentAvailability: AppointmentAvailabilityService,
+  ) {}
+
+  availability(organizationId: string, locationId: string, input: AppointmentAvailabilityInput) {
+    return this.appointmentAvailability.find(organizationId, locationId, input);
+  }
 
   async create(
     organizationId: string,
@@ -94,18 +104,44 @@ export class AppointmentsService {
       );
     }
 
-    return prisma.appointment.create({
-      data: {
+    const appointmentTypeSetting = await prisma.appointmentTypeSetting.findFirst({
+      where: {
+        organizationId,
+        locationId,
+        isActive: true,
+        ...(input.appointmentTypeId ? { id: input.appointmentTypeId } : { appointmentType: input.appointmentType }),
+      },
+      include: { providers: true },
+    });
+    if (!appointmentTypeSetting) throw new BadRequestException('Choose an active appointment type.');
+    if (input.assignedProviderId && !appointmentTypeSetting.providers.some((assignment) => assignment.providerId === input.assignedProviderId)) {
+      throw new ConflictException(`The selected doctor is not assigned to ${appointmentTypeSetting.name}. Choose another doctor or appointment type.`);
+    }
+    const duration = appointmentTypeSetting.defaultDurationMinutes;
+    return prisma.$transaction(async (tx) => {
+      const available = await this.appointmentAvailability.isAvailable(
+        organizationId,
+        locationId,
+        appointmentTypeSetting.id,
+        input.startTime,
+        input.assignedProviderId,
+        tx,
+      );
+      if (!available) {
+        throw new ConflictException('That appointment time is no longer available.');
+      }
+      return tx.appointment.create({ data: {
         organizationId,
         locationId,
         patientId: patient.id,
         clientId,
         type: input.appointmentType,
+        appointmentTypeSettingId: appointmentTypeSetting.id,
         reason: input.visitReason,
         source: DEFAULT_SOURCE,
         state: DEFAULT_STATE,
         scheduledAt: input.startTime,
-        expectedDurationMinutes: input.expectedDurationMinutes ?? null,
+        expectedDurationMinutes: duration,
         colorKey: input.colorKey ?? null,
         providerId: input.assignedProviderId ?? null,
         primaryCareVetName: input.primaryCareVetName ?? null,
@@ -113,8 +149,8 @@ export class AppointmentsService {
         previousRecordsSource: input.previousRecordsSource ?? null,
         lastSeenAt: input.lastSeenAt ?? null,
         createdById,
-      },
-    });
+      } });
+    }, { isolationLevel: 'Serializable' });
   }
 
   /**
@@ -143,6 +179,29 @@ export class AppointmentsService {
           input.appointment.assignedProviderId,
           organizationId,
         );
+      }
+
+      const selectedType = await tx.appointmentTypeSetting.findFirst({
+        where: input.appointment.appointmentTypeId
+          ? { id: input.appointment.appointmentTypeId, organizationId, locationId, isActive: true }
+          : { organizationId, locationId, appointmentType: input.appointment.appointmentType, isActive: true },
+        include: { providers: true },
+      });
+      if (!selectedType) throw new BadRequestException('Choose an active appointment type.');
+      if (input.appointment.assignedProviderId && !selectedType.providers.some((assignment) => assignment.providerId === input.appointment.assignedProviderId)) {
+        throw new ConflictException(`The selected doctor is not assigned to ${selectedType.name}. Choose another doctor or appointment type.`);
+      }
+
+      const available = await this.appointmentAvailability.isAvailable(
+        organizationId,
+        locationId,
+        selectedType.id,
+        input.appointment.startTime,
+        input.appointment.assignedProviderId,
+        tx,
+      );
+      if (!available) {
+        throw new ConflictException('That appointment time is no longer available.');
       }
 
       const client = await tx.client.create({
@@ -194,11 +253,12 @@ export class AppointmentsService {
           patientId: patient.id,
           clientId: client.id,
           type: input.appointment.appointmentType,
+          appointmentTypeSettingId: selectedType.id,
           reason: input.appointment.visitReason,
           source: DEFAULT_SOURCE,
           state: DEFAULT_STATE,
           scheduledAt: input.appointment.startTime,
-          expectedDurationMinutes: input.appointment.expectedDurationMinutes ?? null,
+          expectedDurationMinutes: selectedType.defaultDurationMinutes,
           colorKey: input.appointment.colorKey ?? null,
           providerId: input.appointment.assignedProviderId ?? null,
           primaryCareVetName: input.appointment.primaryCareVetName ?? null,
@@ -212,7 +272,7 @@ export class AppointmentsService {
           client: { select: { id: true, firstName: true, lastName: true } },
         },
       });
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
   async findById(id: string, organizationId: string) {
@@ -313,7 +373,16 @@ export class AppointmentsService {
             ? appointment.providerId
             : input.assignedProviderId || null,
       },
-      include: { patient: true, client: true, provider: true },
+      include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
+    });
+  }
+
+  async updateNote(id: string, organizationId: string, locationId: string, input: UpdateAppointmentNoteInput) {
+    const appointment = await prisma.appointment.findFirst({ where: { id, organizationId, locationId } });
+    if (!appointment) throw new NotFoundException(`Appointment ${id} not found`);
+    return prisma.appointment.update({
+      where: { id },
+      data: { reason: input.note || appointment.type },
     });
   }
 
@@ -350,7 +419,7 @@ export class AppointmentsService {
     const { start, end } = dayBoundsFor(new Date());
     return prisma.appointment.findMany({
       where: { organizationId, scheduledAt: { gte: start, lt: end } },
-      include: { patient: true, client: true, provider: true },
+      include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
       orderBy: { scheduledAt: 'asc' },
     });
   }

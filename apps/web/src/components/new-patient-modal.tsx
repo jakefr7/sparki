@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
@@ -624,12 +623,12 @@ function NewPatientNextStep({
   result,
   onOpenProfile,
   onAddAnother,
-  onSetAppointmentNavigated,
+  onNewAppointment,
 }: {
   result: NewPatientCreationResult;
   onOpenProfile: () => void;
   onAddAnother: () => void;
-  onSetAppointmentNavigated: () => void;
+  onNewAppointment: () => void;
 }) {
   return (
     <div className="new-patient-success">
@@ -646,13 +645,9 @@ function NewPatientNextStep({
         <button type="button" className="new-patient-modal-submit" onClick={onOpenProfile}>
           Open Patient Profile
         </button>
-        <Link
-          href={`/patients/${result.id}/schedule`}
-          className="new-patient-modal-cancel"
-          onClick={onSetAppointmentNavigated}
-        >
-          Set Appointment
-        </Link>
+        <button type="button" className="new-patient-modal-cancel" onClick={onNewAppointment}>
+          New Appointment
+        </button>
         <button type="button" className="new-patient-modal-cancel" onClick={onAddAnother}>
           Add Another Patient
         </button>
@@ -690,11 +685,13 @@ export function NewPatientModal({
   onClose,
   onCreated,
   onOpenProfile,
+  onNewAppointment,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (result: NewPatientCreationResult) => void;
   onOpenProfile: (result: NewPatientCreationResult) => void;
+  onNewAppointment: (result: NewPatientCreationResult) => void;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const ownerFirstNameRef = useRef<HTMLInputElement>(null);
@@ -1124,7 +1121,7 @@ export function NewPatientModal({
                   resetForm();
                   requestAnimationFrame(() => ownerFirstNameRef.current?.focus());
                 }}
-                onSetAppointmentNavigated={onClose}
+                onNewAppointment={() => onNewAppointment(createdResult)}
               />
             )
           )}

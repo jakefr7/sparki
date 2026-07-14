@@ -16,7 +16,7 @@ import type {
 const CHECKOUT_READY_STATE = 'CheckoutReady';
 
 const appointmentWithContext = Prisma.validator<Prisma.AppointmentDefaultArgs>()({
-  include: { patient: true, client: true, provider: true },
+  include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
 });
 type AppointmentWithContext = Prisma.AppointmentGetPayload<typeof appointmentWithContext>;
 
@@ -119,12 +119,12 @@ function toClientSummary(
 function toDashboardAppointment(appointment: AppointmentWithContext): DashboardAppointmentSummary {
   return {
     id: appointment.id,
-    type: appointment.type,
+    type: appointment.appointmentTypeSetting?.name ?? appointment.type,
     reason: appointment.reason,
     state: appointment.state,
     scheduledAt: appointment.scheduledAt,
     expectedDurationMinutes: appointment.expectedDurationMinutes,
-    colorKey: appointment.colorKey,
+    colorKey: appointment.colorKey ?? appointment.appointmentTypeSetting?.color ?? null,
     patient: toPatientSummary(appointment.patient),
     client: toClientSummary(appointment.client),
     provider: toPersonSummary(appointment.provider),

@@ -22,11 +22,15 @@ export const updateSchedulerSettingsSchema = z.object({
 export type UpdateSchedulerSettingsInput = z.infer<typeof updateSchedulerSettingsSchema>;
 
 export const upsertAppointmentTypeSettingSchema = z.object({
-  appointmentType: z.nativeEnum(AppointmentType),
+  id: z.string().min(1).optional(),
+  appointmentType: z.nativeEnum(AppointmentType).optional().nullable(),
   name: z.string().min(1).max(80),
+  description: z.string().max(500).optional().nullable(),
+  defaultDurationMinutes: z.coerce.number().int().min(5).max(24 * 60),
   color: colorSchema,
   isActive: z.boolean(),
   sortOrder: z.coerce.number().int().min(0).max(500),
+  providerIds: z.array(z.string().min(1)).max(100),
 });
 
 export type UpsertAppointmentTypeSettingInput = z.infer<typeof upsertAppointmentTypeSettingSchema>;

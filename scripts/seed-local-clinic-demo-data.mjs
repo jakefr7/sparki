@@ -518,6 +518,34 @@ async function ensureStaff(organizationId, locationId) {
   }
 }
 
+async function ensureAppointmentTypes(organizationId, locationId) {
+  const types = [
+    ['WellnessPreventiveCare', 'Wellness / Preventive Care', 30, '#2563EB', [VET_A, VET_B]],
+    ['SickVisit', 'Sick Visit', 30, '#0891B2', [VET_A, VET_B]],
+    ['EmergencyUrgent', 'Urgent Visit', 30, '#DC2626', [VET_A]],
+    ['SurgeryProcedure', 'Surgery Consultation', 60, '#16A34A', [VET_A]],
+    ['Vaccination', 'Dental Consultation', 45, '#D97706', [VET_B]],
+    ['Recheck', 'Follow-Up', 30, '#7C3AED', [VET_A, VET_B]],
+  ];
+  for (const [appointmentType, name, duration, color, providerIds] of types) {
+    const setting = await prisma.appointmentTypeSetting.upsert({
+      where: { locationId_appointmentType: { locationId, appointmentType } },
+      update: { name, defaultDurationMinutes: duration, color, isActive: true },
+      create: { organizationId, locationId, appointmentType, name, defaultDurationMinutes: duration, color, isActive: true, sortOrder: 10 },
+    });
+    await prisma.appointmentTypeProvider.deleteMany({
+      where: { appointmentTypeId: setting.id, providerId: { notIn: providerIds } },
+    });
+    for (const providerId of providerIds) {
+      await prisma.appointmentTypeProvider.upsert({
+        where: { appointmentTypeId_providerId: { appointmentTypeId: setting.id, providerId } },
+        update: { organizationId },
+        create: { appointmentTypeId: setting.id, providerId, organizationId },
+      });
+    }
+  }
+}
+
 async function ensureClients(organizationId) {
   const idByKey = new Map();
   for (const client of CLIENTS) {
@@ -730,6 +758,7 @@ async function main() {
   validateCuratedNames();
   const { organization, location } = await ensureClinic();
   await ensureStaff(organization.id, location.id);
+  await ensureAppointmentTypes(organization.id, location.id);
   const clientIdByKey = await ensureClients(organization.id);
   const patientIdByKey = await ensurePatients(organization.id, clientIdByKey);
   const { appointmentCount, visitCount } = await ensureAppointmentsAndVisits(

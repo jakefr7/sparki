@@ -187,11 +187,11 @@ function QuickActions({
     <div className="patient-profile-modal-quick-actions">
       {patient.scheduleHref ? (
         <Link href={patient.scheduleHref} className="button-secondary">
-          Set Appointment
+          New Appointment
         </Link>
       ) : (
         <button type="button" className="button-secondary" disabled>
-          Set Appointment
+          New Appointment
         </button>
       )}
       <Link href="/patients/new" className="button-secondary">

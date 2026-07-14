@@ -39,14 +39,14 @@ test.afterAll(async () => {
   await cleanupFixture({ patientIds: [patientId], clientIds: [clientId] });
 });
 
-test('Set Appointment on the patient profile opens the modal with the patient already selected', async ({
+test('New Appointment on the patient profile opens the modal with the patient already selected', async ({
   page,
 }) => {
   await loginAs(page);
   await page.goto(`/patients/${patientId}`);
   await expect(page.getByRole('heading', { level: 1, name: PATIENT_NAME })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Set Appointment' }).click();
+  await page.getByRole('button', { name: 'New Appointment' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'New Appointment' });
   await expect(dialog).toBeVisible();

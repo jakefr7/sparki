@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
-import { requireSchedulerSettingsManager } from '../auth/permissions';
+import { requireAdminSettingsManager, requireSchedulerSettingsManager } from '../auth/permissions';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
@@ -40,8 +40,14 @@ export class SchedulerConfigController {
     @Body(new ZodValidationPipe(upsertAppointmentTypeSettingSchema))
     body: UpsertAppointmentTypeSettingInput,
   ) {
-    requireSchedulerSettingsManager(user);
+    requireAdminSettingsManager(user);
     return this.schedulerConfig.upsertAppointmentType(user, body);
+  }
+
+  @Get('appointment-types/eligible-providers')
+  eligibleProviders(@CurrentUser() user: AuthenticatedUser) {
+    requireAdminSettingsManager(user);
+    return this.schedulerConfig.listEligibleProviders(user);
   }
 
   @Post('slot-templates')

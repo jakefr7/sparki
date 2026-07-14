@@ -1,58 +1,53 @@
-import { Injectable } from '@nestjs/common';
-import { DashboardStatus, prisma } from '@sparki/db';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { prisma } from '@sparki/db';
 import { canManageAdminSettings } from '../auth/permissions';
 import type { AuthenticatedUser } from '../auth/types';
 import type { UpsertDashboardStatusColorInput } from './dto/dashboard-status-colors.schema';
 
-/** Mirrors the tone colors hardcoded in operations-command-center.tsx's
- *  statusTone()/globals.css `.reception-status-chip[data-tone]` rules, so a
- *  location with no overrides still renders the same colors it always has. */
-const DEFAULT_COLORS: Record<DashboardStatus, string> = {
-  Upcoming: '#64717D',
-  CheckedIn: '#13766F',
-  InRoom: '#326FA8',
-  ReadyForCheckout: '#A76118',
-  Completed: '#1F7A4D',
-};
-
-const STATUS_ORDER: DashboardStatus[] = [
-  'Upcoming',
-  'CheckedIn',
-  'InRoom',
-  'ReadyForCheckout',
-  'Completed',
-];
+function statusKey(name: string) {
+  return name.replace(/[^a-zA-Z0-9]+/g, '').replace(/^./, (letter) => letter.toUpperCase()) || 'Status';
+}
 
 @Injectable()
 export class DashboardStatusColorsService {
   async getConfig(user: AuthenticatedUser) {
-    const overrides = await prisma.dashboardStatusColorSetting.findMany({
+    const colors = await prisma.dashboardStatusColorSetting.findMany({
       where: { organizationId: user.organizationId, locationId: user.locationId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
-    const overrideByStatus = new Map(overrides.map((row) => [row.status, row.color]));
-
-    return {
-      colors: STATUS_ORDER.map((status) => ({
-        status,
-        color: overrideByStatus.get(status) ?? DEFAULT_COLORS[status],
-        isCustom: overrideByStatus.has(status),
-      })),
-      canManage: canManageAdminSettings(user),
-    };
+    return { colors, canManage: canManageAdminSettings(user) };
   }
 
-  async upsertColor(user: AuthenticatedUser, input: UpsertDashboardStatusColorInput) {
-    return prisma.dashboardStatusColorSetting.upsert({
-      where: {
-        locationId_status: { locationId: user.locationId, status: input.status },
-      },
-      create: {
-        organizationId: user.organizationId,
-        locationId: user.locationId,
-        status: input.status,
-        color: input.color,
-      },
-      update: { color: input.color },
+  async save(user: AuthenticatedUser, input: UpsertDashboardStatusColorInput) {
+    const data = {
+      name: input.name,
+      description: input.description || null,
+      color: input.color,
+      sortOrder: input.sortOrder,
+    };
+    if (input.id) {
+      const existing = await prisma.dashboardStatusColorSetting.findFirst({
+        where: { id: input.id, organizationId: user.organizationId, locationId: user.locationId },
+      });
+      if (!existing) throw new NotFoundException('Status not found.');
+      return prisma.dashboardStatusColorSetting.update({ where: { id: existing.id }, data });
+    }
+    let status = statusKey(input.name);
+    const duplicate = await prisma.dashboardStatusColorSetting.findUnique({
+      where: { locationId_status: { locationId: user.locationId, status } },
     });
+    if (duplicate) status = `${status}${Date.now().toString(36)}`;
+    return prisma.dashboardStatusColorSetting.create({
+      data: { organizationId: user.organizationId, locationId: user.locationId, status, ...data },
+    });
+  }
+
+  async delete(user: AuthenticatedUser, id: string) {
+    const existing = await prisma.dashboardStatusColorSetting.findFirst({
+      where: { id, organizationId: user.organizationId, locationId: user.locationId },
+    });
+    if (!existing) throw new NotFoundException('Status not found.');
+    await prisma.dashboardStatusColorSetting.delete({ where: { id } });
+    return { id };
   }
 }

@@ -1,19 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AppointmentsService } from './appointments.service';
+import { appointmentAvailabilitySchema, type AppointmentAvailabilityInput } from './dto/appointment-availability.schema';
 import {
   createAppointmentSchema,
   createAppointmentWithNewPatientSchema,
   linkAppointmentPatientSchema,
   moveAppointmentSchema,
+  updateAppointmentNoteSchema,
   updateConfirmationStatusSchema,
   updateRecordsPrepStatusSchema,
   type CreateAppointmentInput,
   type CreateAppointmentWithNewPatientInput,
   type LinkAppointmentPatientInput,
   type MoveAppointmentInput,
+  type UpdateAppointmentNoteInput,
   type UpdateConfirmationStatusInput,
   type UpdateRecordsPrepStatusInput,
 } from './dto/create-appointment.schema';
@@ -21,6 +24,14 @@ import {
 @Controller('appointments')
 export class AppointmentsController {
   constructor(private readonly appointments: AppointmentsService) {}
+
+  @Get('availability/search')
+  availability(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(appointmentAvailabilitySchema)) query: AppointmentAvailabilityInput,
+  ) {
+    return this.appointments.availability(user.organizationId, user.locationId, query);
+  }
 
   @Post()
   create(
@@ -84,6 +95,15 @@ export class AppointmentsController {
     @Body(new ZodValidationPipe(moveAppointmentSchema)) body: MoveAppointmentInput,
   ) {
     return this.appointments.move(id, user.organizationId, user.locationId, body);
+  }
+
+  @Patch(':id/note')
+  updateNote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateAppointmentNoteSchema)) body: UpdateAppointmentNoteInput,
+  ) {
+    return this.appointments.updateNote(id, user.organizationId, user.locationId, body);
   }
 
   @Post(':id/confirm')

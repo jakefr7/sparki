@@ -228,7 +228,6 @@ export default async function PatientWorkspacePage({
             }}
             primaryClient={primaryClient ?? null}
             className="button-secondary"
-            label="Set Appointment"
           />
           <PatientProfileEditPanel
             patient={{

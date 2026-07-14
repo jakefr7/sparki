@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { requireAdminSettingsManager } from '../auth/permissions';
 import type { AuthenticatedUser } from '../auth/types';
@@ -19,12 +19,18 @@ export class DashboardStatusColorsController {
   }
 
   @Post()
-  upsertColor(
+  save(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(upsertDashboardStatusColorSchema))
     body: UpsertDashboardStatusColorInput,
   ) {
     requireAdminSettingsManager(user);
-    return this.dashboardStatusColors.upsertColor(user, body);
+    return this.dashboardStatusColors.save(user, body);
+  }
+
+  @Delete(':id')
+  delete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireAdminSettingsManager(user);
+    return this.dashboardStatusColors.delete(user, id);
   }
 }

@@ -60,6 +60,7 @@ model Organization {
   appointments Appointment[]
   visits       Visit[]
   appointmentTypeSettings AppointmentTypeSetting[]
+  appointmentTypeProviders AppointmentTypeProvider[]
   schedulerSettings       SchedulerSettings[]
   schedulerSlotTemplates  SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
@@ -144,6 +145,7 @@ model User {
 
   createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
   providedAppointments Appointment[] @relation("AppointmentProvider")
+  appointmentTypeAssignments AppointmentTypeProvider[]
 
   ownedVisits               Visit[] @relation("VisitOwner")
   primaryVeterinarianVisits Visit[] @relation("VisitPrimaryVeterinarian")
@@ -500,6 +502,7 @@ model Appointment {
   scheduledAt             DateTime
   expectedDurationMinutes Int?
   colorKey                String?
+  appointmentTypeSettingId String?
 
   // Records-request context gathered at booking time for a New Patient
   // (Anna's receptionist workflow) — all optional, since most existing-
@@ -538,12 +541,14 @@ model Appointment {
   patient      Patient?     @relation(fields: [patientId], references: [id])
   client       Client?      @relation(fields: [clientId], references: [id])
   provider     User?        @relation("AppointmentProvider", fields: [providerId], references: [id])
+  appointmentTypeSetting AppointmentTypeSetting? @relation(fields: [appointmentTypeSettingId], references: [id])
   createdBy    User?        @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
   visit        Visit?
 
   @@index([organizationId])
   @@index([locationId, scheduledAt])
   @@index([patientId])
+  @@index([appointmentTypeSettingId])
 }
 
 model AppointmentTypeSetting {
@@ -552,6 +557,8 @@ model AppointmentTypeSetting {
   locationId     String
   appointmentType AppointmentType?
   name           String
+  description    String?
+  defaultDurationMinutes Int
   color          String
   isActive       Boolean  @default(true)
   sortOrder      Int      @default(0)
@@ -560,30 +567,42 @@ model AppointmentTypeSetting {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   location     Location     @relation(fields: [locationId], references: [id])
+  providers    AppointmentTypeProvider[]
+  appointments Appointment[]
 
   @@unique([locationId, appointmentType])
   @@index([organizationId])
   @@index([locationId, isActive, sortOrder])
 }
 
+model AppointmentTypeProvider {
+  appointmentTypeId String
+  providerId        String
+  organizationId   String
+  createdAt         DateTime @default(now())
+
+  appointmentType AppointmentTypeSetting @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+  provider        User                   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+
+  @@id([appointmentTypeId, providerId])
+  @@index([organizationId])
+  @@index([providerId])
+}
+
 // The Command Center dashboard's coarse status pill sequence (see
 // operations-command-center.tsx's ReceptionStatus) — kept as its own enum
 // rather than reusing AppointmentState/VisitState since it's a display-only
 // concept, not a workflow state.
-enum DashboardStatus {
-  Upcoming
-  CheckedIn
-  InRoom
-  ReadyForCheckout
-  Completed
-}
-
 model DashboardStatusColorSetting {
   id             String          @id @default(cuid())
   organizationId String
   locationId     String
-  status         DashboardStatus
+  status         String
+  name           String
+  description    String?
   color          String
+  sortOrder      Int @default(0)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { DashboardCard, DashboardShell } from './dashboard-shell';
 import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
+import { useNewAppointmentModal } from '../hooks/use-new-appointment-modal';
 // PatientProfileModal (the quick-card popup preview) is intentionally not
 // wired up anymore — clicking a card now navigates straight to the full
 // Patient Profile page instead. The component is left in place in
@@ -213,6 +214,7 @@ export function PatientsDirectoryPage() {
   const [listing, setListing] = useState<PatientSearchResult[]>([]);
   const [listingLoading, setListingLoading] = useState(true);
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+  const { openNewAppointment, newAppointmentModal } = useNewAppointmentModal();
 
   const loadListing = useMemo(
     () => (signal: AbortSignal) => {
@@ -306,6 +308,28 @@ export function PatientsDirectoryPage() {
     router.push(`/patients/${result.id}`);
   }
 
+  function handleNewAppointmentForCreatedPatient(result: NewPatientCreationResult) {
+    setIsNewPatientModalOpen(false);
+    openNewAppointment({
+      patient: {
+        id: result.id,
+        name: result.name,
+        species: result.species,
+        breed: result.breed,
+        sex: result.sex,
+        dateOfBirth: result.dateOfBirth,
+        primaryClient: {
+          id: result.clientId,
+          firstName: result.clientFirstName,
+          lastName: result.clientLastName,
+          phone: result.clientPhone,
+          email: result.clientEmail,
+          preferredContactMethod: null,
+        },
+      },
+    });
+  }
+
   return (
     <DashboardShell
       activeHref="/patients"
@@ -343,7 +367,9 @@ export function PatientsDirectoryPage() {
         onClose={() => setIsNewPatientModalOpen(false)}
         onCreated={handlePatientCreated}
         onOpenProfile={handleOpenCreatedProfile}
+        onNewAppointment={handleNewAppointmentForCreatedPatient}
       />
+      {newAppointmentModal}
     </DashboardShell>
   );
 }

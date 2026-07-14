@@ -27,9 +27,12 @@ describe('scheduler config schemas', () => {
     const result = upsertAppointmentTypeSettingSchema.safeParse({
       appointmentType: 'SurgeryProcedure',
       name: 'Surgery',
+      description: null,
+      defaultDurationMinutes: 60,
       color: '#16A34A',
       isActive: true,
       sortOrder: 30,
+      providerIds: ['provider-1'],
     });
 
     expect(result.success).toBe(true);

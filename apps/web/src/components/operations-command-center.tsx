@@ -14,6 +14,7 @@ import { DashboardCard, DashboardShell, type DashboardRoute } from './dashboard-
 import { NewAppointmentAction } from './new-appointment-action';
 import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
 import { EmptyQueue } from './command-center/empty-states';
+import { useNewAppointmentModal } from '../hooks/use-new-appointment-modal';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { StatusTransitionMenu } from './status-transition-menu';
 import {
@@ -285,6 +286,7 @@ function PatientClientCell({
 function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: () => void }) {
   const router = useRouter();
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+  const { openNewAppointment, newAppointmentModal } = useNewAppointmentModal(() => onAppointmentCreated?.());
 
   const linkActions = [
     {
@@ -304,6 +306,28 @@ function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: (
   function handleOpenCreatedProfile(result: NewPatientCreationResult) {
     setIsNewPatientModalOpen(false);
     router.push(`/patients/${result.id}`);
+  }
+
+  function handleNewAppointmentForCreatedPatient(result: NewPatientCreationResult) {
+    setIsNewPatientModalOpen(false);
+    openNewAppointment({
+      patient: {
+        id: result.id,
+        name: result.name,
+        species: result.species,
+        breed: result.breed,
+        sex: result.sex,
+        dateOfBirth: result.dateOfBirth,
+        primaryClient: {
+          id: result.clientId,
+          firstName: result.clientFirstName,
+          lastName: result.clientLastName,
+          phone: result.clientPhone,
+          email: result.clientEmail,
+          preferredContactMethod: null,
+        },
+      },
+    });
   }
 
   return (
@@ -349,7 +373,9 @@ function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: (
         onClose={() => setIsNewPatientModalOpen(false)}
         onCreated={() => {}}
         onOpenProfile={handleOpenCreatedProfile}
+        onNewAppointment={handleNewAppointmentForCreatedPatient}
       />
+      {newAppointmentModal}
     </DashboardCard>
   );
 }

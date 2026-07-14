@@ -67,7 +67,7 @@ function AppointmentCard({
     <>
       <div className="ops-work-card__topline">
         <span className="ops-pill">{timeLabel(appointment.scheduledAt)}</span>
-        <span>{appointment.expectedDurationMinutes ?? 30} min</span>
+        <span>{appointment.expectedDurationMinutes ? `${appointment.expectedDurationMinutes} min` : 'Duration not set'}</span>
       </div>
       {isMine && <span className="ops-tag ops-tag--accent">For You</span>}
       <strong>{appointment.patient?.name ?? 'Unlinked patient'}</strong>

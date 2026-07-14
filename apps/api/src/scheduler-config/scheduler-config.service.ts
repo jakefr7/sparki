@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { AppointmentType, prisma, type Prisma } from '@sparki/db';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { AppointmentType, prisma } from '@sparki/db';
 import type { AuthenticatedUser } from '../auth/types';
-import { canManageSchedulerSettings } from '../auth/permissions';
+import { canManageAdminSettings } from '../auth/permissions';
 import type {
   UpdateSchedulerSettingsInput,
   UpsertAppointmentTypeSettingInput,
@@ -9,30 +9,6 @@ import type {
 } from './dto/scheduler-config.schema';
 
 const DEFAULT_SLOT_INTERVAL_MINUTES = 30;
-
-const DEFAULT_APPOINTMENT_TYPE_SETTINGS: {
-  appointmentType: AppointmentType;
-  name: string;
-  color: string;
-  sortOrder: number;
-}[] = [
-  {
-    appointmentType: 'WellnessPreventiveCare',
-    name: 'Consultation',
-    color: '#2563EB',
-    sortOrder: 10,
-  },
-  { appointmentType: 'Recheck', name: 'Recheck', color: '#7C3AED', sortOrder: 20 },
-  { appointmentType: 'SurgeryProcedure', name: 'Surgery', color: '#16A34A', sortOrder: 30 },
-  { appointmentType: 'TechnicianAppointment', name: 'Technician', color: '#D97706', sortOrder: 40 },
-  { appointmentType: 'EmergencyUrgent', name: 'Emergency', color: '#DC2626', sortOrder: 50 },
-  { appointmentType: 'SickVisit', name: 'Sick visit', color: '#0891B2', sortOrder: 60 },
-  { appointmentType: 'Vaccination', name: 'Vaccination', color: '#0D9488', sortOrder: 70 },
-  { appointmentType: 'DropOff', name: 'Drop-off / Post-op', color: '#CA8A04', sortOrder: 80 },
-  { appointmentType: 'Telemedicine', name: 'Telemedicine', color: '#4F46E5', sortOrder: 90 },
-  { appointmentType: 'Euthanasia', name: 'Euthanasia', color: '#BE123C', sortOrder: 100 },
-  { appointmentType: 'BoardingNonMedical', name: 'Boarding', color: '#475569', sortOrder: 110 },
-];
 
 export type AppointmentColorSource = 'manual' | 'type' | 'fallback';
 
@@ -48,6 +24,11 @@ export class SchedulerConfigService {
       prisma.schedulerSettings.findUnique({ where: { locationId: user.locationId } }),
       prisma.appointmentTypeSetting.findMany({
         where: { organizationId: user.organizationId, locationId: user.locationId },
+        include: {
+          providers: {
+            include: { provider: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true, isActive: true } } },
+          },
+        },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       }),
       prisma.schedulerSlotTemplate.findMany({
@@ -64,23 +45,18 @@ export class SchedulerConfigService {
       settings: {
         slotIntervalMinutes: settings?.slotIntervalMinutes ?? DEFAULT_SLOT_INTERVAL_MINUTES,
       },
-      appointmentTypes:
-        appointmentTypeSettings.length > 0
-          ? appointmentTypeSettings
-          : DEFAULT_APPOINTMENT_TYPE_SETTINGS.map((setting) => ({
-              id: `default-${setting.appointmentType}`,
-              organizationId: user.organizationId,
-              locationId: user.locationId,
-              appointmentType: setting.appointmentType,
-              name: setting.name,
-              color: setting.color,
-              isActive: true,
-              sortOrder: setting.sortOrder,
-              createdAt: null,
-              updatedAt: null,
-            })),
+      appointmentTypes: appointmentTypeSettings.map((setting) => ({
+        ...setting,
+        providers: setting.providers.map(({ provider }) => ({
+          id: provider.id,
+          displayName: provider.displayName ?? `${provider.firstName} ${provider.lastName}`,
+          role: provider.role,
+          isActive: provider.isActive,
+        })),
+        isBookable: setting.isActive && setting.providers.length > 0,
+      })),
       slotTemplates,
-      canManage: canManageSchedulerSettings(user),
+      canManage: canManageAdminSettings(user),
     };
   }
 
@@ -97,29 +73,75 @@ export class SchedulerConfigService {
   }
 
   async upsertAppointmentType(user: AuthenticatedUser, input: UpsertAppointmentTypeSettingInput) {
-    return prisma.appointmentTypeSetting.upsert({
-      where: {
-        locationId_appointmentType: {
-          locationId: user.locationId,
-          appointmentType: input.appointmentType,
-        },
-      },
-      create: {
-        organizationId: user.organizationId,
-        locationId: user.locationId,
-        appointmentType: input.appointmentType,
-        name: input.name,
+    const eligible = await this.listEligibleProviders(user);
+    const eligibleIds = new Set(eligible.map((provider) => provider.id));
+    const invalidProviderId = input.providerIds.find((id) => !eligibleIds.has(id));
+    if (invalidProviderId) {
+      throw new BadRequestException('One or more selected doctors are not eligible at this location.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const existing = input.id
+        ? await tx.appointmentTypeSetting.findFirst({
+            where: { id: input.id, organizationId: user.organizationId, locationId: user.locationId },
+          })
+        : null;
+      if (input.id && !existing) throw new NotFoundException('Appointment type not found.');
+      const data = {
+        appointmentType: input.appointmentType ?? null,
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        defaultDurationMinutes: input.defaultDurationMinutes,
         color: input.color,
         isActive: input.isActive,
         sortOrder: input.sortOrder,
-      },
-      update: {
-        name: input.name,
-        color: input.color,
-        isActive: input.isActive,
-        sortOrder: input.sortOrder,
-      },
+      };
+      const saved = existing
+        ? await tx.appointmentTypeSetting.update({ where: { id: existing.id }, data })
+        : await tx.appointmentTypeSetting.create({
+            data: { organizationId: user.organizationId, locationId: user.locationId, ...data },
+          });
+      await tx.appointmentTypeProvider.deleteMany({ where: { appointmentTypeId: saved.id } });
+      if (input.providerIds.length > 0) {
+        await tx.appointmentTypeProvider.createMany({
+          data: input.providerIds.map((providerId) => ({ appointmentTypeId: saved.id, providerId, organizationId: user.organizationId })),
+        });
+      }
+      const result = await tx.appointmentTypeSetting.findUniqueOrThrow({
+        where: { id: saved.id },
+        include: { providers: { include: { provider: true } } },
+      });
+      return {
+        ...result,
+        providers: result.providers.map(({ provider }) => ({
+          id: provider.id,
+          displayName: provider.displayName ?? `${provider.firstName} ${provider.lastName}`,
+          role: provider.role,
+          isActive: provider.isActive,
+        })),
+        isBookable: result.isActive && result.providers.length > 0,
+      };
     });
+  }
+
+  async listEligibleProviders(user: AuthenticatedUser) {
+    const providers = await prisma.user.findMany({
+      where: {
+        organizationId: user.organizationId,
+        isActive: true,
+        staffProfile: { canReceiveAppointments: true },
+        organizationMemberships: { some: { organizationId: user.organizationId, isActive: true } },
+        clinicLocationAccess: { some: { organizationId: user.organizationId, clinicLocationId: user.locationId, isActive: true } },
+      },
+      select: { id: true, displayName: true, firstName: true, lastName: true, role: true, isActive: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+    return providers.map((provider) => ({
+      id: provider.id,
+      displayName: provider.displayName ?? `${provider.firstName} ${provider.lastName}`,
+      role: provider.role,
+      isActive: provider.isActive,
+    }));
   }
 
   async upsertSlotTemplate(user: AuthenticatedUser, input: UpsertSlotTemplateInput) {
@@ -199,9 +221,6 @@ export class SchedulerConfigService {
       return { color: configured.color, source: 'type' };
     }
 
-    const fallback = DEFAULT_APPOINTMENT_TYPE_SETTINGS.find(
-      (setting) => setting.appointmentType === appointmentType,
-    );
-    return { color: fallback?.color ?? '#475569', source: 'fallback' };
+    return { color: '#475569', source: 'fallback' };
   }
 }

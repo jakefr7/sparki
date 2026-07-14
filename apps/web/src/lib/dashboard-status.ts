@@ -15,11 +15,11 @@ export type ReceptionStatus = 'Upcoming' | 'Checked In' | 'In Room' | 'Ready for
  *  (see useDashboardStatusColors) so a configured admin color can be looked
  *  up for a given pill. */
 export const RECEPTION_STATUS_KEY: Record<ReceptionStatus, DashboardStatusKey> = {
-  Upcoming: 'Upcoming',
-  'Checked In': 'CheckedIn',
-  'In Room': 'InRoom',
-  'Ready for Checkout': 'ReadyForCheckout',
-  Completed: 'Completed',
+  Upcoming: 'Appointment',
+  'Checked In': 'CheckIn',
+  'In Room': 'BeginIntake',
+  'Ready for Checkout': 'Discharge',
+  Completed: 'Checkout',
 };
 
 export type StatusSubjectKind = 'appointment' | 'visit' | 'dev';

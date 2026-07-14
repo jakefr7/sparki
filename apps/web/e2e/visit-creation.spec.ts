@@ -44,7 +44,7 @@ async function createPatient(request: APIRequestContext, suffix: string) {
   return { client, patient, clientName };
 }
 
-test('appointment -> start visit -> visit workspace', async ({ page, request }) => {
+test('appointment -> begin intake -> visit workspace', async ({ page, request }) => {
   const { patient, clientName } = await createPatient(request, 'Appointment');
   const visitReason = `Appointment start ${RUN_ID}`;
 
@@ -62,7 +62,7 @@ test('appointment -> start visit -> visit workspace', async ({ page, request }) 
   await page.goto(`/patients/${patient.id}`);
   await expect(page.getByRole('heading', { name: 'Current Visit' })).toBeVisible();
   await expect(page.getByLabel('Current Visit').getByText(visitReason)).toBeVisible();
-  await page.getByRole('button', { name: 'Start Visit' }).click();
+  await page.getByRole('button', { name: 'Begin Intake' }).click();
 
   await expect(page).toHaveURL(/\/visits\/[^/]+$/);
   await expect(page.getByText('Visit Workspace')).toBeVisible();

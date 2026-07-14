@@ -54,12 +54,18 @@ function PetSilhouette() {
 export function PetPhotoPlaceholder({
   name,
   species,
+  imageUrl,
   className = 'pet-photo-placeholder',
 }: {
   name: string;
   species?: string | null | undefined;
+  imageUrl?: string | null | undefined;
   className?: string;
 }) {
+  if (imageUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={imageUrl} alt={name} className={className} />;
+  }
   const kind = petKind(species);
   const label = `${name} photo placeholder`;
 

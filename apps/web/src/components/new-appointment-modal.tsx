@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
+import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import {
   SEX_OPTIONS,
   SPECIES_OPTIONS,
@@ -97,6 +98,7 @@ interface InitialPatient {
   dateOfBirth?: string | null;
   weight?: number | null;
   color?: string | null;
+  imageUrl?: string | null;
   primaryClient: PrimaryClientSummary | null;
 }
 
@@ -253,7 +255,7 @@ export function NewAppointmentModal({
         dateOfBirth: initialPatient.dateOfBirth ?? null,
         weight: initialPatient.weight ?? null,
         color: initialPatient.color ?? null,
-        imageUrl: null,
+        imageUrl: initialPatient.imageUrl ?? null,
         status: 'Active',
         primaryClient: initialPatient.primaryClient,
         activeVisit: null,
@@ -892,49 +894,20 @@ export function NewAppointmentModal({
 
           {patientMode === 'existing' ? (
             <fieldset className="scheduler-booking-fieldset">
-              <FieldError label="Search existing patient" error={fieldErrors.patientSearch}>
-                <input
-                  type="search"
-                  value={patientQuery}
-                  onChange={(event) => {
-                    setPatientQuery(event.target.value);
-                    setSelectedPatient(null);
-                  }}
-                  placeholder="Search pet or owner name"
-                  autoFocus={!initialPatient}
-                />
-              </FieldError>
-              {patientSearchLoading ? <p className="scheduler-modal__hint">Searching...</p> : null}
-              {patientResults.length > 0 ? (
-                <div className="scheduler-patient-results">
-                  {patientResults.map((patient) => (
-                    <button
-                      key={patient.id}
-                      type="button"
-                      className={
-                        selectedPatient?.id === patient.id
-                          ? 'scheduler-patient-result scheduler-patient-result--selected'
-                          : 'scheduler-patient-result'
-                      }
-                      onClick={() => {
-                        setSelectedPatient(patient);
-                        setPatientQuery(patient.name);
-                        setPatientResults([]);
-                      }}
-                    >
-                      <strong>{patient.name}</strong>
-                      <span>
-                        {patient.species}
-                        {patient.primaryClient ? ` · ${clientDisplayName(patient.primaryClient)}` : ''}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
               {selectedPatient ? (
-                <SelectedPatientSummary selectedPatient={selectedPatient} />
+                <div className="scheduler-selected-patient-state">
+                  <div className="scheduler-selected-patient-state__header"><span><i aria-hidden="true">✓</i> Selected patient</span><button type="button" onClick={() => { setSelectedPatient(null); setPatientQuery(''); setPatientResults([]); }}>Change patient</button></div>
+                  <SelectedPatientSummary selectedPatient={selectedPatient} />
+                </div>
               ) : (
-                <p className="scheduler-modal__hint">Pet not found? Use New Patient.</p>
+                <>
+                  <FieldError label="Search existing patient" error={fieldErrors.patientSearch}>
+                    <input type="search" value={patientQuery} onChange={(event) => setPatientQuery(event.target.value)} placeholder="Search pet or owner name" autoFocus={!initialPatient} />
+                  </FieldError>
+                  {patientSearchLoading ? <p className="scheduler-modal__hint">Searching...</p> : null}
+                  {patientResults.length > 0 ? <div className="scheduler-patient-results">{patientResults.map((patient) => <button key={patient.id} type="button" className="scheduler-patient-result" onClick={() => { setSelectedPatient(patient); setPatientQuery(patient.name); setPatientResults([]); }}><strong>{patient.name}</strong><span>{patient.species}{patient.primaryClient ? ` · ${clientDisplayName(patient.primaryClient)}` : ''}</span></button>)}</div> : null}
+                  <p className="scheduler-modal__hint">Pet not found? Use New Patient.</p>
+                </>
               )}
             </fieldset>
           ) : (
@@ -1168,18 +1141,30 @@ function FieldError({
 function SelectedPatientSummary({ selectedPatient }: { selectedPatient: PatientSearchResult }) {
   return (
     <div className="scheduler-selected-patient">
-      <strong>{selectedPatient.name}</strong>
-      <span>
-        {selectedPatient.species}
-        {selectedPatient.breed ? ` · ${selectedPatient.breed}` : ''}
-      </span>
-      <span>
-        {selectedPatient.primaryClient
-          ? `${clientDisplayName(selectedPatient.primaryClient)}${
-              selectedPatient.primaryClient.phone ? ` · ${selectedPatient.primaryClient.phone}` : ''
-            }`
-          : 'No owner linked'}
-      </span>
+      <PatientBookingImage patient={selectedPatient} />
+      <div className="scheduler-selected-patient__details">
+        <strong>{selectedPatient.name}</strong>
+        <span>
+          {selectedPatient.species}
+          {selectedPatient.breed ? ` · ${selectedPatient.breed}` : ''}
+        </span>
+        <span>
+          {selectedPatient.primaryClient
+            ? `${clientDisplayName(selectedPatient.primaryClient)}${
+                selectedPatient.primaryClient.phone ? ` · ${selectedPatient.primaryClient.phone}` : ''
+              }`
+            : 'No owner linked'}
+        </span>
+      </div>
     </div>
+  );
+}
+
+function PatientBookingImage({ patient }: { patient: Pick<PatientSearchResult, 'name' | 'species' | 'imageUrl'> }) {
+  return patient.imageUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={patient.imageUrl} alt={`${patient.name}, selected patient`} className="scheduler-selected-patient__avatar" />
+  ) : (
+    <PetPhotoPlaceholder name={patient.name} species={patient.species} className="pet-photo-placeholder scheduler-selected-patient__avatar" />
   );
 }

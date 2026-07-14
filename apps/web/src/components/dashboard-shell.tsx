@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
 
 const ROLE_DISPLAY_LABELS: Record<string, string> = {
@@ -13,6 +13,19 @@ const ROLE_DISPLAY_LABELS: Record<string, string> = {
   ASSISTANT: 'Assistant',
   CLIENT: 'Client',
 };
+
+interface HeaderWeather {
+  temperature: number;
+  code: number;
+  isDay: boolean;
+  areaLabel: string;
+}
+
+// DashboardShell remounts between app routes. Keeping the last successful
+// reading at module scope prevents the weather pill from blinking away while
+// the next page mounts; a full browser reload still requests a fresh reading.
+let cachedHeaderWeather: HeaderWeather | null = null;
+let cachedAreaLabel = 'Local weather';
 
 export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/settings';
 
@@ -32,6 +45,15 @@ const SIDEBAR_ITEMS: ReadonlyArray<{ label: string; href?: DashboardRoute }> = [
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(' ');
+}
+
+function weatherPresentation(code: number, isDay: boolean) {
+  if (code === 0) return { icon: isDay ? '☀️' : '🌙', label: 'Clear' };
+  if (code <= 3) return { icon: code === 1 ? '🌤️' : '☁️', label: code === 1 ? 'Mostly clear' : 'Cloudy' };
+  if (code === 45 || code === 48) return { icon: '🌫️', label: 'Foggy' };
+  if (code >= 71 && code <= 77) return { icon: '🌨️', label: 'Snow' };
+  if (code >= 95) return { icon: '⛈️', label: 'Storms' };
+  return { icon: '🌧️', label: 'Rain' };
 }
 
 export function SidebarNav({
@@ -122,15 +144,56 @@ export function DashboardHeader({
   refreshing?: boolean | undefined;
   onRefresh?: (() => void) | undefined;
 }) {
+  const [now, setNow] = useState(() => new Date());
+  const [weather, setWeather] = useState<HeaderWeather | null>(() => cachedHeaderWeather);
   const todayLabel = useMemo(
     () =>
-      new Date().toLocaleDateString([], {
+      now.toLocaleDateString([], {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
       }),
-    [],
+    [now],
   );
+  const timeLabel = useMemo(() => now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), [now]);
+  const weatherView = weather ? weatherPresentation(weather.code, weather.isDay) : null;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (cachedHeaderWeather) return;
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      const url = new URL('https://api.open-meteo.com/v1/forecast');
+      url.searchParams.set('latitude', coords.latitude.toFixed(4));
+      url.searchParams.set('longitude', coords.longitude.toFixed(4));
+      url.searchParams.set('current', 'temperature_2m,weather_code,is_day');
+      url.searchParams.set('temperature_unit', 'fahrenheit');
+      url.searchParams.set('timezone', 'auto');
+      void fetch(url).then((response) => response.ok ? response.json() : null).then((payload: { current?: { temperature_2m?: number; weather_code?: number; is_day?: number } } | null) => {
+        const current = payload?.current;
+        if (current?.temperature_2m == null || current.weather_code == null) return;
+        const next = { temperature: Math.round(current.temperature_2m), code: current.weather_code, isDay: current.is_day !== 0, areaLabel: cachedAreaLabel };
+        cachedHeaderWeather = next;
+        setWeather(next);
+      }).catch(() => undefined);
+      const locationUrl = new URL('https://api.bigdatacloud.net/data/reverse-geocode-client');
+      locationUrl.searchParams.set('latitude', coords.latitude.toFixed(5));
+      locationUrl.searchParams.set('longitude', coords.longitude.toFixed(5));
+      locationUrl.searchParams.set('localityLanguage', 'en');
+      void fetch(locationUrl).then((response) => response.ok ? response.json() : null).then((payload: { city?: string; locality?: string; principalSubdivisionCode?: string } | null) => {
+        const city = payload?.city || payload?.locality;
+        if (city) {
+          cachedAreaLabel = city;
+          if (cachedHeaderWeather) cachedHeaderWeather = { ...cachedHeaderWeather, areaLabel: city };
+          setWeather((current) => current ? { ...current, areaLabel: city } : current);
+        }
+      }).catch(() => undefined);
+    }, () => undefined, { maximumAge: 15 * 60_000, timeout: 8_000 });
+  }, []);
 
   return (
     <header className="dashboard-header">
@@ -140,12 +203,15 @@ export function DashboardHeader({
         {subtitle && <p>{subtitle}</p>}
       </div>
       <div className="dashboard-header__tools">
-        <div className="dashboard-header__meta" aria-label="Current date">
-          {todayLabel}
-        </div>
-        <div className="dashboard-header__user">
-          <strong>{userName}</strong>
-          <span>{roleLabel}</span>
+        <div className="dashboard-header__context">
+          {weatherView ? <div className="dashboard-header__weather" title={`${weatherView.label} in ${weather?.areaLabel}`}><span aria-hidden="true">{weatherView.icon}</span><div><strong>{weather?.temperature}°</strong><small>{weather?.areaLabel}</small></div></div> : null}
+          <div className="dashboard-header__meta" aria-label={`Current date and time: ${todayLabel}, ${timeLabel}`}>
+            <strong>{todayLabel}</strong><span>{timeLabel}</span>
+          </div>
+          <div className="dashboard-header__user">
+            <strong>{userName}</strong>
+            <span>{roleLabel}</span>
+          </div>
         </div>
         {onRefresh && (
           <button

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { appointmentTypeLabel, type DashboardVisitSummary } from '../../lib/patient-types';
 import { visitStateLabel } from '../../lib/format';
+import { useCurrentUser } from '../../lib/use-current-user';
 import { LONG_WAIT_MINUTES, STARTABLE_STATES } from '../../lib/command-center-states';
 import {
   blockedReason,
@@ -95,7 +96,7 @@ export function ExamReadyVisitCard({
           <dd>{visit.reason || appointmentTypeLabel(visit.visitType)}</dd>
         </div>
         <div>
-          <dt>New Visit</dt>
+          <dt>Intake</dt>
           <dd>{visit.intakeSummaryAvailable ? 'Summary available' : 'No summary yet'}</dd>
         </div>
       </dl>
@@ -124,16 +125,19 @@ export function VisitCard({
   const router = useRouter();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useCurrentUser();
   const owner = visitOwner(visit);
   const tone = visitTone(visit);
   const href = `/visits/${visit.id}?from=command-center`;
   const startable = STARTABLE_STATES.has(visit.state);
+  const canBeginIntake = user?.role === 'TECHNICIAN' || user?.role === 'ASSISTANT';
+  const actionLabel = startable && !canBeginIntake ? 'Open Visit Workspace' : visitActionLabel(visit);
   const overdue = tone === 'waiting' && visit.elapsedMinutes >= LONG_WAIT_MINUTES;
   const blocked = isBlockedVisit(visit);
   const isMine = Boolean(focusStaffId && visitMatchesStaff(visit, focusStaffId));
 
   async function handleActivate() {
-    if (!startable) {
+    if (!startable || !canBeginIntake) {
       router.push(href);
       return;
     }
@@ -143,12 +147,12 @@ export function VisitCard({
     try {
       const response = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
       if (!response.ok) {
-        throw new Error(`Could not start visit (${response.status})`);
+        throw new Error(`Could not begin intake (${response.status})`);
       }
       onVisitStarted();
       router.push(href);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start visit.');
+      setError(caught instanceof Error ? caught.message : 'Could not begin intake.');
       setStarting(false);
     }
   }
@@ -169,10 +173,10 @@ export function VisitCard({
         .join(' ')}
       aria-label={
         blocked
-          ? `${visitActionLabel(visit)} for ${visit.patient.name}, blocked: ${blockedReason(visit)}`
+          ? `${actionLabel} for ${visit.patient.name}, blocked: ${blockedReason(visit)}`
           : overdue
-            ? `${visitActionLabel(visit)} for ${visit.patient.name}, waiting ${visit.elapsedMinutes} minutes`
-            : `${visitActionLabel(visit)} for ${visit.patient.name}`
+            ? `${actionLabel} for ${visit.patient.name}, waiting ${visit.elapsedMinutes} minutes`
+            : `${actionLabel} for ${visit.patient.name}`
       }
     >
       {highlight && <p className="ops-work-card__priority-tag">{highlight}</p>}
@@ -207,7 +211,7 @@ export function VisitCard({
           {error}
         </p>
       )}
-      <span className="ops-card-action">{starting ? 'Starting…' : visitActionLabel(visit)}</span>
+      <span className="ops-card-action">{starting ? 'Starting…' : actionLabel}</span>
     </button>
   );
 }

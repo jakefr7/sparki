@@ -11,6 +11,9 @@ export interface DashboardStatusColor {
   description: string | null;
   color: string;
   sortOrder: number;
+  isEnabled: boolean;
+  isInClinic: boolean;
+  allowedTransitionKeys: string[];
 }
 
 interface StatusConfig { colors: DashboardStatusColor[]; canManage: boolean }

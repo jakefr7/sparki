@@ -15,13 +15,11 @@ export const VISIT_WORKFLOW_STAGES = [
 
 export type VisitWorkflowStage = (typeof VISIT_WORKFLOW_STAGES)[number];
 
-/** Display-only relabel so the progress bar never renders the literal word
- *  "Intake" (Anna: rename to New Visit language) — the internal stage key
- *  and its VisitState mapping below are untouched. */
+/** Display labels for the compact workflow progress bar. */
 const STAGE_DISPLAY_LABELS: Record<VisitWorkflowStage, string> = {
   'Checked In': 'Checked In',
   Arrived: 'Arrived',
-  Intake: 'New Visit',
+  Intake: 'Intake',
   Exam: 'Exam',
   Treatment: 'Treatment',
   Checkout: 'Checkout',
@@ -131,11 +129,11 @@ export function nextActionForState(state: string): VisitNextAction {
     case 'Arrived':
       return {
         headline: 'Get the patient into a room.',
-        steps: ['Room the patient.', 'Confirm visit details.', 'Start the New Visit.'],
+        steps: ['Room the patient.', 'Confirm visit details.', 'Begin Intake.'],
       };
     case 'Intake':
       return {
-        headline: 'Complete the New Visit details.',
+        headline: 'Complete the intake details.',
         steps: ['Capture vitals and history.', 'Review findings.', 'Send patient to veterinarian.'],
       };
     case 'Exam':

@@ -58,14 +58,6 @@ export const TREATMENT_READY_STATE: VisitState = 'TreatmentPending';
 export const CHECKOUT_READY_STATE: VisitState = 'CheckoutReady';
 
 /**
- * Representative state for the dashboard's coarse "Completed" bucket. Reuses
- * the existing `Archived` terminal state rather than adding a new one — a
- * Visit marked Completed from the dashboard is, in workflow terms, a closed
- * episode of care per docs/specs/modules/02-visit-lifecycle-mvp.md.
- */
-export const COMPLETED_STATE: VisitState = 'Archived';
-
-/**
  * The Command Center's Currently-in-Clinic card only ever renders one of
  * three coarse statuses for an active Visit (Completed/Archived visits are
  * filtered out of the active list — see `listActiveForOrganization` — so

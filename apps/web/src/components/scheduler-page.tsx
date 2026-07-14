@@ -30,7 +30,7 @@ import {
 
 type SchedulerView = 'day' | 'week';
 
-interface SchedulerAppointment extends DashboardAppointmentSummary {
+export interface SchedulerAppointment extends DashboardAppointmentSummary {
   room: string | null;
 }
 
@@ -42,7 +42,7 @@ interface SelectedSlot {
 type AppointmentColorKey =
   'teal' | 'blue' | 'purple' | 'amber' | 'orange' | 'green' | 'slate' | 'rose';
 
-interface AppointmentTypeSetting {
+export interface SchedulerAppointmentTypeSetting {
   id: string;
   appointmentType: AppointmentTypeValue | null;
   name: string;
@@ -53,6 +53,7 @@ interface AppointmentTypeSetting {
   providers?: Array<{ id: string; displayName: string; role: string; isActive: boolean }>;
   isBookable?: boolean;
 }
+type AppointmentTypeSetting = SchedulerAppointmentTypeSetting;
 
 interface SchedulerSlotTemplate {
   id: string;
@@ -68,7 +69,7 @@ interface SchedulerSlotTemplate {
 
 interface SchedulerConfig {
   settings: { slotIntervalMinutes: number };
-  appointmentTypes: AppointmentTypeSetting[];
+  appointmentTypes: SchedulerAppointmentTypeSetting[];
   slotTemplates: SchedulerSlotTemplate[];
   canManage: boolean;
 }
@@ -1360,7 +1361,7 @@ function ModalFrame({
   );
 }
 
-function AppointmentDetailPopover({
+export function AppointmentDetailPopover({
   appointment,
   appointmentTypes,
   onClose,
@@ -1369,7 +1370,7 @@ function AppointmentDetailPopover({
   onCancelled,
 }: {
   appointment: SchedulerAppointment;
-  appointmentTypes: AppointmentTypeSetting[];
+  appointmentTypes: SchedulerAppointmentTypeSetting[];
   onClose: () => void;
   onChanged: (appointment: SchedulerAppointment) => void;
   onReschedule: () => void;

@@ -24,6 +24,9 @@ export class DashboardStatusColorsService {
       description: input.description || null,
       color: input.color,
       sortOrder: input.sortOrder,
+      isEnabled: input.isEnabled,
+      isInClinic: input.isInClinic,
+      allowedTransitionKeys: input.allowedTransitionKeys,
     };
     if (input.id) {
       const existing = await prisma.dashboardStatusColorSetting.findFirst({

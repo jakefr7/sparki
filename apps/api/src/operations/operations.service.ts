@@ -104,9 +104,9 @@ function toPersonSummary(
   };
 }
 
-function toPatientSummary(patient: { id: string; name: string; species: string } | null): DashboardPatientSummary | null {
+function toPatientSummary(patient: { id: string; name: string; species: string; imageUrl: string | null } | null): DashboardPatientSummary | null {
   if (!patient) return null;
-  return { id: patient.id, name: patient.name, species: patient.species };
+  return { id: patient.id, name: patient.name, species: patient.species, imageUrl: patient.imageUrl };
 }
 
 function toClientSummary(

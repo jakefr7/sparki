@@ -18,7 +18,7 @@ export interface PatientSearchResult {
   dateOfBirth: string | null;
   weight: number | null;
   color: string | null;
-  imageUrl: string | null;
+  imageUrl?: string | null | undefined;
   status: string;
   primaryClient: PrimaryClientSummary | null;
   activeVisit: {
@@ -212,6 +212,7 @@ export interface DashboardPatientSummary {
   id: string;
   name: string;
   species: string;
+  imageUrl?: string | null | undefined;
 }
 
 export interface DashboardClientSummary {

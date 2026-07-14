@@ -29,13 +29,10 @@ export function appointmentStatusLabel(state: string): string {
 }
 
 /**
- * Same as enumLabel, but re-labels the technician "Intake" visit state so
- * the word "Intake" never surfaces as literal UI copy (Anna: rename to New
- * Visit language). Display-only — the backend VisitState enum value
- * ('IntakeInProgress') is unchanged.
+ * Same as enumLabel, with the clinic-facing label for active intake.
  */
 export function visitStateLabel(state: string): string {
-  if (state === 'IntakeInProgress') return 'New Visit In Progress';
+  if (state === 'IntakeInProgress') return 'Intake In Progress';
   return enumLabel(state);
 }
 

@@ -19,6 +19,7 @@ export interface PatientProfileData {
   id: string;
   patientName: string;
   species?: string | null | undefined;
+  imageUrl?: string | null | undefined;
   breed?: string | null | undefined;
   sex?: string | null | undefined;
   age?: string | null | undefined;
@@ -134,6 +135,7 @@ function PatientProfileHeader({
       <PetPhotoPlaceholder
         name={patient.patientName}
         species={patient.species}
+        imageUrl={patient.imageUrl}
         className="pet-photo-placeholder patient-profile-modal-header__avatar"
       />
       <h2 id="patient-profile-modal-heading">{patient.patientName}</h2>
@@ -195,7 +197,7 @@ function QuickActions({
         </button>
       )}
       <Link href="/patients/new" className="button-secondary">
-        New Visit
+        Start Walk-In
       </Link>
       {medicalRecordHref ? (
         <Link href={medicalRecordHref} className="button-secondary">

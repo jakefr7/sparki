@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
+import { useCurrentUser } from '../lib/use-current-user';
 
 const STARTABLE_STATES = new Set(['Arrived', 'ReadyForIntake']);
 
@@ -120,7 +121,7 @@ function IntakeSummary({ intake }: { intake: VisitIntake }) {
 
   return (
     <div className="visit-intake-summary">
-      <h3>Saved New Visit Details</h3>
+      <h3>Saved Intake Details</h3>
       <dl>
         <div>
           <dt>Reason for visit</dt>
@@ -163,6 +164,8 @@ export function VisitIntakePanel({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useCurrentUser();
+  const canManageIntake = user?.role === 'TECHNICIAN' || user?.role === 'ASSISTANT';
 
   async function startIntake() {
     setSubmitting(true);
@@ -171,10 +174,10 @@ export function VisitIntakePanel({
     try {
       const response = await fetch(`/api/visits/${visitId}/start`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not start new visit.');
+      if (!response.ok) throw new Error(payload.message ?? 'Could not begin intake.');
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start new visit.');
+      setError(caught instanceof Error ? caught.message : 'Could not begin intake.');
     } finally {
       setSubmitting(false);
     }
@@ -187,7 +190,7 @@ export function VisitIntakePanel({
       body: JSON.stringify(intakePayload(formData)),
     });
     const payload = (await response.json()) as { message?: string };
-    if (!response.ok) throw new Error(payload.message ?? 'Could not save new visit details.');
+    if (!response.ok) throw new Error(payload.message ?? 'Could not save intake details.');
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -199,7 +202,7 @@ export function VisitIntakePanel({
       await saveIntake(new FormData(event.currentTarget));
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save new visit details.');
+      setError(caught instanceof Error ? caught.message : 'Could not save intake details.');
     } finally {
       setSubmitting(false);
     }
@@ -213,10 +216,10 @@ export function VisitIntakePanel({
       await saveIntake(new FormData(form));
       const response = await fetch(`/api/visits/${visitId}/intake/complete`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not complete new visit.');
+      if (!response.ok) throw new Error(payload.message ?? 'Could not complete intake.');
       router.refresh();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not complete new visit.');
+      setError(caught instanceof Error ? caught.message : 'Could not complete intake.');
     } finally {
       setSubmitting(false);
     }
@@ -226,22 +229,22 @@ export function VisitIntakePanel({
     <section className="visit-intake-panel" aria-labelledby="visit-intake-heading">
       <div className="visit-intake-panel__header">
         <div>
-          <p className="eyebrow">New Visit</p>
-          <h2 id="visit-intake-heading">New Visit Form</h2>
+          <p className="eyebrow">Intake</p>
+          <h2 id="visit-intake-heading">Intake Details</h2>
         </div>
-        {STARTABLE_STATES.has(state) && (
+        {canManageIntake && STARTABLE_STATES.has(state) && (
           <button
             type="button"
             className="button-primary"
             onClick={startIntake}
             disabled={submitting}
           >
-            {submitting ? 'Starting...' : 'Start New Visit'}
+            {submitting ? 'Starting...' : 'Begin Intake'}
           </button>
         )}
       </div>
 
-      {state === 'IntakeInProgress' && (
+      {canManageIntake && state === 'IntakeInProgress' && (
         <form className="visit-intake-form" onSubmit={handleSave}>
           <fieldset className="visit-intake-group">
             <legend>Reason for Visit</legend>
@@ -363,7 +366,7 @@ export function VisitIntakePanel({
           )}
           <div className="visit-intake-form__actions">
             <button type="submit" className="button-secondary" disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save New Visit'}
+              {submitting ? 'Saving...' : 'Save Intake'}
             </button>
             <button
               type="button"
@@ -374,15 +377,21 @@ export function VisitIntakePanel({
                 if (form) void completeFromForm(form);
               }}
             >
-              {submitting ? 'Completing...' : 'Complete New Visit'}
+              {submitting ? 'Completing...' : 'Complete Intake'}
             </button>
           </div>
         </form>
       )}
 
+      {!canManageIntake && (STARTABLE_STATES.has(state) || state === 'IntakeInProgress') && (
+        <p className="visit-intake-panel__status">
+          Intake actions are available to technicians and assistants.
+        </p>
+      )}
+
       {state !== 'IntakeInProgress' && !STARTABLE_STATES.has(state) && (
         <p className="visit-intake-panel__status">
-          New Visit details are not editable while this visit is in {state}.
+          Intake details are not editable while this visit is in {state}.
         </p>
       )}
 

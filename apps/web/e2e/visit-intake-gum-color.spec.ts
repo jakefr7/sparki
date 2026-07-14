@@ -75,7 +75,7 @@ test('tech/assistant can record weight in either unit and gum color during intak
   await weightField.fill('19.3');
   await weightUnitField.selectOption('KG');
   await gumColorField.selectOption('Pink');
-  await page.getByRole('button', { name: 'Save New Visit' }).click();
+  await page.getByRole('button', { name: 'Save Intake' }).click();
 
   const summary = page.locator('.visit-intake-summary');
   await expect(summary).toContainText('19.3 kg');
@@ -91,7 +91,7 @@ test('tech/assistant can record weight in either unit and gum color during intak
   // not a hardcoded one.
   await page.getByLabel('Weight', { exact: true }).fill('42.5');
   await page.getByLabel('Weight unit').selectOption('LB');
-  await page.getByRole('button', { name: 'Save New Visit' }).click();
+  await page.getByRole('button', { name: 'Save Intake' }).click();
 
   await expect(page.locator('.visit-intake-summary')).toContainText('42.5 lb');
 

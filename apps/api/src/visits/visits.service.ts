@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { prisma, type AppointmentType, type VisitState, type VisitType } from '@sparki/db';
+import { workflowStatusKey } from '@sparki/config';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
@@ -14,8 +15,6 @@ import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import type { SetDashboardStatusInput } from './dto/set-dashboard-status.schema';
 import {
   CHECKOUT_READY_STATE,
-  COMPLETED_STATE,
-  dashboardStatusForVisitState,
   EXAM_IN_PROGRESS_STATE,
   EXAM_READY_STATE,
   INTAKE_IN_PROGRESS_STATE,
@@ -32,17 +31,25 @@ import {
  * through the fine-grained intake/exam endpoints above — this map is the
  * only place that defines what "one step" means at the coarse level, keyed
  * by `${currentBucket}->${requestedBucket}`. Deliberately excludes
- * `Upcoming` (that's an Appointment-level, not Visit-level, concept) and any
- * transition out of `Completed` (Completed maps to the terminal `Archived`
- * state, so a Completed Visit already dropped out of the active list this
- * endpoint operates on — see `findById` below).
+ * `Appointment` (that's an Appointment-level, not Visit-level, concept).
+ * Checkout intentionally maps to a visible payment/checkout workflow state;
+ * dashboard status changes never archive the medical record.
  */
 const DASHBOARD_TRANSITIONS: Record<string, VisitState> = {
-  'Checked In->In Room': INTAKE_IN_PROGRESS_STATE,
-  'In Room->Checked In': 'Arrived',
-  'In Room->Ready for Checkout': CHECKOUT_READY_STATE,
-  'Ready for Checkout->In Room': TREATMENT_READY_STATE,
-  'Ready for Checkout->Completed': COMPLETED_STATE,
+  'CheckIn->BeginIntake': INTAKE_IN_PROGRESS_STATE,
+  'BeginIntake->CheckIn': 'Arrived',
+  'BeginIntake->ReadyForVeterinarian': EXAM_READY_STATE,
+  'ReadyForVeterinarian->BeginIntake': INTAKE_IN_PROGRESS_STATE,
+  'ReadyForVeterinarian->Exam': EXAM_IN_PROGRESS_STATE,
+  'Exam->ReadyForVeterinarian': EXAM_READY_STATE,
+  'Exam->Treatment': TREATMENT_READY_STATE,
+  'Treatment->Exam': EXAM_IN_PROGRESS_STATE,
+  'Treatment->Discharge': CHECKOUT_READY_STATE,
+  'Discharge->Treatment': TREATMENT_READY_STATE,
+  // Dashboard Checkout remains visible in Today's flow. Archival belongs to
+  // the explicit visit-closing workflow, not a reception status selection.
+  'Discharge->Checkout': 'PaymentComplete',
+  'Checkout->Discharge': CHECKOUT_READY_STATE,
 };
 
 const visitInclude = {
@@ -393,7 +400,7 @@ export class VisitsService {
     id: string,
     organizationId: string,
     lastUpdatedById: string,
-    target: SetDashboardStatusInput['status'],
+    target: SetDashboardStatusInput['statusKey'],
   ) {
     const visit = await this.findById(id, organizationId);
 
@@ -403,12 +410,24 @@ export class VisitsService {
       );
     }
 
-    const current = dashboardStatusForVisitState(visit.state);
-    const nextState = DASHBOARD_TRANSITIONS[`${current}->${target}`];
+    const current = workflowStatusKey('visit', visit.state);
+    if (!current) {
+      throw new ConflictException(`Visit ${id} has no configured dashboard status for state ${visit.state}`);
+    }
+    const normalizedTarget = target === 'InRoom'
+      ? (current === 'Discharge' ? 'Treatment' : current === 'Treatment' ? 'Exam' : 'BeginIntake')
+      : target;
+    const configured = await prisma.dashboardStatusColorSetting.findFirst({
+      where: { organizationId, locationId: visit.locationId, status: current, isEnabled: true },
+    });
+    if (!configured || !configured.allowedTransitionKeys.includes(normalizedTarget)) {
+      throw new ConflictException(`Visit ${id} cannot transition from its configured status to "${normalizedTarget}"`);
+    }
+    const nextState = DASHBOARD_TRANSITIONS[`${current}->${normalizedTarget}`];
 
     if (!nextState) {
       throw new ConflictException(
-        `Visit ${id} cannot move from dashboard status "${current}" directly to "${target}" — only one adjacent step is allowed`,
+        `Visit ${id} cannot move from dashboard status "${current}" directly to "${normalizedTarget}" — only one configured step is allowed`,
       );
     }
 

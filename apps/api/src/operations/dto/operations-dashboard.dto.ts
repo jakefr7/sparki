@@ -8,6 +8,7 @@ export interface DashboardPatientSummary {
   id: string;
   name: string;
   species: string;
+  imageUrl: string | null;
 }
 
 export interface DashboardClientSummary {

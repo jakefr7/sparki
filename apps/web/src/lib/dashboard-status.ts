@@ -35,6 +35,7 @@ export interface ClinicDisplayRow {
   id: string;
   patientName: string;
   species?: string | undefined;
+  imageUrl?: string | null | undefined;
   clientName: string;
   location: string;
   status: ReceptionStatus;
@@ -49,6 +50,7 @@ export interface ScheduleDisplayRow {
   time: string;
   patientName: string;
   species?: string | undefined;
+  imageUrl?: string | null | undefined;
   clientName: string;
   status: ReceptionStatus;
   state: string;
@@ -114,7 +116,7 @@ export function visitLocation(visit: DashboardVisitSummary) {
 
   // Anna: the word "Intake" shouldn't surface in the UI — this is a
   // location label (alongside Lobby/Exam Room/Treatment/Checkout), so
-  // "Triage" reads correctly as a place rather than "New Visit" language,
+  // "Triage" reads correctly as a physical workflow location,
   // which only fits actions/CTAs.
   if (visit.state === 'IntakeInProgress') {
     return 'Triage';
@@ -186,6 +188,7 @@ export function visitToClinicRow(visit: DashboardVisitSummary): ClinicDisplayRow
     id: visit.id,
     patientName: visit.patient.name,
     species: visit.patient.species,
+    imageUrl: visit.patient.imageUrl,
     clientName: clientLabel(visit.client),
     location: visitLocation(visit),
     status: visitReceptionStatus(visit),
@@ -203,6 +206,7 @@ export function appointmentToScheduleRow(appointment: DashboardAppointmentSummar
     time: formatTime(appointment.scheduledAt),
     patientName: appointment.patient?.name ?? 'Unlinked patient',
     species: appointment.patient?.species,
+    imageUrl: appointment.patient?.imageUrl,
     clientName: clientLabel(appointment.client),
     status: appointmentReceptionStatus(appointment),
     state: appointment.state,

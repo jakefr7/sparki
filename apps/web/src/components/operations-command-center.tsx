@@ -250,11 +250,13 @@ function RowActionsButton({ label }: { label: string }) {
 function PatientClientCell({
   patientName,
   species,
+  imageUrl,
   clientName,
   href,
 }: {
   patientName: string;
   species?: string | undefined;
+  imageUrl?: string | null | undefined;
   clientName: string;
   href?: string | undefined;
 }) {
@@ -263,6 +265,7 @@ function PatientClientCell({
       <PetPhotoPlaceholder
         name={patientName}
         species={species}
+        imageUrl={imageUrl}
         className="pet-photo-placeholder patient-avatar"
       />
       <span className="patient-client-cell__text">
@@ -289,12 +292,6 @@ function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: (
   const { openNewAppointment, newAppointmentModal } = useNewAppointmentModal(() => onAppointmentCreated?.());
 
   const linkActions = [
-    {
-      href: '/patients',
-      label: 'New Visit',
-      description: 'Check in or start now.',
-      tone: 'blue',
-    },
     {
       href: '/patients',
       label: 'Find Patient',
@@ -436,6 +433,7 @@ function ClinicVisitRow({
       <PatientClientCell
         patientName={row.patientName}
         species={row.species}
+        imageUrl={row.imageUrl}
         clientName={row.clientName}
         href={row.href}
       />
@@ -460,6 +458,7 @@ function AppointmentRow({
       <PatientClientCell
         patientName={row.patientName}
         species={row.species}
+        imageUrl={row.imageUrl}
         clientName={row.clientName}
         href={row.href}
       />

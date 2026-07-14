@@ -28,6 +28,7 @@ export class VisitsController {
 
   @Post(':id/start')
   start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
     return this.visits.start(id, user.organizationId, user.id);
   }
 
@@ -37,7 +38,7 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setDashboardStatusSchema)) body: SetDashboardStatusInput,
   ) {
-    return this.visits.setDashboardStatus(id, user.organizationId, user.id, body.status);
+    return this.visits.setDashboardStatus(id, user.organizationId, user.id, body.statusKey);
   }
 
   @Put(':id/intake')
@@ -46,11 +47,13 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(saveVisitIntakeSchema)) body: SaveVisitIntakeInput,
   ) {
+    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
     return this.visits.saveIntake(id, user.organizationId, user.id, body);
   }
 
   @Post(':id/intake/complete')
   completeIntake(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
     return this.visits.completeIntake(id, user.organizationId, user.id);
   }
 

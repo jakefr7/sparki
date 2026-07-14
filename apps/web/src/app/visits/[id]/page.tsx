@@ -40,7 +40,7 @@ function examStatusForState(state: string): { label: string; detail: string } | 
   if (state === 'VeterinarianExamReady') {
     return {
       label: 'Ready for doctor',
-      detail: 'The New Visit details are complete and the patient is waiting for the exam.',
+      detail: 'The intake details are complete and the patient is waiting for the exam.',
     };
   }
   if (state === 'VeterinarianExamInProgress') {

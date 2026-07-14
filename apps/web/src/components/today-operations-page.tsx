@@ -1,457 +1,80 @@
 'use client';
 
+import { appointmentsWithoutActiveVisits, enabledStatuses, resolveConfiguredStatus, type ConfiguredDashboardStatus } from '@sparki/config';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { DashboardCard, DashboardShell } from './dashboard-shell';
-import { appointmentHref, clientLabel } from './command-center/card-helpers';
 import { EmptyQueue } from './command-center/empty-states';
+import { ConfiguredStatusMenu } from './configured-status-menu';
 import { NewAppointmentAction } from './new-appointment-action';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
-import { StatusTransitionMenu } from './status-transition-menu';
-import {
-  visitToClinicRow,
-  type ReceptionStatus,
-} from '../lib/dashboard-status';
-import {
-  appointmentTypeLabel,
-  type DashboardAppointmentSummary,
-  type DashboardVisitSummary,
-} from '../lib/patient-types';
+import { AppointmentDetailPopover, type SchedulerAppointment } from './scheduler-page';
+import { appointmentTypeLabel, type DashboardAppointmentSummary, type DashboardVisitSummary } from '../lib/patient-types';
+import { useDashboardStatusColors } from '../lib/use-dashboard-status-colors';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
-import { useDashboardStatusColors, type DashboardStatusKey } from '../lib/use-dashboard-status-colors';
 
-const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
+type TodayRow = {
+  id: string; kind: 'appointment' | 'visit'; state: string; status: ConfiguredDashboardStatus;
+  time: string; patientName: string; species?: string | undefined; imageUrl?: string | null | undefined; clientName: string; appointmentType: string;
+  location?: string | undefined; doctor?: string | undefined; href: string;
+  appointment?: SchedulerAppointment | undefined;
+};
 
-type TodayFilter = 'all' | 'upcoming' | 'checked-in' | 'in-clinic' | 'checkout' | 'completed';
+function time(value: string) { return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+function clientName(client: { firstName: string; lastName: string } | null) { return client ? `${client.firstName} ${client.lastName}` : 'No client linked'; }
 
-type TodayStatus =
-  | 'Upcoming'
-  | 'Checked In'
-  | 'In Room'
-  | 'With Technician'
-  | 'With Doctor'
-  | 'Treatment'
-  | 'Ready for Checkout'
-  | 'Completed'
-  | 'Cancelled';
-
-interface TodayAppointmentRow {
-  id: string;
-  time: string;
-  patientName: string;
-  species?: string | undefined;
-  clientName: string;
-  appointmentType: string;
-  status: TodayStatus;
-  /** Raw AppointmentState (or a dev-fixture stand-in) — feeds the shared
-   *  status-transition menu, which needs it to decide whether "Checked In"
-   *  is currently reachable (see dashboardStatusAction in lib/dashboard-status). */
-  state: string;
-  /** 'dev' for SHOW_DEV_FALLBACK_ROWS fixtures, so the status menu shows a
-   *  non-persisting demo preview instead of calling a real mutation. */
-  kind: 'appointment' | 'dev';
-  location?: string | undefined;
-  doctor?: string | undefined;
-  href?: string | undefined;
+export function buildTodayRows(appointments: DashboardAppointmentSummary[], visits: DashboardVisitSummary[], statuses: ConfiguredDashboardStatus[]): TodayRow[] {
+  const appointmentRows = appointmentsWithoutActiveVisits(appointments, visits).flatMap((appointment) => {
+    const status = resolveConfiguredStatus(statuses, 'appointment', appointment.state);
+    if (!status?.isEnabled) return [];
+    return [{ id: appointment.id, kind: 'appointment' as const, state: appointment.state, status, time: time(appointment.scheduledAt), patientName: appointment.patient?.name ?? 'Unlinked patient', species: appointment.patient?.species, imageUrl: appointment.patient?.imageUrl, clientName: clientName(appointment.client), appointmentType: appointmentTypeLabel(appointment.type), doctor: appointment.provider?.displayName, href: appointment.patient ? `/patients/${appointment.patient.id}` : '/patients', appointment: { ...appointment, room: null } }];
+  });
+  const visitRows = visits.flatMap((visit) => {
+    const status = resolveConfiguredStatus(statuses, 'visit', visit.state);
+    if (!status?.isEnabled) return [];
+    const linked = appointments.find((appointment) => appointment.id === visit.appointment?.id);
+    return [{ id: visit.id, kind: 'visit' as const, state: visit.state, status, time: time(visit.appointment?.scheduledAt ?? visit.createdAt), patientName: visit.patient.name, species: visit.patient.species, imageUrl: visit.patient.imageUrl, clientName: clientName(visit.client), appointmentType: visit.appointment?.type ?? visit.visitType, location: visit.currentOwner?.displayName, doctor: visit.primaryVeterinarian?.displayName, href: `/visits/${visit.id}`, appointment: linked ? { ...linked, room: null } : undefined }];
+  });
+  return [...appointmentRows, ...visitRows].sort((a, b) => a.time.localeCompare(b.time));
 }
 
-const FILTERS: Array<{ value: TodayFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'upcoming', label: 'Upcoming' },
-  { value: 'checked-in', label: 'Checked In' },
-  { value: 'in-clinic', label: 'In Clinic' },
-  { value: 'checkout', label: 'Ready for Checkout' },
-  { value: 'completed', label: 'Completed' },
-];
-
-const DEV_TODAY_ROWS: TodayAppointmentRow[] = [
-  {
-    id: 'dev-today-bella',
-    time: '9:00 AM',
-    patientName: 'Bella',
-    species: 'Dog',
-    clientName: 'Sarah Johnson',
-    appointmentType: 'Wellness',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-    location: 'Lobby',
-    doctor: 'Dr. Patel',
-  },
-  {
-    id: 'dev-today-max',
-    time: '9:30 AM',
-    patientName: 'Max',
-    species: 'Dog',
-    clientName: 'Michael Lee',
-    appointmentType: 'Exam',
-    status: 'Checked In',
-    state: 'Arrived',
-    kind: 'dev',
-    location: 'Exam Room 2',
-    doctor: 'Dr. Nguyen',
-  },
-  {
-    id: 'dev-today-luna',
-    time: '10:15 AM',
-    patientName: 'Luna',
-    species: 'Cat',
-    clientName: 'Emily Davis',
-    appointmentType: 'Recheck',
-    status: 'In Room',
-    state: 'VeterinarianExamReady',
-    kind: 'dev',
-    location: 'Exam Room 3',
-    doctor: 'Dr. Patel',
-  },
-  {
-    id: 'dev-today-cooper',
-    time: '11:00 AM',
-    patientName: 'Cooper',
-    species: 'Dog',
-    clientName: 'David Wilson',
-    appointmentType: 'Dental',
-    status: 'Ready for Checkout',
-    state: 'CheckoutReady',
-    kind: 'dev',
-    location: 'Checkout',
-    doctor: 'Dr. Ramos',
-  },
-  {
-    id: 'dev-today-milo',
-    time: '11:45 AM',
-    patientName: 'Milo',
-    species: 'Cat',
-    clientName: 'Priya Patel',
-    appointmentType: 'Vaccines',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-    doctor: 'Unassigned',
-  },
-  {
-    id: 'dev-today-daisy',
-    time: '12:30 PM',
-    patientName: 'Daisy',
-    species: 'Dog',
-    clientName: 'Jordan Smith',
-    appointmentType: 'Follow-up',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-    doctor: 'Dr. Nguyen',
-  },
-];
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+function StatusFilter({ statuses, selected, onChange }: { statuses: ConfiguredDashboardStatus[]; selected: Set<string>; onChange: (next: Set<string>) => void }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function dismiss(event: MouseEvent) { if (!detailsRef.current?.contains(event.target as Node)) detailsRef.current?.removeAttribute('open'); }
+    function dismissWithKeyboard(event: KeyboardEvent) { if (event.key === 'Escape') detailsRef.current?.removeAttribute('open'); }
+    document.addEventListener('mousedown', dismiss);
+    document.addEventListener('keydown', dismissWithKeyboard);
+    return () => { document.removeEventListener('mousedown', dismiss); document.removeEventListener('keydown', dismissWithKeyboard); };
+  }, []);
+  return <details ref={detailsRef} className="today-status-filter"><summary><span>{selected.size === 0 ? 'All statuses' : `${selected.size} status${selected.size === 1 ? '' : 'es'}`}</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div>
+    <button type="button" className={selected.size === 0 ? 'today-status-filter__all today-status-filter__all--active' : 'today-status-filter__all'} onClick={() => onChange(new Set())}><span>All statuses</span><small>{selected.size === 0 ? 'Showing all' : 'Clear selection'}</small></button>
+    {statuses.map((status) => <label key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><input type="checkbox" checked={selected.has(status.status)} onChange={() => { const next = new Set(selected); next.has(status.status) ? next.delete(status.status) : next.add(status.status); onChange(next); }} /><span aria-hidden="true" />{status.name}</label>)}
+  </div></details>;
 }
 
-/**
- * Confirmed clinic-facing labels (Anna, Phase 2 cleanup): only
- * 'Arrived'/'VisitCreated', 'Completed', and 'Cancelled' are real
- * AppointmentState values — everything else defaults to "Upcoming". The
- * 'In Room'/'With Technician'/'With Doctor'/'Treatment' statuses reflect a
- * Visit's progress past check-in, which lives on the separate Visit state
- * machine, not on Appointment; they're reachable here only via
- * DEV_TODAY_ROWS fixtures until this cross-references real visit data.
- */
-function appointmentStatus(appointment: DashboardAppointmentSummary): TodayStatus {
-  if (appointment.state === 'Arrived' || appointment.state === 'VisitCreated') return 'Checked In';
-  if (appointment.state === 'Completed') return 'Completed';
-  if (appointment.state === 'Cancelled') return 'Cancelled';
-  return 'Upcoming';
-}
+function PatientCell({ row, onQuickView }: { row: TodayRow; onQuickView: (row: TodayRow) => void }) { const content = <><PetPhotoPlaceholder name={row.patientName} species={row.species} imageUrl={row.imageUrl} className="pet-photo-placeholder patient-avatar"/><span className="patient-client-cell__text"><strong>{row.patientName}</strong><span>{row.clientName}</span></span></>; return row.appointment ? <button type="button" className="patient-client-cell patient-client-cell--button" onClick={() => onQuickView(row)}>{content}</button> : <Link href={row.href} className="patient-client-cell">{content}</Link>; }
+function TodayRowView({ row, statuses, refresh, onQuickView }: { row: TodayRow; statuses: ConfiguredDashboardStatus[]; refresh: () => void; onQuickView: (row: TodayRow) => void }) { return <div className="today-appointment-row" style={{ '--configured-status': row.status.color } as CSSProperties}><span className="schedule-row__time">{row.time}</span><PatientCell row={row} onQuickView={onQuickView}/><span className="today-appointment-row__type">{row.appointmentType}</span><ConfiguredStatusMenu row={row} statuses={statuses} onChanged={refresh}/><span className="today-appointment-row__meta">{row.location ?? 'Unassigned'}</span><span className="today-appointment-row__meta">{row.doctor ?? 'Unassigned'}</span></div>; }
 
-function appointmentLocation(status: TodayStatus) {
-  if (status === 'Ready for Checkout') return 'Checkout';
-  if (['In Room', 'With Doctor'].includes(status)) return 'Exam Room';
-  if (['With Technician', 'Treatment'].includes(status)) return 'Treatment';
-  if (status === 'Checked In') return 'Lobby';
-  return undefined;
-}
-
-function appointmentToRow(appointment: DashboardAppointmentSummary): TodayAppointmentRow {
-  const status = appointmentStatus(appointment);
-  return {
-    id: appointment.id,
-    time: formatTime(appointment.scheduledAt),
-    patientName: appointment.patient?.name ?? 'Unlinked patient',
-    species: appointment.patient?.species,
-    clientName: clientLabel(appointment.client),
-    appointmentType: appointmentTypeLabel(appointment.type),
-    status,
-    state: appointment.state,
-    kind: 'appointment',
-    location: appointmentLocation(status),
-    doctor: appointment.provider?.displayName,
-    href: appointmentHref(appointment) ?? undefined,
-  };
-}
-
-function filterRow(row: TodayAppointmentRow, filter: TodayFilter) {
-  if (filter === 'all') return true;
-  if (filter === 'upcoming') return row.status === 'Upcoming';
-  if (filter === 'checked-in') return row.status === 'Checked In';
-  if (filter === 'in-clinic') {
-    return ['Checked In', 'In Room', 'With Technician', 'With Doctor', 'Treatment'].includes(row.status);
-  }
-  if (filter === 'checkout') return row.status === 'Ready for Checkout';
-  return row.status === 'Completed';
-}
-
-function RowActionsButton({ label }: { label: string }) {
-  return (
-    <button type="button" className="row-actions-button" aria-label={label}>
-      <span aria-hidden="true">...</span>
-    </button>
-  );
-}
-
-function PetClientCell({
-  patientName,
-  species,
-  clientName,
-  href,
-}: {
-  patientName: string;
-  species?: string | undefined;
-  clientName: string;
-  href?: string | undefined;
-}) {
-  const content = (
-    <>
-      <PetPhotoPlaceholder
-        name={patientName}
-        species={species}
-        className="pet-photo-placeholder patient-avatar"
-      />
-      <span className="patient-client-cell__text">
-        <strong>{patientName}</strong>
-        <span>{clientName}</span>
-      </span>
-    </>
-  );
-
-  return href ? (
-    <Link href={href} className="patient-client-cell">
-      {content}
-    </Link>
-  ) : (
-    <div className="patient-client-cell">{content}</div>
-  );
-}
-
-function TodayAppointmentRowView({
-  row,
-  onStatusChanged,
-  statusColors,
-}: {
-  row: TodayAppointmentRow;
-  onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
-}) {
-  return (
-    <div className="today-appointment-row">
-      <span className="schedule-row__time">{row.time}</span>
-      <PetClientCell
-        patientName={row.patientName}
-        species={row.species}
-        clientName={row.clientName}
-        href={row.href}
-      />
-      <span className="today-appointment-row__type">{row.appointmentType}</span>
-      <StatusTransitionMenu
-        row={{
-          id: row.id,
-          kind: row.kind,
-          state: row.state,
-          // TodayStatus is a superset of ReceptionStatus (adds Cancelled and a
-          // few fixture-only values never produced by real data — see
-          // appointmentStatus above). getAdjacentDashboardStatusActions treats
-          // any status outside DASHBOARD_STATUS_ORDER as having no adjacent
-          // move, which is the correct "no transition" outcome for those.
-          status: row.status as ReceptionStatus,
-        }}
-        onChanged={onStatusChanged}
-        statusColors={statusColors}
-      />
-      <span className="today-appointment-row__meta">{row.location ?? 'Unassigned'}</span>
-      <span className="today-appointment-row__meta">{row.doctor ?? 'Unassigned'}</span>
-      <RowActionsButton label={`Open actions for ${row.patientName}`} />
-    </div>
-  );
-}
-
-function QuickActionsRail({ onAppointmentCreated }: { onAppointmentCreated?: () => void }) {
-  return (
-    <DashboardCard aria-labelledby="today-quick-actions-heading">
-      <div className="home-widget__header">
-        <div>
-          <h2 id="today-quick-actions-heading">Quick Actions</h2>
-        </div>
-      </div>
-      <div className="today-quick-actions">
-        <NewAppointmentAction onCreated={onAppointmentCreated}>
-          New Appointment
-        </NewAppointmentAction>
-        <Link href="/patients">Find Patient</Link>
-        <Link href="/patients/new">New Client</Link>
-        <Link href="/patients">New Call</Link>
-      </div>
-    </DashboardCard>
-  );
-}
-
-function CurrentlyInClinicSummary({
-  visits,
-  onStatusChanged,
-  statusColors,
-}: {
-  visits: DashboardVisitSummary[];
-  onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
-}) {
-  const rows = visits.slice(0, 4).map(visitToClinicRow);
-
-  return (
-    <DashboardCard aria-labelledby="today-clinic-summary-heading">
-      <div className="home-widget__header">
-        <div>
-          <h2 id="today-clinic-summary-heading">Currently in Clinic</h2>
-        </div>
-      </div>
-      <div className="today-summary-list">
-        {rows.length > 0 ? (
-          rows.map((row) => (
-            <div key={row.id}>
-              <span className="today-summary-list__info">
-                <strong>{row.patientName}</strong>
-                <span>{row.clientName}</span>
-              </span>
-              <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
-            </div>
-          ))
-        ) : (
-          <EmptyQueue label="No patients are currently in clinic." />
-        )}
-      </div>
-    </DashboardCard>
-  );
-}
+function ClinicSummary({ rows, statuses, refresh, onQuickView }: { rows: TodayRow[]; statuses: ConfiguredDashboardStatus[]; refresh: () => void; onQuickView: (row: TodayRow) => void }) { const clinic = rows.filter((row) => row.status.isInClinic).slice(0, 6); return <DashboardCard aria-labelledby="today-clinic-summary-heading"><div className="home-widget__header"><div><h2 id="today-clinic-summary-heading">Currently in Clinic</h2><p className="today-overview__intro">Patients physically here now.</p></div><strong className="today-clinic-count">{clinic.length}</strong></div><div className="today-summary-list">{clinic.length ? clinic.map((row) => <div key={`${row.kind}-${row.id}`}><PatientCell row={row} onQuickView={onQuickView}/><ConfiguredStatusMenu row={row} statuses={statuses} onChanged={refresh}/></div>) : <EmptyQueue label="No patients are currently in clinic."/>}</div></DashboardCard>; }
 
 export function TodayOperationsPage() {
-  const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
-  const { colorMap: statusColors } = useDashboardStatusColors();
-  const [activeFilter, setActiveFilter] = useState<TodayFilter>('all');
+  const { dashboard, loading, error, refresh } = useOperationsDashboard();
+  const { colors, loading: statusesLoading } = useDashboardStatusColors();
+  const statuses = useMemo(() => enabledStatuses(colors ?? []), [colors]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [quickView, setQuickView] = useState<SchedulerAppointment | null>(null);
+  const rows = useMemo(() => buildTodayRows(dashboard?.todaysAppointments ?? [], dashboard?.activeVisits ?? [], statuses), [dashboard, statuses]);
+  const visibleRows = selected.size ? rows.filter((row) => selected.has(row.status.status)) : rows;
+  const groups = statuses.map((status) => ({ status, rows: visibleRows.filter((row) => row.status.status === status.status) })).filter((group) => group.rows.length);
+  const inClinicCount = rows.filter((row) => row.status.isInClinic).length;
+  const openQuickView = (row: TodayRow) => { if (row.appointment) setQuickView(row.appointment); };
 
-  const activeVisits = useMemo(
-    () => [
-      ...groups.waitingVisits,
-      ...groups.examReadyVisits,
-      ...groups.inProgressVisits,
-      ...groups.checkoutVisits,
-    ],
-    [groups],
-  );
-
-  const displayRows = useMemo(() => {
-    const realRows = dashboard?.todaysAppointments.map(appointmentToRow) ?? [];
-    return realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_TODAY_ROWS : [];
-  }, [dashboard]);
-
-  const filteredRows = displayRows.filter((row) => filterRow(row, activeFilter));
-
-  return (
-    <DashboardShell
-      activeHref="/today"
-      eyebrow="Today"
-      title="Today's Schedule"
-      subtitle="Appointments, arrivals, rooms, and checkout flow for today."
-    >
-      {loading && (
-        <div className="ops-panel-state ops-panel-state--loading">
-          <span className="ops-status-badge__dot" aria-hidden="true" />
-          Loading today...
-        </div>
-      )}
-
-      {error && (
-        <div className="ops-panel-state ops-panel-state--error" role="alert">
-          <strong>Today could not load.</strong>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {!loading && !error && dashboard && (
-        <div className="today-operations-layout">
-          <section className="today-main-card" aria-labelledby="today-appointments-heading">
-            <div className="home-widget__header">
-              <div>
-                <p className="eyebrow">Appointments</p>
-                <h2 id="today-appointments-heading">Today&apos;s Schedule</h2>
-              </div>
-              <span className="dashboard-live-status">Live · Updated {formatTime(dashboard.generatedAt)}</span>
-            </div>
-            <div className="today-filter-bar" aria-label="Today filters">
-              {FILTERS.map((filter) => (
-                <button
-                  key={filter.value}
-                  type="button"
-                  className={filter.value === activeFilter ? 'today-filter today-filter--active' : 'today-filter'}
-                  onClick={() => setActiveFilter(filter.value)}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
-            <div className="today-appointment-list">
-              {filteredRows.length > 0 ? (
-                filteredRows.map((row) => (
-                  <TodayAppointmentRowView
-                    key={row.id}
-                    row={row}
-                    onStatusChanged={refresh}
-                    statusColors={statusColors}
-                  />
-                ))
-              ) : (
-                <EmptyQueue label="No appointments match this filter." />
-              )}
-            </div>
-          </section>
-
-          <aside className="today-rail" aria-label="Today overview">
-            <CurrentlyInClinicSummary visits={activeVisits} onStatusChanged={refresh} statusColors={statusColors} />
-            <DashboardCard aria-labelledby="today-overview-heading">
-              <div className="home-widget__header">
-                <div>
-                  <h2 id="today-overview-heading">Today Overview</h2>
-                </div>
-              </div>
-              <div className="snapshot-grid snapshot-grid--rail">
-                <div className="snapshot-tile">
-                  <strong>{dashboard.summary.scheduledToday}</strong>
-                  <span>Scheduled</span>
-                </div>
-                <div className="snapshot-tile">
-                  <strong>{dashboard.summary.arrived}</strong>
-                  <span>Checked in</span>
-                </div>
-                <div className="snapshot-tile">
-                  <strong>{dashboard.summary.active}</strong>
-                  <span>Active visits</span>
-                </div>
-                <div className="snapshot-tile">
-                  <strong>{dashboard.summary.checkoutReady}</strong>
-                  <span>Checkout ready</span>
-                </div>
-              </div>
-            </DashboardCard>
-            <QuickActionsRail onAppointmentCreated={refresh} />
-          </aside>
-        </div>
-      )}
-    </DashboardShell>
-  );
+  return <DashboardShell activeHref="/today" eyebrow="Today" title="Today's Schedule" subtitle="Appointments and patient flow for today.">
+    {(loading || statusesLoading) ? <div className="ops-panel-state ops-panel-state--loading">Loading today...</div> : null}
+    {error ? <div className="ops-panel-state ops-panel-state--error" role="alert"><strong>Today could not load.</strong><span>{error}</span></div> : null}
+    {!loading && !statusesLoading && !error && dashboard ? <div className="today-operations-layout"><section className="today-main-card" aria-labelledby="today-appointments-heading"><div className="home-widget__header"><div><p className="eyebrow">Appointments & visits</p><h2 id="today-appointments-heading">Today&apos;s Schedule</h2></div><StatusFilter statuses={statuses} selected={selected} onChange={setSelected}/></div><div className="today-appointment-list">{groups.length ? groups.map(({ status, rows: statusRows }) => <section key={status.status} className="today-status-group" style={{ '--configured-status': status.color } as CSSProperties}><header><span aria-hidden="true"/><h3>{status.name}</h3><strong>{statusRows.length}</strong></header>{statusRows.map((row) => <TodayRowView key={`${row.kind}-${row.id}`} row={row} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/>)}</section>) : <EmptyQueue label="No appointments match this filter."/>}</div></section>
+      <aside className="today-rail" aria-label="Today overview"><ClinicSummary rows={rows} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/><DashboardCard aria-labelledby="today-overview-heading"><div className="home-widget__header"><div><h2 id="today-overview-heading">Today Overview</h2><p className="today-overview__intro">Where today&apos;s patients are right now.</p></div></div><div className="today-overview__totals"><div><strong>{rows.length}</strong><span>Patients on today&apos;s schedule</span></div><div><strong>{inClinicCount}</strong><span>Currently in clinic</span></div></div><div className="today-overview__breakdown"><span className="today-overview__label">By status</span>{statuses.filter((status) => rows.some((row) => row.status.status === status.status)).map((status) => <div key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><span aria-hidden="true"/><span>{status.name}</span><strong>{rows.filter((row) => row.status.status === status.status).length}</strong></div>)}</div></DashboardCard><DashboardCard aria-labelledby="today-quick-actions-heading"><div className="home-widget__header"><h2 id="today-quick-actions-heading">Quick Actions</h2></div><div className="today-quick-actions"><NewAppointmentAction onCreated={refresh}>New Appointment</NewAppointmentAction><Link href="/patients">Find Patient</Link></div></DashboardCard></aside></div> : null}
+    {quickView ? <AppointmentDetailPopover appointment={quickView} appointmentTypes={[]} onClose={() => setQuickView(null)} onChanged={(appointment) => { setQuickView(appointment); refresh(); }} onReschedule={() => { window.location.href = '/scheduler'; }} onCancelled={() => { setQuickView(null); refresh(); }} /> : null}
+  </DashboardShell>;
 }

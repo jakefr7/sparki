@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
+import { useCurrentUser } from '../lib/use-current-user';
 
 interface VisitResponse {
   id?: string;
@@ -23,7 +24,7 @@ async function createVisit(body: Record<string, string>): Promise<VisitResponse>
   const payload = (await response.json()) as VisitResponse;
 
   if (!response.ok) {
-    throw new Error(payload.message ?? 'Could not start visit.');
+    throw new Error(payload.message ?? 'Could not create the visit.');
   }
 
   return payload;
@@ -49,7 +50,7 @@ export function StartAppointmentVisitButton({
   appointmentState,
   disabled = false,
   className = 'button-secondary',
-  label = 'Start Visit',
+  label = 'Begin Intake',
 }: {
   appointmentId: string;
   appointmentState: string;
@@ -60,6 +61,10 @@ export function StartAppointmentVisitButton({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user, loading } = useCurrentUser();
+  const canBeginIntake = user?.role === 'TECHNICIAN' || user?.role === 'ASSISTANT';
+
+  if (loading || !canBeginIntake) return null;
 
   async function handleClick() {
     setSubmitting(true);
@@ -71,13 +76,18 @@ export function StartAppointmentVisitButton({
       }
       const visit = await createVisit({ appointmentId });
       if (visit.id) {
+        const startResponse = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
+        if (!startResponse.ok) {
+          const payload = (await startResponse.json()) as VisitResponse;
+          throw new Error(payload.message ?? 'Could not begin intake.');
+        }
         router.push(`/visits/${visit.id}`);
         router.refresh();
         return;
       }
       setError('Visit was created, but no visit ID was returned.');
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Could not start visit.';
+      const message = caught instanceof Error ? caught.message : 'Could not begin intake.';
       const activeVisitId = activeVisitIdFromMessage(message);
       if (activeVisitId) {
         router.push(`/visits/${activeVisitId}`);
@@ -113,7 +123,7 @@ export function StartWalkInVisitForm({
   patientId,
   activeVisitId,
   compact = false,
-  submitLabel = 'Create Walk-In Visit',
+  submitLabel = 'Start Walk-In',
 }: {
   patientId: string;
   activeVisitId?: string;

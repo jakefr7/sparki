@@ -57,7 +57,7 @@ export function appointmentNextAction(appointment: DashboardAppointmentSummary):
 
 export function visitActionLabel(visit: DashboardVisitSummary): string {
   if (visit.state === EXAM_READY_STATE) return 'Start Exam';
-  if (STARTABLE_STATES.has(visit.state)) return 'Start New Visit';
+  if (STARTABLE_STATES.has(visit.state)) return 'Begin Intake';
   if (CHECKOUT_STATES.has(visit.state)) return 'Open Checkout';
   return 'Open Visit';
 }
@@ -84,7 +84,7 @@ export function isBlockedVisit(visit: DashboardVisitSummary): boolean {
 }
 
 export function blockedReason(visit: DashboardVisitSummary): string {
-  if (visit.state === EXAM_READY_STATE && !visit.intakeSummaryAvailable) return 'No New Visit details on file';
+  if (visit.state === EXAM_READY_STATE && !visit.intakeSummaryAvailable) return 'No intake details on file';
   return 'Arrival flagged an exception';
 }
 

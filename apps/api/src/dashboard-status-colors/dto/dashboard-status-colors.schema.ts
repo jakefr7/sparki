@@ -8,6 +8,9 @@ export const upsertDashboardStatusColorSchema = z.object({
   description: z.string().trim().max(240).optional().nullable(),
   color: colorSchema,
   sortOrder: z.coerce.number().int().min(0).max(1000),
+  isEnabled: z.boolean().default(true),
+  isInClinic: z.boolean().default(false),
+  allowedTransitionKeys: z.array(z.string().min(1)).default([]),
 });
 
 export type UpsertDashboardStatusColorInput = z.infer<typeof upsertDashboardStatusColorSchema>;

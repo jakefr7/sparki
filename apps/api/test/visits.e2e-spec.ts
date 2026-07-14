@@ -526,7 +526,7 @@ describe('Visits (e2e)', () => {
       expect(response.status).toBe(409);
     });
 
-    it('allows a new Visit once the prior one is in a terminal state', async () => {
+    it('allows another Visit once the prior one is in a terminal state', async () => {
       const patientId = await createPatient('Resolved Prior Visit Patient');
 
       const first = await request(app.getHttpServer())
@@ -614,7 +614,7 @@ describe('Visits (e2e)', () => {
     it.each(['Arrived', 'ReadyForIntake'] as const)(
       'transitions a Visit in %s to IntakeInProgress and sets lastUpdatedById',
       async (state) => {
-        const patientId = await createPatient(`Start Visit Patient ${state}`);
+        const patientId = await createPatient(`Begin Intake Patient ${state}`);
         const visit = await createVisit(patientId, state);
 
         const response = await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);
@@ -644,7 +644,7 @@ describe('Visits (e2e)', () => {
     });
 
     it('is idempotent when called again after already starting', async () => {
-      const patientId = await createPatient('Restart Visit Patient');
+      const patientId = await createPatient('Resume Intake Patient');
       const visit = await createVisit(patientId, 'Arrived');
 
       await request(app.getHttpServer()).post(`/visits/${visit.id}/start`);

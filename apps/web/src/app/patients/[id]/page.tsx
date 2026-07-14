@@ -182,7 +182,7 @@ export default async function PatientWorkspacePage({
               ) : (
                 <>
                   <strong>None</strong>
-                  <small>Ready for a new visit.</small>
+                  <small>Ready for check-in or a walk-in.</small>
                 </>
               )}
             </div>
@@ -208,11 +208,11 @@ export default async function PatientWorkspacePage({
               appointmentId={nextAppointment.id}
               appointmentState={nextAppointment.state}
               className="button-primary"
-              label="Start New Visit"
+              label="Begin Intake"
             />
           ) : (
             <a href="#active-visit-heading" className="button-primary">
-              Start New Visit
+              Start Walk-In
             </a>
           )}
           <PatientNewAppointmentButton
@@ -348,7 +348,7 @@ export default async function PatientWorkspacePage({
                     </div>
                     {!currentVisit && (
                       <div className="profile-empty-action">
-                        <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
+                        <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start Walk-In" />
                       </div>
                     )}
                   </section>
@@ -415,7 +415,7 @@ export default async function PatientWorkspacePage({
                           label="View Active Visit"
                         />
                       ) : (
-                        <a href="#active-visit-heading">Start New Visit</a>
+                        <a href="#active-visit-heading">Start Walk-In</a>
                       )}
                     </div>
                   </section>
@@ -441,13 +441,13 @@ export default async function PatientWorkspacePage({
                   <div className="profile-records-empty">
                     <strong>No medical records have been added for this patient yet.</strong>
                     <p>
-                      Ready for New Visit details, exam findings, and treatment plans as clinical notes are recorded.
+                      Ready for intake details, exam findings, and treatment plans as clinical notes are recorded.
                     </p>
                   </div>
                 </section>
                 <section className="profile-records-readiness" aria-label="Record sections">
                   {[
-                    ['New Visit details', 'Ready to show notes captured during a visit.'],
+                    ['Intake details', 'Ready to show notes captured during a visit.'],
                     ['Exam findings', 'Ready for exam notes.'],
                     ['Treatment plan', 'Ready for care plans and follow-up notes.'],
                   ].map(([title, copy]) => (
@@ -488,7 +488,7 @@ export default async function PatientWorkspacePage({
                 ) : (
                   <div className="profile-empty-action">
                     <p className="empty-state">No visits yet.</p>
-                    <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start New Visit" />
+                    <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start Walk-In" />
                   </div>
                 )}
               </section>

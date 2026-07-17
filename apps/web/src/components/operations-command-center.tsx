@@ -1,5 +1,6 @@
 'use client';
 
+import { resolveConfiguredStatus, type ConfiguredDashboardStatus } from '@sparki/config';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -16,7 +17,7 @@ import { NewPatientModal, type NewPatientCreationResult } from './new-patient-mo
 import { EmptyQueue } from './command-center/empty-states';
 import { useNewAppointmentModal } from '../hooks/use-new-appointment-modal';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
-import { StatusTransitionMenu } from './status-transition-menu';
+import { ConfiguredStatusMenu } from './configured-status-menu';
 import {
   DASHBOARD_ROLE_CHANGE_EVENT,
   DASHBOARD_ROLE_LABELS,
@@ -34,7 +35,7 @@ import {
 } from '../lib/dashboard-status';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import { useCurrentUser } from '../lib/use-current-user';
-import { useDashboardStatusColors, type DashboardStatusKey } from '../lib/use-dashboard-status-colors';
+import { useDashboardStatusColors } from '../lib/use-dashboard-status-colors';
 import type { DashboardAppointmentSummary, DashboardVisitSummary, StaffMember } from '../lib/patient-types';
 
 const ROLE_SUBTITLES: Record<DashboardRole, string> = {
@@ -43,120 +44,7 @@ const ROLE_SUBTITLES: Record<DashboardRole, string> = {
   veterinarian: "Here's what needs medical review at Sparki Clinic today.",
 };
 
-const SHOW_DEV_FALLBACK_ROWS = process.env.NODE_ENV !== 'production';
 const ENABLE_DEV_ROLE_PREVIEW = process.env.NODE_ENV !== 'production';
-
-const DEV_CLINIC_ROWS: ClinicDisplayRow[] = [
-  {
-    id: 'dev-clinic-bella',
-    patientName: 'Bella',
-    species: 'Dog',
-    clientName: 'Sarah Johnson',
-    location: 'Lobby',
-    status: 'Checked In',
-    state: 'Arrived',
-    kind: 'dev',
-  },
-  {
-    id: 'dev-clinic-max',
-    patientName: 'Max',
-    species: 'Dog',
-    clientName: 'Michael Lee',
-    location: 'Exam Room 2',
-    status: 'In Room',
-    state: 'VeterinarianExamReady',
-    kind: 'dev',
-    statusDetail: 'Room 2',
-  },
-  {
-    id: 'dev-clinic-luna',
-    patientName: 'Luna',
-    species: 'Cat',
-    clientName: 'Emily Davis',
-    location: 'Treatment',
-    status: 'In Room',
-    state: 'TreatmentPending',
-    kind: 'dev',
-  },
-  {
-    id: 'dev-clinic-cooper',
-    patientName: 'Cooper',
-    species: 'Dog',
-    clientName: 'David Wilson',
-    location: 'Checkout',
-    status: 'Ready for Checkout',
-    state: 'CheckoutReady',
-    kind: 'dev',
-  },
-];
-
-const DEV_SCHEDULE_ROWS: ScheduleDisplayRow[] = [
-  {
-    id: 'dev-schedule-bella',
-    time: '9:00 AM',
-    patientName: 'Bella',
-    species: 'Dog',
-    clientName: 'Sarah Johnson',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-    location: 'Lobby',
-  },
-  {
-    id: 'dev-schedule-max',
-    time: '9:30 AM',
-    patientName: 'Max',
-    species: 'Dog',
-    clientName: 'Michael Lee',
-    status: 'Checked In',
-    state: 'Arrived',
-    kind: 'dev',
-    location: 'Exam Room 2',
-  },
-  {
-    id: 'dev-schedule-luna',
-    time: '10:15 AM',
-    patientName: 'Luna',
-    species: 'Cat',
-    clientName: 'Emily Davis',
-    status: 'In Room',
-    state: 'VeterinarianExamReady',
-    kind: 'dev',
-    location: 'Exam Room 3',
-    statusDetail: 'Room 3',
-  },
-  {
-    id: 'dev-schedule-cooper',
-    time: '11:00 AM',
-    patientName: 'Cooper',
-    species: 'Dog',
-    clientName: 'David Wilson',
-    status: 'Ready for Checkout',
-    state: 'CheckoutReady',
-    kind: 'dev',
-    location: 'Checkout',
-  },
-  {
-    id: 'dev-schedule-milo',
-    time: '11:45 AM',
-    patientName: 'Milo',
-    species: 'Cat',
-    clientName: 'Priya Patel',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-  },
-  {
-    id: 'dev-schedule-daisy',
-    time: '12:30 PM',
-    patientName: 'Daisy',
-    species: 'Dog',
-    clientName: 'Jordan Smith',
-    status: 'Upcoming',
-    state: 'Scheduled',
-    kind: 'dev',
-  },
-];
 
 interface StickyNote {
   id: string;
@@ -236,14 +124,6 @@ function TrashIcon() {
     <svg aria-hidden="true" viewBox="0 0 20 20" focusable="false">
       <path d="M4.5 6h11M8 6V4.75h4V6M6 6l.55 9.25h6.9L14 6" />
     </svg>
-  );
-}
-
-function RowActionsButton({ label }: { label: string }) {
-  return (
-    <button type="button" className="row-actions-button" aria-label={label}>
-      <span aria-hidden="true">...</span>
-    </button>
   );
 }
 
@@ -382,15 +262,7 @@ function TodaySnapshotWidget({
 }: {
   dashboard: NonNullable<ReturnType<typeof useOperationsDashboard>['dashboard']>;
 }) {
-  const hasRealCounts = Object.values(dashboard.summary).some((value) => value > 0);
-  const summary = hasRealCounts || !SHOW_DEV_FALLBACK_ROWS
-    ? dashboard.summary
-    : {
-        scheduledToday: 9,
-        arrived: 3,
-        active: 4,
-        checkoutReady: 1,
-      };
+  const summary = dashboard.summary;
   const items = [
     { label: 'Upcoming', value: summary.scheduledToday, tone: 'upcoming' },
     { label: 'Checked in', value: summary.arrived, tone: 'checked-in' },
@@ -422,12 +294,13 @@ function TodaySnapshotWidget({
 function ClinicVisitRow({
   row,
   onStatusChanged,
-  statusColors,
+  statuses,
 }: {
   row: ClinicDisplayRow;
   onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+  statuses: ConfiguredDashboardStatus[];
 }) {
+  const status = resolveConfiguredStatus(statuses, 'visit', row.state);
   return (
     <div className="clinic-table__row">
       <PatientClientCell
@@ -437,8 +310,14 @@ function ClinicVisitRow({
         clientName={row.clientName}
         href={row.href}
       />
+      {status ? (
+        <ConfiguredStatusMenu
+          row={{ id: row.id, kind: 'visit', state: row.state, status }}
+          statuses={statuses}
+          {...(onStatusChanged ? { onChanged: onStatusChanged } : {})}
+        />
+      ) : null}
       <span className="clinic-table__location">{row.location}</span>
-      <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
     </div>
   );
 }
@@ -446,12 +325,13 @@ function ClinicVisitRow({
 function AppointmentRow({
   row,
   onStatusChanged,
-  statusColors,
+  statuses,
 }: {
   row: ScheduleDisplayRow;
   onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+  statuses: ConfiguredDashboardStatus[];
 }) {
+  const status = resolveConfiguredStatus(statuses, 'appointment', row.state);
   return (
     <div className="schedule-row">
       <span className="schedule-row__time">{row.time}</span>
@@ -462,11 +342,14 @@ function AppointmentRow({
         clientName={row.clientName}
         href={row.href}
       />
-      <StatusTransitionMenu row={row} onChanged={onStatusChanged} statusColors={statusColors} />
+      {status ? (
+        <ConfiguredStatusMenu
+          row={{ id: row.id, kind: 'appointment', state: row.state, status }}
+          statuses={statuses}
+          {...(onStatusChanged ? { onChanged: onStatusChanged } : {})}
+        />
+      ) : null}
       <span className="schedule-row__location">{row.location ?? 'Unassigned'}</span>
-      <div className="schedule-row__actions">
-        <RowActionsButton label={`Open actions for ${row.patientName}`} />
-      </div>
     </div>
   );
 }
@@ -474,22 +357,21 @@ function AppointmentRow({
 function CurrentlyInClinicWidget({
   visits,
   onStatusChanged,
-  statusColors,
+  statuses,
 }: {
   visits: DashboardVisitSummary[];
   onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+  statuses: ConfiguredDashboardStatus[];
 }) {
   const realRows = visits.map(visitToClinicRow);
-  const displayRows = realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_CLINIC_ROWS : [];
+  const displayRows = realRows;
   const hasVisits = displayRows.length > 0;
-  const longestWait = visits.length > 0 ? Math.max(...visits.map((visit) => visit.elapsedMinutes)) : null;
   const roomsOccupied = displayRows.filter((row) => row.status === 'In Room').length;
   const checkoutQueue = displayRows.filter((row) => row.status === 'Ready for Checkout').length;
 
   return (
     <DashboardCard
-      className={hasVisits ? 'dashboard-widget--primary' : undefined}
+      className={`dashboard-flow-widget dashboard-flow-widget--clinic${hasVisits ? ' dashboard-widget--primary' : ''}`}
       aria-labelledby="active-visits-heading"
     >
       <div className="home-widget__header">
@@ -505,7 +387,7 @@ function CurrentlyInClinicWidget({
         {hasVisits ? (
           <div className="clinic-table__body">
             {displayRows.map((row) => (
-              <ClinicVisitRow key={row.id} row={row} onStatusChanged={onStatusChanged} statusColors={statusColors} />
+              <ClinicVisitRow key={row.id} row={row} onStatusChanged={onStatusChanged} statuses={statuses} />
             ))}
           </div>
         ) : (
@@ -514,7 +396,6 @@ function CurrentlyInClinicWidget({
       </div>
       {hasVisits && (
         <div className="clinic-flow-footer" aria-label="Clinic flow summary">
-          <span>{longestWait === null ? 'Waits live' : `Longest wait ${longestWait}m`}</span>
           <span>{roomsOccupied} rooms occupied</span>
           <span>{checkoutQueue} checkout</span>
         </div>
@@ -526,21 +407,20 @@ function CurrentlyInClinicWidget({
 function TodaySchedulePreviewWidget({
   appointments,
   onStatusChanged,
-  statusColors,
+  statuses,
 }: {
   appointments: DashboardAppointmentSummary[];
   onStatusChanged?: (() => void) | undefined;
-  statusColors?: Partial<Record<DashboardStatusKey, string>> | undefined;
+  statuses: ConfiguredDashboardStatus[];
 }) {
   const realRows = appointments.map(appointmentToScheduleRow);
-  const displayRows =
-    realRows.length > 0 ? realRows : SHOW_DEV_FALLBACK_ROWS ? DEV_SCHEDULE_ROWS : [];
+  const displayRows = realRows;
   const hasOverflow = displayRows.length > 5;
   const hasAppointments = displayRows.length > 0;
 
   return (
     <DashboardCard
-      className={hasAppointments ? 'dashboard-widget--primary' : undefined}
+      className={`dashboard-flow-widget dashboard-flow-widget--schedule${hasAppointments ? ' dashboard-widget--primary' : ''}`}
       aria-labelledby="upcoming-heading"
     >
       <div className="home-widget__header">
@@ -549,13 +429,13 @@ function TodaySchedulePreviewWidget({
           <h2 id="upcoming-heading">Today&apos;s Schedule</h2>
         </div>
         <Link href="/today" className="home-widget__link home-widget__link--primary">
-          View full schedule
+          View schedule
         </Link>
       </div>
       <div className={hasOverflow ? 'home-list home-list--scroll' : 'home-list'}>
         {hasAppointments ? (
           displayRows.map((row) => (
-            <AppointmentRow key={row.id} row={row} onStatusChanged={onStatusChanged} statusColors={statusColors} />
+            <AppointmentRow key={row.id} row={row} onStatusChanged={onStatusChanged} statuses={statuses} />
           ))
         ) : (
           <EmptyQueue label="No appointments are coming up." />
@@ -1143,7 +1023,8 @@ function VeterinarianDashboardPlaceholder() {
 
 function ReceptionistDashboard() {
   const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
-  const { colorMap: statusColors } = useDashboardStatusColors();
+  const { colors } = useDashboardStatusColors();
+  const statuses = colors ?? [];
 
   const activeVisits = useMemo(
     () => [
@@ -1182,11 +1063,11 @@ function ReceptionistDashboard() {
             <TasksWidget />
           </div>
           <div className="dashboard-widget-row dashboard-widget-row--flow">
-            <CurrentlyInClinicWidget visits={activeVisits} onStatusChanged={refresh} statusColors={statusColors} />
+            <CurrentlyInClinicWidget visits={activeVisits} onStatusChanged={refresh} statuses={statuses} />
             <TodaySchedulePreviewWidget
               appointments={groups.upcomingAppointments}
               onStatusChanged={refresh}
-              statusColors={statusColors}
+              statuses={statuses}
             />
           </div>
         </div>

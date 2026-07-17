@@ -4,6 +4,7 @@ import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { RecordsPrepPanel } from '../../../components/records-prep-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
+import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
 import { enumLabel, visitStateLabel } from '../../../lib/format';
 import {
@@ -94,6 +95,7 @@ export default async function VisitWorkspacePage({
           </p>
         </div>
         <div className="patient-header__status">
+          <MessageStaffButton context={{ recordType: 'VISIT', recordId: visit.id, label: visit.patient.name, detail: visit.reason }} />
           <span className="patient-status">{visitStateLabel(visit.state)}</span>
           <span className="source-label">
             Opened {openedFromCommandCenter ? 'from Command Center' : 'from patient workspace'}

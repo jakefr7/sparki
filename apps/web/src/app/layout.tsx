@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import { ThemeProvider } from '../components/theme-provider';
+import { MessagingDock } from '../components/messaging-dock';
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from '../lib/theme';
 import './globals.css';
+import './team-messages-popovers.css';
 
 export const metadata: Metadata = {
   title: 'Sparki',
@@ -29,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: setInitialThemeScript }} />
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>{children}<MessagingDock /></ThemeProvider>
       </body>
     </html>
   );

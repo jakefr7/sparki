@@ -66,6 +66,11 @@ model Organization {
   dashboardStatusColorSettings DashboardStatusColorSetting[]
   notes Note[]
   tasks Task[]
+  conversations MessagingConversation[]
+  messages MessagingMessage[]
+  messageAttachments MessagingAttachment[]
+  clientCommunicationThreads ClientCommunicationThread[]
+  clientCommunicationMessages ClientCommunicationMessage[]
 
   memberships     OrganizationMembership[]
   locationAccess  ClinicLocationAccess[]
@@ -87,6 +92,8 @@ model Location {
   schedulerSlotTemplates  SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
   tasks Task[]
+  conversations MessagingConversation[]
+  clientCommunicationThreads ClientCommunicationThread[]
 
   locationAccess ClinicLocationAccess[]
 
@@ -159,6 +166,14 @@ model User {
   notes        Note[]
   createdTasks  Task[]
   assignedTasks Task[] @relation("TaskAssignee")
+  createdConversations MessagingConversation[] @relation("MessagingConversationCreator")
+  conversationMemberships MessagingConversationMember[]
+  sentMessages MessagingMessage[] @relation("MessagingMessageSender")
+  messageReactions MessagingReaction[]
+  messageMentions MessagingMention[]
+  messageEditEvents MessagingMessageEdit[]
+  sentClientCommunicationMessages ClientCommunicationMessage[]
+  assignedClientCommunicationThreads ClientCommunicationThread[]
 
   @@index([organizationId])
   @@index([organizationId, role])
@@ -281,6 +296,7 @@ model Client {
   patients     PatientClient[]
   appointments Appointment[]
   visits       Visit[]
+  communicationThreads ClientCommunicationThread[]
   // Fuzzy/substring matching for Patient Search's "search by client name";
   // expression index (not a plain column index) because the searchable name
   // is firstName || ' ' || lastName. See migration.sql for the raw
@@ -338,6 +354,7 @@ model Patient {
   medicalRecord MedicalRecord?
   patientAlerts PatientAlert[]
   medications   PatientMedication[]
+  communicationThreads ClientCommunicationThread[]
 
   @@index([organizationId])
   @@index([organizationId, name])
@@ -670,6 +687,227 @@ model Task {
 
   @@index([organizationId, locationId, status])
   @@index([assigneeId])
+}
+
+enum MessagingConversationType {
+  DIRECT
+  GROUP
+  CLINIC_CHANNEL
+  DEPARTMENT_CHANNEL
+  LOCATION_CHANNEL
+  PRIVATE_CHANNEL
+}
+
+enum MessagingNotificationLevel {
+  ALL
+  MENTIONS
+  MUTED
+}
+
+enum MessagingRecordType {
+  PATIENT
+  CLIENT
+  APPOINTMENT
+  VISIT
+  TASK
+  MEDICAL_RECORD
+  DOCUMENT
+}
+
+model MessagingConversation {
+  id             String                    @id @default(cuid())
+  organizationId String
+  locationId     String?
+  type           MessagingConversationType
+  name           String?
+  description    String?
+  isPrivate      Boolean                   @default(false)
+  createdById    String
+  lastMessageAt  DateTime                  @default(now())
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization                  @relation(fields: [organizationId], references: [id])
+  location     Location?                     @relation(fields: [locationId], references: [id])
+  createdBy    User                          @relation("MessagingConversationCreator", fields: [createdById], references: [id])
+  members      MessagingConversationMember[]
+  messages     MessagingMessage[]
+
+  @@index([organizationId, lastMessageAt])
+  @@index([organizationId, locationId])
+}
+
+model MessagingConversationMember {
+  id                String                     @id @default(cuid())
+  organizationId    String
+  conversationId    String
+  userId            String
+  notificationLevel MessagingNotificationLevel @default(ALL)
+  isPinned          Boolean                    @default(false)
+  isArchived        Boolean                    @default(false)
+  markedUnread      Boolean                    @default(false)
+  lastReadAt        DateTime?
+  draft             String                     @default("")
+  drawerOpen        Boolean                    @default(false)
+  drawerMinimized   Boolean                    @default(false)
+  joinedAt          DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  conversation MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([organizationId, userId, isArchived])
+}
+
+model MessagingMessage {
+  id             String   @id @default(cuid())
+  organizationId String
+  conversationId String
+  senderId       String
+  clientNonce    String?
+  body           String
+  replyToId      String?
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  conversation MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                  @relation("MessagingMessageSender", fields: [senderId], references: [id])
+  replyTo      MessagingMessage?     @relation("MessagingReplies", fields: [replyToId], references: [id])
+  replies      MessagingMessage[]    @relation("MessagingReplies")
+  reactions    MessagingReaction[]
+  mentions     MessagingMention[]
+  attachments  MessagingAttachment[]
+  editHistory  MessagingMessageEdit[]
+
+  @@unique([conversationId, clientNonce])
+  @@index([organizationId, conversationId, createdAt])
+}
+
+model MessagingReaction {
+  id             String   @id @default(cuid())
+  organizationId String
+  messageId      String
+  userId         String
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  message MessagingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId, emoji])
+  @@index([organizationId, messageId])
+}
+
+model MessagingMention {
+  id             String   @id @default(cuid())
+  organizationId String
+  messageId      String
+  userId         String
+  createdAt      DateTime @default(now())
+
+  message MessagingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId])
+  @@index([organizationId, userId])
+}
+
+model MessagingAttachment {
+  id             String              @id @default(cuid())
+  organizationId String
+  messageId      String
+  fileName       String?
+  mimeType       String?
+  sizeBytes      Int?
+  storageKey     String?
+  recordType     MessagingRecordType?
+  recordId       String?
+  previewLabel   String?
+  previewDetail  String?
+  href           String?
+  createdAt      DateTime            @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  message      MessagingMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, messageId])
+  @@index([organizationId, recordType, recordId])
+}
+
+model MessagingMessageEdit {
+  id             String   @id @default(cuid())
+  organizationId String
+  messageId      String
+  editorId       String
+  previousBody   String
+  action         String
+  createdAt      DateTime @default(now())
+
+  message MessagingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  editor  User             @relation(fields: [editorId], references: [id])
+
+  @@index([organizationId, messageId, createdAt])
+}
+
+enum ClientCommunicationDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum ClientCommunicationStatus {
+  OPEN
+  WAITING
+  CLOSED
+}
+
+model ClientCommunicationThread {
+  id             String                    @id @default(cuid())
+  organizationId String
+  locationId     String
+  clientId       String
+  patientId      String?
+  assignedToId   String?
+  phone          String
+  status         ClientCommunicationStatus @default(OPEN)
+  isUnread       Boolean                   @default(false)
+  lastMessageAt  DateTime                  @default(now())
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id])
+  location     Location                     @relation(fields: [locationId], references: [id])
+  client       Client                       @relation(fields: [clientId], references: [id])
+  patient      Patient?                     @relation(fields: [patientId], references: [id])
+  assignedTo   User?                        @relation(fields: [assignedToId], references: [id])
+  messages     ClientCommunicationMessage[]
+
+  @@index([organizationId, locationId, lastMessageAt])
+  @@index([organizationId, clientId])
+}
+
+model ClientCommunicationMessage {
+  id             String                       @id @default(cuid())
+  organizationId String
+  threadId       String
+  senderUserId   String?
+  direction      ClientCommunicationDirection
+  body           String
+  providerId     String?
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime                     @default(now())
+
+  organization Organization              @relation(fields: [organizationId], references: [id])
+  thread       ClientCommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderUser   User?                     @relation(fields: [senderUserId], references: [id])
+
+  @@unique([threadId, providerId])
+  @@index([organizationId, threadId, createdAt])
 }
 
 model SchedulerSettings {

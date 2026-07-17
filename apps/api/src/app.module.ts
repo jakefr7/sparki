@@ -13,6 +13,7 @@ import { SchedulerConfigModule } from './scheduler-config/scheduler-config.modul
 import { StaffModule } from './staff/staff.module';
 import { TasksModule } from './tasks/tasks.module';
 import { VisitsModule } from './visits/visits.module';
+import { MessagingModule } from './messaging/messaging.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { VisitsModule } from './visits/visits.module';
     VisitsModule,
     OperationsModule,
     AddressModule,
+    MessagingModule,
   ],
 })
 export class AppModule {}

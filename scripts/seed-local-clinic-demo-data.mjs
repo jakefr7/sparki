@@ -13,11 +13,10 @@
 // (scripts/reset-demo-clinic-data.mjs's clearDevClinicalData() has been
 // updated to exclude these rows from its deleteMany calls — see that file.)
 //
-// This script is idempotent: every row uses a fixed, stable id (or a stable
-// compound unique key) and is written via upsert, never deleteMany/truncate.
-// Re-running it updates the same rows in place — appointment dates are
-// recomputed relative to "today" each run, but the row identities never
-// change and no duplicates are created.
+// This script is idempotent: every current row uses a stable id and is written
+// via upsert. The appointment-plan reconciler removes only obsolete rows owned
+// by this same source system, preventing schedule changes from accumulating
+// stale demo appointments. It never touches native clinic data.
 //
 // Usage: pnpm seed:local-demo   (from repo root; needs DATABASE_URL in .env)
 // =============================================================================
@@ -247,19 +246,38 @@ const YESTERDAY_SLOTS = [
   { hour: 16, minute: 45, cancelled: true },
 ];
 
+// A realistic default volume for the demo clinic. This is a seed-data target,
+// not a booking limit: production users can schedule more or fewer visits.
+const STANDARD_DAILY_APPOINTMENT_TARGET = 20;
+
 const TODAY_SLOTS = [
   { hour: 8, minute: 0 },
   { hour: 8, minute: 30 },
+  { hour: 8, minute: 45 },
   { hour: 9, minute: 0 },
   { hour: 9, minute: 30 },
+  { hour: 9, minute: 45 },
   { hour: 10, minute: 15 },
+  { hour: 10, minute: 45 },
   { hour: 11, minute: 0 },
+  { hour: 11, minute: 30 },
   { hour: 11, minute: 45 },
+  { hour: 12, minute: 15 },
   { hour: 13, minute: 0 },
+  { hour: 13, minute: 45 },
   { hour: 14, minute: 30 },
+  { hour: 15, minute: 15 },
   { hour: 16, minute: 0 },
+  { hour: 16, minute: 30 },
   { hour: 17, minute: 0 },
+  { hour: 17, minute: 30 },
 ];
+
+if (TODAY_SLOTS.length !== STANDARD_DAILY_APPOINTMENT_TARGET) {
+  throw new Error(
+    `Demo schedule must contain ${STANDARD_DAILY_APPOINTMENT_TARGET} appointments per standard day.`,
+  );
+}
 
 const TOMORROW_SLOTS = [
   { hour: 8, minute: 30 },
@@ -609,6 +627,30 @@ async function ensurePatients(organizationId, clientIdByKey) {
 
 async function ensureAppointmentsAndVisits(organizationId, locationId, patientIdByKey, clientIdByKey) {
   const plan = buildAppointmentPlan();
+  const plannedAppointmentIds = plan.map(
+    (entry) => `local-demo-appt-${entry.patient.key}-${entry.idSuffix}`,
+  );
+  const obsoleteAppointments = await prisma.appointment.findMany({
+    where: {
+      organizationId,
+      sourceSystem: SOURCE_SYSTEM,
+      id: { notIn: plannedAppointmentIds },
+    },
+    select: { id: true },
+  });
+  const obsoleteAppointmentIds = obsoleteAppointments.map((appointment) => appointment.id);
+  if (obsoleteAppointmentIds.length > 0) {
+    await prisma.visit.deleteMany({
+      where: { organizationId, appointmentId: { in: obsoleteAppointmentIds } },
+    });
+    await prisma.appointment.deleteMany({
+      where: {
+        organizationId,
+        sourceSystem: SOURCE_SYSTEM,
+        id: { in: obsoleteAppointmentIds },
+      },
+    });
+  }
   let appointmentCount = 0;
   let visitCount = 0;
 

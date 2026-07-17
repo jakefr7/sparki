@@ -318,94 +318,6 @@ function toSchedulerAppointment(appointment: DashboardAppointmentSummary): Sched
   return { ...appointment, room: null };
 }
 
-function isFallbackAppointment(appointment: SchedulerAppointment): boolean {
-  return appointment.id.startsWith('fallback-');
-}
-
-/** Records-prep and confirmation fields don't exist for demo-only fallback
- *  rows (no real Appointment backs them), so every fallback appointment gets
- *  the same untouched defaults. */
-const DEFAULT_APPOINTMENT_STATUS_FIELDS = {
-  primaryCareVetName: null,
-  previousClinicName: null,
-  previousRecordsSource: null,
-  lastSeenAt: null,
-  recordsPrepStatus: 'NotStarted',
-  confirmationStatus: 'NotSent',
-} as const;
-
-function createFallbackAppointments(anchorDate: Date): SchedulerAppointment[] {
-  if (process.env.NODE_ENV === 'production') {
-    return [];
-  }
-
-  const weekStart = startOfWeek(anchorDate);
-  const makeDate = (dayOffset: number, hour: number, minute = 0) => {
-    const date = addDays(weekStart, dayOffset);
-    date.setHours(hour, minute, 0, 0);
-    return date.toISOString();
-  };
-
-  return [
-    {
-      id: 'fallback-bella',
-      type: 'WellnessPreventiveCare',
-      reason: 'Wellness visit',
-      state: 'Scheduled',
-      scheduledAt: makeDate(2, 9),
-      expectedDurationMinutes: 30,
-      colorKey: 'teal',
-      patient: { id: 'fallback-patient-bella', name: 'Bella', species: 'Canine' },
-      client: { id: 'fallback-client-sarah', firstName: 'Sarah', lastName: 'Johnson' },
-      provider: { id: 'fallback-provider-patel', displayName: 'Dr. Patel', role: 'VETERINARIAN' },
-      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
-      room: 'Exam Room 1',
-    },
-    {
-      id: 'fallback-milo',
-      type: 'SickVisit',
-      reason: 'Sick visit',
-      state: 'Confirmed',
-      scheduledAt: makeDate(2, 10, 30),
-      expectedDurationMinutes: 45,
-      colorKey: 'blue',
-      patient: { id: 'fallback-patient-milo', name: 'Milo', species: 'Feline' },
-      client: { id: 'fallback-client-lee', firstName: 'Jordan', lastName: 'Lee' },
-      provider: { id: 'fallback-provider-kim', displayName: 'Dr. Kim', role: 'VETERINARIAN' },
-      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
-      room: 'Exam Room 2',
-    },
-    {
-      id: 'fallback-daisy',
-      type: 'TechnicianAppointment',
-      reason: 'Technician appointment',
-      state: 'Arrived',
-      scheduledAt: makeDate(4, 14),
-      expectedDurationMinutes: 30,
-      colorKey: 'amber',
-      patient: { id: 'fallback-patient-daisy', name: 'Daisy', species: 'Canine' },
-      client: { id: 'fallback-client-morgan', firstName: 'Morgan', lastName: 'Reed' },
-      provider: { id: 'fallback-provider-carter', displayName: 'Ben Carter', role: 'TECHNICIAN' },
-      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
-      room: 'Treatment',
-    },
-    {
-      id: 'fallback-pepper',
-      type: 'Recheck',
-      reason: 'Recheck',
-      state: 'Scheduled',
-      scheduledAt: makeDate(5, 16),
-      expectedDurationMinutes: 30,
-      colorKey: 'green',
-      patient: { id: 'fallback-patient-pepper', name: 'Pepper', species: 'Rabbit' },
-      client: { id: 'fallback-client-nguyen', firstName: 'Avery', lastName: 'Nguyen' },
-      provider: null,
-      ...DEFAULT_APPOINTMENT_STATUS_FIELDS,
-      room: 'Consult',
-    },
-  ];
-}
-
 function slotStartsAt(day: Date, slotIndex: number, slotIntervalMinutes: number): Date {
   const startsAt = new Date(day);
   startsAt.setHours(CLINIC_START_HOUR, slotIndex * slotIntervalMinutes, 0, 0);
@@ -500,6 +412,7 @@ export function SchedulerPage() {
   const [loading, setLoading] = useState(true);
   const [schedulerConfig, setSchedulerConfig] =
     useState<SchedulerConfig>(FALLBACK_SCHEDULER_CONFIG);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -512,6 +425,7 @@ export function SchedulerPage() {
   const loadSchedulerData = useCallback(
     async (signal?: AbortSignal) => {
       setLoading(true);
+      setLoadError(null);
       try {
         const requestInit: RequestInit = signal
           ? { cache: 'no-store', signal }
@@ -522,9 +436,10 @@ export function SchedulerPage() {
           fetch('/api/scheduler-config', requestInit),
         ]);
 
-        const dashboard = dashboardResponse.ok
-          ? ((await dashboardResponse.json()) as OperationsDashboard)
-          : null;
+        if (!dashboardResponse.ok) {
+          throw new Error(`Schedule failed to load (${dashboardResponse.status})`);
+        }
+        const dashboard = (await dashboardResponse.json()) as OperationsDashboard;
         const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
         const config = configResponse.ok
           ? ((await configResponse.json()) as SchedulerConfig)
@@ -537,21 +452,21 @@ export function SchedulerPage() {
             ])
           : [];
 
-        setAppointments(dashboard ? loadedAppointments : createFallbackAppointments(anchorDate));
-        setGeneratedAt(dashboard?.generatedAt ?? new Date().toISOString());
+        setAppointments(loadedAppointments);
+        setGeneratedAt(dashboard.generatedAt);
         setProviders(staff);
         setSchedulerConfig(config);
       } catch (caught) {
         if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
-          setAppointments(createFallbackAppointments(anchorDate));
-          setGeneratedAt(new Date().toISOString());
-          setSchedulerConfig(FALLBACK_SCHEDULER_CONFIG);
+          setAppointments([]);
+          setGeneratedAt(null);
+          setLoadError(caught instanceof Error ? caught.message : 'Schedule failed to load.');
         }
       } finally {
         setLoading(false);
       }
     },
-    [anchorDate],
+    [],
   );
 
   useEffect(() => {
@@ -639,17 +554,6 @@ export function SchedulerPage() {
     };
     setMoveError(null);
 
-    if (isFallbackAppointment(appointment)) {
-      setAppointments((current) =>
-        uniqueAppointments(
-          current.map((candidate) =>
-            candidate.id === appointmentId ? movedAppointment : candidate,
-          ),
-        ),
-      );
-      return;
-    }
-
     const previousAppointments = appointments;
     setAppointments((current) =>
       uniqueAppointments(
@@ -719,6 +623,11 @@ export function SchedulerPage() {
           onProviderFilterChange={setProviderFilter}
           onStatusFilterChange={setStatusFilter}
         />
+        {loadError ? (
+          <p className="scheduler-inline-error" role="alert">
+            {loadError} No placeholder appointments were shown.
+          </p>
+        ) : null}
         {view === 'week' ? (
           <WeekSchedulerGrid
             days={days}
@@ -848,7 +757,15 @@ function toSchedulerCreatedAppointment(
   // AppointmentsService.create) — the create response doesn't echo them back,
   // so fill them in rather than widening NewAppointmentCreatedSummary for a
   // value that's never actually variable at creation time.
-  return { ...appointment, ...DEFAULT_APPOINTMENT_STATUS_FIELDS };
+  return {
+    ...appointment,
+    primaryCareVetName: null,
+    previousClinicName: null,
+    previousRecordsSource: null,
+    lastSeenAt: null,
+    recordsPrepStatus: 'NotStarted',
+    confirmationStatus: 'NotSent',
+  };
 }
 
 function SchedulerToolbar({

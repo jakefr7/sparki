@@ -1066,10 +1066,76 @@ async function seedDemoCases() {
   }
 }
 
+async function seedMessaging() {
+  const roster = await prisma.user.findMany({ where: { organizationId: DEV_ORGANIZATION_ID, isActive: true, role: { not: 'CLIENT' } }, orderBy: { createdAt: 'asc' } });
+  const receptionist = roster.find((user) => user.role === 'RECEPTIONIST') ?? roster[0];
+  const vets = roster.filter((user) => user.role === 'VETERINARIAN');
+  const techs = roster.filter((user) => user.role === 'TECHNICIAN' || user.role === 'ASSISTANT');
+  const currentUser = roster.find((user) => user.id === 'dev-user') ?? receptionist;
+  if (!receptionist || !currentUser) return;
+
+  async function conversation({ id, type, name, description, members, messages }) {
+    const uniqueMembers = [...new Set([currentUser.id, ...members.map((member) => member.id)])];
+    const lastMessageAt = minutesAgo(messages.at(-1)?.minutesAgo ?? 1);
+    const row = await prisma.messagingConversation.upsert({ where: { id }, update: { type, name, description, lastMessageAt }, create: { id, organizationId: DEV_ORGANIZATION_ID, locationId: type.includes('CHANNEL') ? DEV_LOCATION_ID : null, type, name, description, createdById: currentUser.id, lastMessageAt } });
+    for (const userId of uniqueMembers) await prisma.messagingConversationMember.upsert({ where: { conversationId_userId: { conversationId: row.id, userId } }, update: { isArchived: false }, create: { organizationId: DEV_ORGANIZATION_ID, conversationId: row.id, userId, lastReadAt: userId === currentUser.id ? minutesAgo(18) : new Date() } });
+    for (const [index, message] of messages.entries()) await prisma.messagingMessage.upsert({ where: { conversationId_clientNonce: { conversationId: row.id, clientNonce: `${id}-${index + 1}` } }, update: { body: message.body, senderId: message.sender.id, createdAt: minutesAgo(message.minutesAgo) }, create: { organizationId: DEV_ORGANIZATION_ID, conversationId: row.id, senderId: message.sender.id, clientNonce: `${id}-${index + 1}`, body: message.body, createdAt: minutesAgo(message.minutesAgo) } });
+  }
+
+  await conversation({ id: 'demo-messaging-clinic-channel', type: 'CLINIC_CHANNEL', name: 'Main Hospital', description: 'Clinic-wide updates and announcements', members: roster, messages: [
+    { sender: vets[0] ?? receptionist, minutesAgo: 95, body: 'Good morning, team. The dental suite is back in service and all monitoring equipment passed its check.' },
+    { sender: techs[0] ?? receptionist, minutesAgo: 88, body: 'Perfect — I moved Luna’s setup back to dental and updated the treatment board.' },
+    { sender: receptionist, minutesAgo: 42, body: 'Reminder: the 2:30 wellness appointment asked to arrive early. I’ll check them in as soon as they’re here.' },
+    { sender: vets[1] ?? vets[0] ?? receptionist, minutesAgo: 12, body: 'Thanks. I’m finishing rounds now and can pick up the next exam after that.' },
+  ] });
+
+  await conversation({ id: 'demo-messaging-treatment-team', type: 'DEPARTMENT_CHANNEL', name: 'Treatment Team', description: 'Technician and veterinarian handoffs', members: [...vets, ...techs], messages: [
+    { sender: techs[1] ?? techs[0] ?? receptionist, minutesAgo: 64, body: 'Bailey’s blood draw is complete. Samples are labeled and in the pickup bin.' },
+    { sender: vets[0] ?? receptionist, minutesAgo: 59, body: 'Thank you. I added the requested panel and will review results between appointments.' },
+    { sender: techs[0] ?? receptionist, minutesAgo: 31, body: 'Milo is comfortable after his injection. Recheck vitals are normal and he’s ready for discharge instructions.' },
+    { sender: vets[0] ?? receptionist, minutesAgo: 24, body: 'Great handoff. I’ll speak with his family before they head out.' },
+  ] });
+
+  await conversation({ id: 'demo-messaging-lunch-coverage', type: 'PRIVATE_CHANNEL', name: 'Lunch coverage', description: 'Front desk and floor coverage today', members: [receptionist, techs[0], vets[0]].filter(Boolean), messages: [
+    { sender: receptionist, minutesAgo: 36, body: 'Could someone cover the front for ten minutes around 12:30 while I call back the pharmacy?' },
+    { sender: techs[0] ?? receptionist, minutesAgo: 33, body: 'I can cover after I finish this intake.' },
+    { sender: vets[0] ?? receptionist, minutesAgo: 29, body: 'Works for me. I’ll keep an ear on treatment if anything comes up.' },
+    { sender: receptionist, minutesAgo: 26, body: 'Thank you both — that keeps everything moving.' },
+  ] });
+
+  const directPartner = techs[0] ?? vets[0] ?? roster.find((user) => user.id !== currentUser.id);
+  if (directPartner) await conversation({ id: 'demo-messaging-direct-intake', type: 'DIRECT', name: null, description: null, members: [directPartner], messages: [
+    { sender: currentUser, minutesAgo: 19, body: 'The Carter family just arrived with Bailey. Are you ready for intake?' },
+    { sender: directPartner, minutesAgo: 16, body: 'Yes — room two is clean. I’ll meet them up front.' },
+    { sender: currentUser, minutesAgo: 14, body: 'Perfect, I’m checking them in now.' },
+  ] });
+}
+
+async function seedClientCommunication() {
+  const clients = await prisma.client.findMany({ where: { organizationId: DEV_ORGANIZATION_ID, phone: { not: null } }, include: { patients: { include: { patient: true }, take: 1 } }, orderBy: { createdAt: 'asc' }, take: 5 });
+  const staff = await prisma.user.findFirst({ where: { organizationId: DEV_ORGANIZATION_ID, role: 'RECEPTIONIST', isActive: true } });
+  const scripts = [
+    ['Hi! Just confirming Bailey’s appointment for tomorrow at 9:30 AM.', 'Yes, that still works for us. Thank you!', 'Perfect — we’ll see you and Bailey tomorrow morning.'],
+    ['Milo is ready to head home. Dr. Shah would like to review his discharge instructions with you.', 'Great, I can be there in about 20 minutes.', 'Sounds good. We’ll have everything ready at the front desk.'],
+    ['We received Luna’s lab results and the doctor has reviewed them.', 'Is everything okay?', 'Nothing urgent. Dr. Brennan will call this afternoon to walk through the results with you.'],
+    ['Friendly reminder that Cooper is due for a wellness visit this month. Would you like help finding a time?', 'Do you have anything Friday afternoon?', 'Yes — we have 2:00 PM and 3:30 PM available.'],
+    ['How is Daisy doing after yesterday’s visit?', 'Much better today. She ate breakfast and seems comfortable.', 'That’s wonderful to hear. Please call us if anything changes.'],
+  ];
+  for (const [index, client] of clients.entries()) {
+    const patient = client.patients[0]?.patient;
+    const threadId = `demo-client-communication-${index + 1}`;
+    const messages = scripts[index] ?? scripts[0];
+    const thread = await prisma.clientCommunicationThread.upsert({ where: { id: threadId }, update: { clientId: client.id, patientId: patient?.id ?? null, phone: client.phone, assignedToId: staff?.id ?? null, lastMessageAt: minutesAgo(6 + index * 11), isUnread: index === 2 }, create: { id: threadId, organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID, clientId: client.id, patientId: patient?.id ?? null, phone: client.phone, assignedToId: staff?.id ?? null, status: index === 1 ? 'OPEN' : 'WAITING', isUnread: index === 2, lastMessageAt: minutesAgo(6 + index * 11) } });
+    for (const [messageIndex, body] of messages.entries()) await prisma.clientCommunicationMessage.upsert({ where: { threadId_providerId: { threadId, providerId: `${threadId}-${messageIndex + 1}` } }, update: { body }, create: { organizationId: DEV_ORGANIZATION_ID, threadId: thread.id, senderUserId: messageIndex % 2 === 0 ? staff?.id ?? null : null, direction: messageIndex % 2 === 0 ? 'OUTBOUND' : 'INBOUND', body, providerId: `${threadId}-${messageIndex + 1}`, deliveredAt: messageIndex % 2 === 0 ? minutesAgo(30 - messageIndex * 4 + index * 10) : null, createdAt: minutesAgo(30 - messageIndex * 4 + index * 10) } });
+  }
+}
+
 async function main() {
   await ensureDevClinic();
   await clearDevClinicalData();
   await seedDemoCases();
+  await seedMessaging();
+  await seedClientCommunication();
 
   const [staff, clients, patients, appointments, visits] = await Promise.all([
     prisma.user.count({ where: { organizationId: DEV_ORGANIZATION_ID } }),

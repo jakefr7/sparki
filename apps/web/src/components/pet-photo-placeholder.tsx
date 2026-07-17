@@ -1,5 +1,14 @@
 type PetKind = 'cat' | 'dog' | 'pet';
 
+function portableImageUrl(imageUrl: string): string {
+  try {
+    const parsed = new URL(imageUrl);
+    return parsed.pathname.startsWith('/uploads/') ? `${parsed.pathname}${parsed.search}` : imageUrl;
+  } catch {
+    return imageUrl;
+  }
+}
+
 function petKind(species?: string | null): PetKind {
   const normalized = species?.trim().toLowerCase();
   if (normalized === 'cat' || normalized === 'feline') return 'cat';
@@ -64,7 +73,7 @@ export function PetPhotoPlaceholder({
 }) {
   if (imageUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={imageUrl} alt={name} className={className} />;
+    return <img src={portableImageUrl(imageUrl)} alt={name} className={className} />;
   }
   const kind = petKind(species);
   const label = `${name} photo placeholder`;

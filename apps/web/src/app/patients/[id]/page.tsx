@@ -12,6 +12,7 @@ import { PatientNewAppointmentButton } from '../../../components/patient-new-app
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
+import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
 import { appointmentStatusLabel, formatAge, visitStateLabel } from '../../../lib/format';
 import {
@@ -170,6 +171,7 @@ export default async function PatientWorkspacePage({
           ) : null}
         </div>
         <div className="patient-profile-actions" aria-label="Patient care actions">
+          <MessageStaffButton context={{ recordType: 'PATIENT', recordId: patient.id, label: patient.name, detail: [patient.species, patient.breed].filter(Boolean).join(' · ') }} />
           <section className="patient-care-status-card" aria-labelledby="patient-care-status-heading">
             <p className="eyebrow" id="patient-care-status-heading">Care Flow</p>
             <div className="patient-care-status-card__row patient-care-status-card__row--active">

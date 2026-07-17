@@ -22,6 +22,13 @@ type TodayRow = {
 
 function time(value: string) { return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
 function clientName(client: { firstName: string; lastName: string } | null) { return client ? `${client.firstName} ${client.lastName}` : 'No client linked'; }
+function isToday(value: string) {
+  const date = new Date(value);
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
+}
 
 export function buildTodayRows(appointments: DashboardAppointmentSummary[], visits: DashboardVisitSummary[], statuses: ConfiguredDashboardStatus[]): TodayRow[] {
   const appointmentRows = appointmentsWithoutActiveVisits(appointments, visits).flatMap((appointment) => {
@@ -29,7 +36,9 @@ export function buildTodayRows(appointments: DashboardAppointmentSummary[], visi
     if (!status?.isEnabled) return [];
     return [{ id: appointment.id, kind: 'appointment' as const, state: appointment.state, status, time: time(appointment.scheduledAt), patientName: appointment.patient?.name ?? 'Unlinked patient', species: appointment.patient?.species, imageUrl: appointment.patient?.imageUrl, clientName: clientName(appointment.client), appointmentType: appointmentTypeLabel(appointment.type), doctor: appointment.provider?.displayName, href: appointment.patient ? `/patients/${appointment.patient.id}` : '/patients', appointment: { ...appointment, room: null } }];
   });
-  const visitRows = visits.flatMap((visit) => {
+  const visitRows = visits.filter((visit) =>
+    isToday(visit.appointment?.scheduledAt ?? visit.createdAt),
+  ).flatMap((visit) => {
     const status = resolveConfiguredStatus(statuses, 'visit', visit.state);
     if (!status?.isEnabled) return [];
     const linked = appointments.find((appointment) => appointment.id === visit.appointment?.id);
@@ -68,13 +77,14 @@ export function TodayOperationsPage() {
   const visibleRows = selected.size ? rows.filter((row) => selected.has(row.status.status)) : rows;
   const groups = statuses.map((status) => ({ status, rows: visibleRows.filter((row) => row.status.status === status.status) })).filter((group) => group.rows.length);
   const inClinicCount = rows.filter((row) => row.status.isInClinic).length;
+  const todayVisitCount = rows.filter((row) => row.kind === 'visit').length;
   const openQuickView = (row: TodayRow) => { if (row.appointment) setQuickView(row.appointment); };
 
   return <DashboardShell activeHref="/today" eyebrow="Today" title="Today's Schedule" subtitle="Appointments and patient flow for today.">
     {(loading || statusesLoading) ? <div className="ops-panel-state ops-panel-state--loading">Loading today...</div> : null}
     {error ? <div className="ops-panel-state ops-panel-state--error" role="alert"><strong>Today could not load.</strong><span>{error}</span></div> : null}
-    {!loading && !statusesLoading && !error && dashboard ? <div className="today-operations-layout"><section className="today-main-card" aria-labelledby="today-appointments-heading"><div className="home-widget__header"><div><p className="eyebrow">Appointments & visits</p><h2 id="today-appointments-heading">Today&apos;s Schedule</h2></div><StatusFilter statuses={statuses} selected={selected} onChange={setSelected}/></div><div className="today-appointment-list">{groups.length ? groups.map(({ status, rows: statusRows }) => <section key={status.status} className="today-status-group" style={{ '--configured-status': status.color } as CSSProperties}><header><span aria-hidden="true"/><h3>{status.name}</h3><strong>{statusRows.length}</strong></header>{statusRows.map((row) => <TodayRowView key={`${row.kind}-${row.id}`} row={row} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/>)}</section>) : <EmptyQueue label="No appointments match this filter."/>}</div></section>
-      <aside className="today-rail" aria-label="Today overview"><ClinicSummary rows={rows} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/><DashboardCard aria-labelledby="today-overview-heading"><div className="home-widget__header"><div><h2 id="today-overview-heading">Today Overview</h2><p className="today-overview__intro">Where today&apos;s patients are right now.</p></div></div><div className="today-overview__totals"><div><strong>{rows.length}</strong><span>Patients on today&apos;s schedule</span></div><div><strong>{inClinicCount}</strong><span>Currently in clinic</span></div></div><div className="today-overview__breakdown"><span className="today-overview__label">By status</span>{statuses.filter((status) => rows.some((row) => row.status.status === status.status)).map((status) => <div key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><span aria-hidden="true"/><span>{status.name}</span><strong>{rows.filter((row) => row.status.status === status.status).length}</strong></div>)}</div></DashboardCard><DashboardCard aria-labelledby="today-quick-actions-heading"><div className="home-widget__header"><h2 id="today-quick-actions-heading">Quick Actions</h2></div><div className="today-quick-actions"><NewAppointmentAction onCreated={refresh}>New Appointment</NewAppointmentAction><Link href="/patients">Find Patient</Link></div></DashboardCard></aside></div> : null}
+    {!loading && !statusesLoading && !error && dashboard ? <div className="today-operations-layout"><section className="today-main-card" aria-labelledby="today-appointments-heading"><div className="home-widget__header"><div><p className="eyebrow">Appointments & active visits</p><h2 id="today-appointments-heading">Today&apos;s Patient Flow</h2></div><StatusFilter statuses={statuses} selected={selected} onChange={setSelected}/></div><div className="today-appointment-list">{groups.length ? groups.map(({ status, rows: statusRows }) => <section key={status.status} className="today-status-group" style={{ '--configured-status': status.color } as CSSProperties}><header><span aria-hidden="true"/><h3>{status.name}</h3><strong>{statusRows.length}</strong></header>{statusRows.map((row) => <TodayRowView key={`${row.kind}-${row.id}`} row={row} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/>)}</section>) : <EmptyQueue label="No appointments or active visits match this filter."/>}</div></section>
+      <aside className="today-rail" aria-label="Today overview"><ClinicSummary rows={rows} statuses={statuses} refresh={refresh} onQuickView={openQuickView}/><DashboardCard aria-labelledby="today-overview-heading"><div className="home-widget__header"><div><h2 id="today-overview-heading">Today Overview</h2><p className="today-overview__intro">Database appointments and patient visits dated today.</p></div></div><div className="today-overview__totals"><div><strong>{dashboard.todaysAppointments.length}</strong><span>Scheduled appointments</span></div><div><strong>{todayVisitCount}</strong><span>Today&apos;s visit records</span></div><div><strong>{inClinicCount}</strong><span>Currently in clinic</span></div></div><div className="today-overview__breakdown"><span className="today-overview__label">Combined patient flow by status</span>{statuses.filter((status) => rows.some((row) => row.status.status === status.status)).map((status) => <div key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><span aria-hidden="true"/><span>{status.name}</span><strong>{rows.filter((row) => row.status.status === status.status).length}</strong></div>)}</div></DashboardCard><DashboardCard aria-labelledby="today-quick-actions-heading"><div className="home-widget__header"><h2 id="today-quick-actions-heading">Quick Actions</h2></div><div className="today-quick-actions"><NewAppointmentAction onCreated={refresh}>New Appointment</NewAppointmentAction><Link href="/patients">Find Patient</Link></div></DashboardCard></aside></div> : null}
     {quickView ? <AppointmentDetailPopover appointment={quickView} appointmentTypes={[]} onClose={() => setQuickView(null)} onChanged={(appointment) => { setQuickView(appointment); refresh(); }} onReschedule={() => { window.location.href = '/scheduler'; }} onCancelled={() => { setQuickView(null); refresh(); }} /> : null}
   </DashboardShell>;
 }

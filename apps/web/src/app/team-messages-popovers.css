@@ -1,0 +1,148 @@
+/* Full-page composer controls and menus. Kept separate from the compact messaging dock. */
+.dashboard-main--workspace .team-page-composer > .team-composer-popover {
+  left: 14px;
+  bottom: 62px;
+  padding: 10px;
+  max-width: calc(100% - 28px);
+  max-height: 360px;
+  align-items: initial;
+  overflow-y: auto;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px #17343e30;
+}
+
+.dashboard-main--workspace .team-page-composer > .team-composer-emojis {
+  width: min(430px, calc(100% - 28px));
+  display: grid;
+  grid-template-columns: repeat(6, minmax(48px, 1fr));
+  gap: 6px;
+}
+
+.dashboard-main--workspace .team-composer-emojis button {
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  font-size: 27px;
+}
+
+.dashboard-main--workspace .team-composer-emojis button:hover,
+.dashboard-main--workspace .team-composer-emojis button:focus-visible {
+  background: #e8f3f1;
+}
+
+.dashboard-main--workspace .team-page-composer > .team-composer-mentions {
+  width: min(440px, calc(100% - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dashboard-main--workspace .team-composer-mentions > button {
+  width: 100%;
+  min-height: 64px;
+  padding: 9px 11px;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 13px;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.dashboard-main--workspace .team-composer-mentions .team-message-avatar {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 13px;
+  font-size: 14px;
+}
+
+.dashboard-main--workspace .team-composer-mentions strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.dashboard-main--workspace .team-composer-mentions small {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.dashboard-main--workspace .team-page-composer footer button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 21px;
+}
+
+@media (max-width: 700px) {
+  .dashboard-main--workspace .team-page-composer > .team-composer-emojis {
+    grid-template-columns: repeat(4, minmax(48px, 1fr));
+  }
+}
+
+/* Message surfaces add hierarchy without making internal chat look like SMS. */
+.dashboard-main--workspace .team-message-timeline {
+  background:
+    radial-gradient(circle at 18% 0%, #e8f4f230 0, transparent 32%),
+    #fbfcfc;
+}
+
+.dashboard-main--workspace .team-timeline-message {
+  margin: 14px 0;
+  padding: 15px 17px;
+  border: 1px solid #dfe8e7;
+  border-left: 4px solid #a8c2bf;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px #17343e0a;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.dashboard-main--workspace .team-timeline-message:hover {
+  border-color: #c9d9d7;
+  box-shadow: 0 7px 20px #17343e10;
+}
+
+.dashboard-main--workspace .team-timeline-message--own {
+  border-color: #c7e2df;
+  border-left-color: #27877f;
+  background: linear-gradient(105deg, #eaf6f4 0%, #f4faf9 72%);
+}
+
+.dashboard-main--workspace .team-timeline-message--grouped {
+  margin-top: -7px;
+}
+
+.dashboard-main--workspace .team-timeline-message header strong {
+  color: #172f3a;
+}
+
+.dashboard-main--workspace .team-timeline-message--own header strong {
+  color: #176f69;
+}
+
+.dashboard-main--workspace .team-timeline-message header span,
+.dashboard-main--workspace .team-timeline-message header time {
+  color: #748784;
+}
+
+.dashboard-main--workspace .team-timeline-message p {
+  max-width: 900px;
+  color: #233a44;
+}
+
+.dashboard-main--workspace .team-message-avatar {
+  box-shadow: 0 0 0 4px #edf5f4;
+}

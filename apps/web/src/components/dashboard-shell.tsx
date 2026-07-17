@@ -27,14 +27,15 @@ interface HeaderWeather {
 let cachedHeaderWeather: HeaderWeather | null = null;
 let cachedAreaLabel = 'Local weather';
 
-export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/settings';
+export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/messages' | '/communication' | '/settings';
 
 const SIDEBAR_ITEMS: ReadonlyArray<{ label: string; href?: DashboardRoute }> = [
   { href: '/', label: 'Dashboard' },
   { href: '/today', label: 'Today' },
   { href: '/scheduler', label: 'Scheduler' },
   { href: '/patients', label: 'Patients / Clients' },
-  { label: 'Messages' },
+  { href: '/messages', label: 'Team Messages' },
+  { href: '/communication', label: 'Client Communication' },
   { label: 'Tasks' },
   { label: 'Reports' },
   { label: 'Inventory' },
@@ -250,6 +251,7 @@ export function DashboardShell({
   refreshing,
   onRefresh,
   children,
+  workspace = false,
 }: {
   activeHref: DashboardRoute;
   eyebrow: string;
@@ -260,6 +262,7 @@ export function DashboardShell({
   refreshing?: boolean | undefined;
   onRefresh?: (() => void) | undefined;
   children: ReactNode;
+  workspace?: boolean;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user: currentUser } = useCurrentUser();
@@ -281,8 +284,8 @@ export function DashboardShell({
         collapsed={sidebarCollapsed}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
-      <main className="dashboard-main">
-        <DashboardHeader
+      <main className={workspace ? 'dashboard-main dashboard-main--workspace' : 'dashboard-main'}>
+        {!workspace ? <DashboardHeader
           eyebrow={eyebrow}
           title={title}
           subtitle={subtitle}
@@ -290,7 +293,7 @@ export function DashboardShell({
           roleLabel={resolvedRoleLabel}
           refreshing={refreshing}
           onRefresh={onRefresh}
-        />
+        /> : null}
         {children}
       </main>
     </div>

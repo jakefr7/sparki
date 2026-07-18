@@ -6,12 +6,13 @@ import { VisitLifecycleService } from './visit-lifecycle.service';
 import { VisitRecordsService } from './visit-records.service';
 import { VisitDischargeService } from './visit-discharge.service';
 import { VisitPolicyController } from './visit-policy.controller';
+import { VisitWorkItemsService } from './visit-work-items.service';
 import { VisitsService } from './visits.service';
 
 @Module({
   imports: [PatientsModule, AppointmentsModule],
   controllers: [VisitsController, VisitPolicyController],
-  providers: [VisitsService, VisitLifecycleService, VisitRecordsService, VisitDischargeService],
+  providers: [VisitsService, VisitLifecycleService, VisitRecordsService, VisitDischargeService, VisitWorkItemsService],
   exports: [VisitsService],
 })
 export class VisitsModule {}

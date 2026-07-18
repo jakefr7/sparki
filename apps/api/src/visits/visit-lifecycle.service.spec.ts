@@ -27,4 +27,10 @@ describe('visit lifecycle requirements', () => {
     expect(() => assertVisitTransitionRequirements({ ...baseVisit, discharge: {}, checkout: null }, 'RecordCompletionPending')).toThrow(ConflictException);
     expect(() => assertVisitTransitionRequirements({ ...baseVisit, discharge: {}, checkout: {} }, 'RecordCompletionPending')).not.toThrow();
   });
+
+  it('blocks discharge while required care or critical exceptions remain open', () => {
+    const ready = { ...baseVisit, intake: { completedAt: new Date() }, examFindings: { completedAt: new Date() } };
+    expect(() => assertVisitTransitionRequirements({ ...ready, workItems: [{ title: 'Administer medication' }] }, 'CheckoutReady')).toThrow(ConflictException);
+    expect(() => assertVisitTransitionRequirements({ ...ready, exceptions: [{ type: 'EmergencyIntakeDeferred' }] }, 'CheckoutReady')).toThrow(ConflictException);
+  });
 });

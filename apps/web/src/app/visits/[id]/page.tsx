@@ -6,6 +6,7 @@ import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
 import { VisitRecordPanel } from '../../../components/visit-record-panel';
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
+import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
 import { enumLabel, visitStateLabel } from '../../../lib/format';
@@ -146,6 +147,8 @@ export default async function VisitWorkspacePage({
         state={visit.state}
         examFindings={visit.examFindings}
       />
+
+      <VisitWorkItemsPanel visit={visit} />
 
       <VisitRecordPanel visit={visit} />
 

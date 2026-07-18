@@ -3227,7 +3227,7 @@ body {
 .doctor-record-queue__list small { color: var(--color-text-muted); }
 
 .visit-record-panel { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
-.visit-record-panel__header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.visit-record-panel__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
 .visit-record-panel__header h2 { margin: .15rem 0 0; }
 .visit-record-status { padding: .35rem .65rem; border-radius: 999px; background: #edf3f3; color: #52666f; font-size: .75rem; font-weight: 800; }
 .visit-record-status--locked { background: #dff1e8; color: #22684d; }
@@ -3240,6 +3240,45 @@ body {
 .visit-record-summary div:nth-child(odd) { border-right: 1px solid var(--color-border); }
 .visit-record-summary dt { color: var(--color-text-muted); font-size: .7rem; font-weight: 850; text-transform: uppercase; }
 .visit-record-summary dd { margin: .3rem 0 0; white-space: pre-wrap; }
+.visit-record-delegate, .visit-record-amendment { display: grid; gap: .7rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }
+.visit-record-delegate { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.visit-record-delegate label, .visit-record-amendment label { display: grid; gap: .35rem; color: var(--color-text-muted); font-size: .78rem; font-weight: 800; }
+.visit-record-delegate select, .visit-record-amendment textarea { width: 100%; padding: .7rem .75rem; border: 1px solid var(--color-border); border-radius: 10px; color: inherit; background: var(--color-surface); font: inherit; }
+.visit-record-amendment { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.visit-record-amendment > label:first-child, .visit-record-amendment > button { grid-column: 1 / -1; }
+.visit-record-amendment textarea { min-height: 7rem; resize: vertical; }
+
+.visit-work-panel { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+.visit-work-panel h2 { margin: .15rem 0 .25rem; }
+.visit-work-panel > div:first-child > p:last-child { margin: 0; color: var(--color-text-muted); }
+.visit-work-create { display: grid; grid-template-columns: minmax(150px, .7fr) minmax(240px, 2fr) auto; align-items: end; gap: .75rem; margin-top: 1rem; padding: 1rem; border-radius: 12px; background: var(--color-surface-muted); }
+.visit-work-create label, .visit-work-item form label { display: grid; gap: .35rem; color: var(--color-text-muted); font-size: .76rem; font-weight: 800; }
+.visit-work-create input, .visit-work-create select, .visit-work-item select, .visit-work-item textarea { width: 100%; padding: .65rem .7rem; border: 1px solid var(--color-border); border-radius: 9px; color: inherit; background: var(--color-surface); font: inherit; }
+.visit-work-list { display: grid; gap: .65rem; margin-top: 1rem; }
+.visit-work-list > p { margin: 0; color: var(--color-text-muted); }
+.visit-work-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .75fr); gap: 1rem; padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: 12px; }
+.visit-work-item > div { display: grid; align-content: start; gap: .2rem; }
+.visit-work-item > div span { color: var(--color-text-muted); font-size: .7rem; font-weight: 850; text-transform: uppercase; }
+.visit-work-item > div small { color: #17756f; font-weight: 800; }
+.visit-work-item details summary { cursor: pointer; color: #17756f; font-size: .8rem; font-weight: 800; }
+.visit-work-item form { display: grid; gap: .65rem; margin-top: .7rem; }
+.visit-work-item textarea { min-height: 4.5rem; resize: vertical; }
+
+@media (max-width: 700px) {
+  .visit-work-create,
+  .visit-work-item,
+  .visit-record-amendment,
+  .visit-record-delegate {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visit-work-create button,
+  .visit-record-delegate button,
+  .visit-record-amendment > label:first-child,
+  .visit-record-amendment > button {
+    grid-column: 1;
+  }
+}
 
 .visit-discharge-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
 .visit-discharge-panel > div:first-child, .visit-discharge-panel > .form-error { grid-column: 1 / -1; }
@@ -3249,7 +3288,7 @@ body {
 .visit-discharge-form label:not(.visit-discharge-check) { display: grid; gap: .3rem; color: var(--color-text-muted); font-size: .76rem; font-weight: 800; }
 .visit-discharge-form textarea, .visit-discharge-form input, .visit-discharge-form select { width: 100%; padding: .65rem .7rem; border: 1px solid var(--color-border); border-radius: 9px; color: inherit; background: var(--color-surface); font: inherit; }
 .visit-discharge-form textarea { min-height: 4.5rem; resize: vertical; }
-.visit-discharge-check { display: flex; align-items: start; gap: .5rem; font-size: .8rem; }
+.visit-discharge-check { display: flex; align-items: flex-start; gap: .5rem; font-size: .8rem; }
 .visit-discharge-check input { width: auto; margin-top: .15rem; }
 
 .visit-policy-settings { display: grid; gap: 1rem; }

@@ -149,7 +149,7 @@ export class VisitsService {
       // window; a partial unique index would be the airtight fix if this
       // becomes a real contention point.
       const existingActiveVisit = await tx.visit.findFirst({
-        where: { patientId, organizationId, state: { notIn: TERMINAL_VISIT_STATES } },
+        where: { patientId, organizationId, locationId, state: { notIn: TERMINAL_VISIT_STATES } },
       });
       if (existingActiveVisit) {
         throw new ConflictException(
@@ -167,6 +167,11 @@ export class VisitsService {
         });
       }
 
+      const initialWorkflowStep = await tx.dashboardStatusColorSetting.findFirst({
+        where: { organizationId, locationId, lifecyclePhase: 'Arrived', isEnabled: true },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true },
+      });
       const created = await tx.visit.create({
         data: {
           organizationId,
@@ -185,6 +190,7 @@ export class VisitsService {
           assignedTechnicianId: input.assignedTechnicianId ?? null,
           createdById,
           lastUpdatedById: createdById,
+          workflowStepId: initialWorkflowStep?.id ?? null,
         },
         include: visitInclude,
       });
@@ -313,19 +319,14 @@ export class VisitsService {
     const completingDeferredEmergency = visit.visitType === 'Emergency'
       && visit.state === 'TreatmentPending'
       && visit.exceptions.some((exception) => exception.type === 'EmergencyIntakeDeferred');
+    const isTechnicianVisit = visit.visitType === 'TechnicianAppointment';
+    const technicianId = visit.assignedTechnicianId ?? lastUpdatedById;
 
     if (visit.state !== INTAKE_IN_PROGRESS_STATE && !completingDeferredEmergency) {
       return visit;
     }
 
     assertIntakeReadyForCompletion(visit.intake);
-
-    const completedAt = new Date();
-    await prisma.visitIntake.upsert({
-      where: { visitId: id },
-      create: { visitId: id, completedAt },
-      update: { completedAt },
-    });
 
     return this.lifecycle.transition({
         visitId: id,
@@ -334,17 +335,30 @@ export class VisitsService {
         actorId: lastUpdatedById,
         actorRole,
         expectedStates: [visit.state],
-        toState: completingDeferredEmergency ? 'TreatmentPending' : EXAM_READY_STATE,
-        toPhase: completingDeferredEmergency ? 'CareInProgress' : 'Exam',
-        currentOwnerId: completingDeferredEmergency ? (visit.primaryVeterinarianId ?? lastUpdatedById) : visit.primaryVeterinarianId,
-        nextAction: completingDeferredEmergency ? 'Continue emergency care' : 'Start veterinarian exam',
+        toState: completingDeferredEmergency ? EXAM_IN_PROGRESS_STATE : isTechnicianVisit ? 'TreatmentPending' : EXAM_READY_STATE,
+        toPhase: isTechnicianVisit ? 'CareInProgress' : 'Exam',
+        currentOwnerId: completingDeferredEmergency ? (visit.primaryVeterinarianId ?? lastUpdatedById) : isTechnicianVisit ? technicianId : visit.primaryVeterinarianId,
+        ...(isTechnicianVisit ? { assignedTechnicianId: technicianId } : {}),
+        nextAction: completingDeferredEmergency ? 'Complete veterinarian exam' : isTechnicianVisit ? 'Document technician care' : 'Start veterinarian exam',
+        ...(completingDeferredEmergency ? { timestamps: { examStartedAt: visit.examStartedAt ?? new Date() } } : {}),
         completeWorkItemTypes: ['IntakeCompletion'],
+        createWorkItems: isTechnicianVisit ? [{ type: 'RecordSignoff', title: 'Finalize technician visit record', assigneeId: technicianId }] : [],
         resolveExceptionTypes: completingDeferredEmergency ? ['EmergencyIntakeDeferred'] : [],
-        ...(!completingDeferredEmergency ? { handoff: {
+        ...(!completingDeferredEmergency && !isTechnicianVisit ? { handoff: {
           toUserId: visit.primaryVeterinarianId,
           toRole: 'VETERINARIAN',
           summary: visit.intake?.chiefComplaint ?? visit.reason,
         } } : {}),
+        prepare: async (tx) => {
+          await tx.visitIntake.upsert({
+            where: { visitId: id },
+            create: { visitId: id, completedAt: new Date() },
+            update: { completedAt: new Date() },
+          });
+          if (isTechnicianVisit) {
+            await this.records.ensureDraftForVisitTx(tx, id, organizationId, locationId, technicianId);
+          }
+        },
     });
   }
 
@@ -451,15 +465,6 @@ export class VisitsService {
       return visit;
     }
 
-    const completedAt = new Date();
-    await prisma.visitExamFindings.upsert({
-      where: { visitId: id },
-      create: { visitId: id, completedAt },
-      update: { completedAt },
-    });
-
-    await this.records.ensureDraftForVisit(id, organizationId, locationId, lastUpdatedById);
-
     return this.lifecycle.transition({
         visitId: id,
         organizationId,
@@ -474,6 +479,14 @@ export class VisitsService {
         createWorkItems: [
           { type: 'RecordSignoff', title: 'Finalize medical record', assigneeId: visit.primaryVeterinarianId ?? lastUpdatedById },
         ],
+        prepare: async (tx) => {
+          await tx.visitExamFindings.upsert({
+            where: { visitId: id },
+            create: { visitId: id, completedAt: new Date() },
+            update: { completedAt: new Date() },
+          });
+          await this.records.ensureDraftForVisitTx(tx, id, organizationId, locationId, lastUpdatedById);
+        },
     });
   }
 
@@ -517,6 +530,8 @@ export class VisitsService {
       where: { organizationId, locationId: visit.locationId, status: normalizedTarget, isEnabled: true },
     });
     if (!targetStep) throw new ConflictException(`The requested workflow step is not available at this location.`);
+    assertRoleCanMoveToPhase(actorRole, targetStep.lifecyclePhase);
+    assertWorkflowPhaseChangeAllowed(visit, targetStep.lifecyclePhase);
     const nextState = representativeStateForPhase(targetStep.lifecyclePhase, visit.state);
 
     return this.lifecycle.transition({
@@ -529,10 +544,48 @@ export class VisitsService {
       toState: nextState,
       toPhase: targetStep.lifecyclePhase,
       workflowStepId: targetStep.id,
-      currentOwnerId: lastUpdatedById,
+      currentOwnerId: ownerForPhase(visit, targetStep.lifecyclePhase, lastUpdatedById),
       nextAction: nextActionForState(nextState),
     });
   }
+}
+
+const PHASE_ORDER = ['Arrived', 'Intake', 'Exam', 'PlanAndApproval', 'CareInProgress', 'Discharge', 'RecordClosure', 'Closed'];
+
+function assertRoleCanMoveToPhase(role: UserRole, phase: string) {
+  if (role === 'OWNER') return;
+  const allowed: Partial<Record<UserRole, string[]>> = {
+    PRACTICE_MANAGER: ['Arrived', 'Intake', 'Discharge', 'RecordClosure'],
+    RECEPTIONIST: ['Arrived', 'Intake', 'Discharge', 'RecordClosure'],
+    VETERINARIAN: ['Exam', 'PlanAndApproval', 'CareInProgress', 'Discharge', 'RecordClosure'],
+    TECHNICIAN: ['Intake', 'CareInProgress', 'Discharge'],
+    ASSISTANT: ['Intake', 'CareInProgress', 'Discharge'],
+  };
+  if (!allowed[role]?.includes(phase)) {
+    throw new ConflictException(`Your role cannot move a visit into the ${phase} phase.`);
+  }
+}
+
+function assertWorkflowPhaseChangeAllowed(
+  visit: { phase: string; checkout: unknown | null; soapNotes: Array<{ status: string }> },
+  targetPhase: string,
+) {
+  const currentIndex = PHASE_ORDER.indexOf(visit.phase);
+  const targetIndex = PHASE_ORDER.indexOf(targetPhase);
+  const recordLocked = visit.soapNotes.some((note) => ['Locked', 'Amended'].includes(note.status));
+  if (targetIndex < currentIndex && (currentIndex >= PHASE_ORDER.indexOf('Discharge') || visit.checkout || recordLocked)) {
+    throw new ConflictException('This visit has reached discharge or record closure. Use an audited correction instead of moving it backward.');
+  }
+}
+
+function ownerForPhase(
+  visit: { primaryVeterinarianId: string | null; assignedTechnicianId: string | null },
+  phase: string,
+  actorId: string,
+) {
+  if (phase === 'Intake' || phase === 'Discharge') return visit.assignedTechnicianId ?? actorId;
+  if (['Exam', 'PlanAndApproval', 'CareInProgress', 'RecordClosure'].includes(phase)) return visit.primaryVeterinarianId ?? actorId;
+  return actorId;
 }
 
 function representativeStateForPhase(phase: string, current: VisitState): VisitState {

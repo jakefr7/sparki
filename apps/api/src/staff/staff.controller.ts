@@ -16,12 +16,12 @@ export class StaffController {
     @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(listStaffQuerySchema)) query: ListStaffQuery,
   ) {
-    return this.staff.list(user.organizationId, query);
+    return this.staff.list(user.organizationId, user.locationId, query);
   }
 
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.staff.findById(id, user.organizationId);
+    return this.staff.findById(id, user.organizationId, user.locationId);
   }
 
   @Put(':id/record-signoff-permission')

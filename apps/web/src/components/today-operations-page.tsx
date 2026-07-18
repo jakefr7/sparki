@@ -58,7 +58,7 @@ function StatusFilter({ statuses, selected, onChange }: { statuses: ConfiguredDa
   }, []);
   return <details ref={detailsRef} className="today-status-filter"><summary><span>{selected.size === 0 ? 'All statuses' : `${selected.size} status${selected.size === 1 ? '' : 'es'}`}</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary><div>
     <button type="button" className={selected.size === 0 ? 'today-status-filter__all today-status-filter__all--active' : 'today-status-filter__all'} onClick={() => onChange(new Set())}><span>All statuses</span><small>{selected.size === 0 ? 'Showing all' : 'Clear selection'}</small></button>
-    {statuses.map((status) => <label key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><input type="checkbox" checked={selected.has(status.status)} onChange={() => { const next = new Set(selected); next.has(status.status) ? next.delete(status.status) : next.add(status.status); onChange(next); }} /><span aria-hidden="true" />{status.name}</label>)}
+    {statuses.map((status) => <label key={status.status} style={{ '--configured-status': status.color } as CSSProperties}><input type="checkbox" checked={selected.has(status.status)} onChange={() => { const next = new Set(selected); if (next.has(status.status)) next.delete(status.status); else next.add(status.status); onChange(next); }} /><span aria-hidden="true" />{status.name}</label>)}
   </div></details>;
 }
 

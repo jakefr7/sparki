@@ -29,8 +29,7 @@ import {
 
 type SchedulerView = 'day' | 'week';
 
-export interface SchedulerAppointment extends DashboardAppointmentSummary {
-}
+export type SchedulerAppointment = DashboardAppointmentSummary;
 
 interface SelectedSlot {
   startsAt: Date;

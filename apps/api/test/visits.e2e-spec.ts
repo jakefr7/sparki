@@ -10,17 +10,7 @@ import {
   DEV_USER_ID,
 } from '../src/auth/development-user.service';
 
-// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
-// sourceSystem and must survive this file's shared-org cleanup — see that
-// script's header comment for why the data is protected and persistent.
-const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
-// `{ sourceSystem: { not: X } }` alone would exclude NULL rows too
-// (SQL three-valued logic), and this file's own fixtures have
-// sourceSystem = null — so the null branch below is required or this
-// filter silently matches nothing.
-const NOT_PROTECTED = {
-  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
-};
+const TEST_SOURCE_SYSTEM = 'sparki-visits-e2e';
 
 describe('Visits (e2e)', () => {
   let app: INestApplication;
@@ -45,7 +35,7 @@ describe('Visits (e2e)', () => {
     otherOrganizationId = otherOrganization.id;
 
     const primaryClient = await prisma.client.create({
-      data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Visit', lastName: 'Primary Owner' },
+      data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Visit', lastName: 'Primary Owner', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     primaryClientId = primaryClient.id;
 
@@ -54,50 +44,69 @@ describe('Visits (e2e)', () => {
         organizationId: DEV_ORGANIZATION_ID,
         firstName: 'Visit',
         lastName: 'Secondary Owner',
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     secondaryClientId = secondaryClient.id;
 
     const otherOrgClient = await prisma.client.create({
-      data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Owner' },
+      data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Owner', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     otherOrgClientId = otherOrgClient.id;
 
     const otherOrgPatient = await prisma.patient.create({
-      data: { organizationId: otherOrganizationId, name: 'Other Org Patient', species: 'Feline' },
+      data: { organizationId: otherOrganizationId, name: 'Other Org Patient', species: 'Feline', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     otherOrgPatientId = otherOrgPatient.id;
   });
 
   afterAll(async () => {
+    const testVisitIds = (await prisma.visit.findMany({
+      where: {
+        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+        patient: { sourceSystem: TEST_SOURCE_SYSTEM },
+      },
+      select: { id: true },
+    })).map((visit) => visit.id);
+    await prisma.soapNote.deleteMany({ where: { visitId: { in: testVisitIds } } });
     await prisma.visit.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        patient: NOT_PROTECTED,
+        patient: { sourceSystem: TEST_SOURCE_SYSTEM },
+      },
+    });
+    await prisma.medicalRecord.deleteMany({
+      where: {
+        patient: {
+          organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
+          sourceSystem: TEST_SOURCE_SYSTEM,
+        },
       },
     });
     await prisma.appointment.deleteMany({
       where: {
-        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        OR: [
+          { sourceSystem: TEST_SOURCE_SYSTEM },
+          { patient: { sourceSystem: TEST_SOURCE_SYSTEM } },
+        ],
       },
     });
     await prisma.patientClient.deleteMany({
       where: {
         client: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
-        patient: NOT_PROTECTED,
+        patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
     });
     await prisma.patient.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     await prisma.client.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     await prisma.location.deleteMany({ where: { organizationId: otherOrganizationId } });
@@ -111,6 +120,7 @@ describe('Visits (e2e)', () => {
         organizationId: DEV_ORGANIZATION_ID,
         name,
         species: 'Canine',
+        sourceSystem: TEST_SOURCE_SYSTEM,
         clients: {
           create: clientIds.map((clientId, index) => ({ clientId, isPrimary: index === 0 })),
         },
@@ -156,6 +166,7 @@ describe('Visits (e2e)', () => {
         source: 'Phone',
         state: overrides.state ?? 'Arrived',
         scheduledAt: new Date('2027-01-15T15:00:00.000Z'),
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     return appointment;
@@ -254,6 +265,7 @@ describe('Visits (e2e)', () => {
           source: 'Phone',
           state: 'Arrived',
           scheduledAt: new Date('2027-01-15T15:00:00.000Z'),
+          sourceSystem: TEST_SOURCE_SYSTEM,
         },
       });
 
@@ -317,6 +329,7 @@ describe('Visits (e2e)', () => {
           source: 'Phone',
           state: 'Scheduled',
           scheduledAt: new Date('2027-01-15T15:00:00.000Z'),
+          sourceSystem: TEST_SOURCE_SYSTEM,
         },
       });
 
@@ -331,40 +344,38 @@ describe('Visits (e2e)', () => {
   describe('POST /visits — full Appointment transition integration', () => {
     it('creates a Visit only after the appointment is actually confirmed and marked arrived through the real endpoints', async () => {
       const patientId = await createPatient('Full Transition Flow Patient');
-      const created = await request(app.getHttpServer()).post('/appointments').send({
-        patientId,
-        appointmentType: 'SickVisit',
-        visitReason: 'Ear infection',
-        startTime: '2027-02-01T15:00:00.000Z',
-      });
-      expect(created.body.state).toBe('Scheduled');
+      // Appointment booking/availability has its own integration suite. This
+      // fixture starts Scheduled so this case can isolate the real
+      // confirm -> arrive -> Visit creation transition chain.
+      const created = await createAppointment(patientId, { state: 'Scheduled', reason: 'Ear infection' });
+      expect(created.state).toBe('Scheduled');
 
       // Not arrived yet — Visit creation must still be rejected.
       const tooEarly = await request(app.getHttpServer())
         .post('/visits')
-        .send({ appointmentId: created.body.id });
+        .send({ appointmentId: created.id });
       expect(tooEarly.status).toBe(409);
 
       const confirmed = await request(app.getHttpServer()).post(
-        `/appointments/${created.body.id}/confirm`,
+        `/appointments/${created.id}/confirm`,
       );
       expect(confirmed.status).toBe(201);
       expect(confirmed.body.state).toBe('Confirmed');
 
       const arrived = await request(app.getHttpServer()).post(
-        `/appointments/${created.body.id}/arrive`,
+        `/appointments/${created.id}/arrive`,
       );
       expect(arrived.status).toBe(201);
       expect(arrived.body.state).toBe('Arrived');
 
       const visit = await request(app.getHttpServer())
         .post('/visits')
-        .send({ appointmentId: created.body.id });
+        .send({ appointmentId: created.id });
 
       expect(visit.status).toBe(201);
       expect(visit.body).toMatchObject({
         patientId,
-        appointmentId: created.body.id,
+        appointmentId: created.id,
         state: 'Arrived',
       });
       expect(visit.body.appointment.state).toBe('VisitCreated');
@@ -372,7 +383,7 @@ describe('Visits (e2e)', () => {
       // Once linked, the appointment can no longer start a second Visit.
       const secondAttempt = await request(app.getHttpServer())
         .post('/visits')
-        .send({ appointmentId: created.body.id });
+        .send({ appointmentId: created.id });
       expect(secondAttempt.status).toBe(409);
     });
   });
@@ -429,7 +440,7 @@ describe('Visits (e2e)', () => {
 
     it('creates a Visit with no client when the patient has none on file', async () => {
       const patient = await prisma.patient.create({
-        data: { organizationId: DEV_ORGANIZATION_ID, name: 'No Client Patient', species: 'Feline' },
+        data: { organizationId: DEV_ORGANIZATION_ID, name: 'No Client Patient', species: 'Feline', sourceSystem: TEST_SOURCE_SYSTEM },
       });
 
       const response = await request(app.getHttpServer())
@@ -848,7 +859,17 @@ describe('Visits (e2e)', () => {
 
       await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
         chiefComplaint: 'Ear shaking',
+        historyNotes: 'Intermittent for two days',
+        weight: 42,
         temperature: 102,
+        heartRate: 90,
+        respiratoryRate: 24,
+        crtSeconds: 1.5,
+        gumColor: 'Pink',
+        attitude: 'BAR',
+        appearance: 'Normal',
+        allergies: 'None known',
+        currentMedications: 'None',
       });
 
       const response = await request(app.getHttpServer()).post(
@@ -1045,7 +1066,7 @@ describe('Visits (e2e)', () => {
       expect(response.status).toBe(201);
       expect(response.body).toMatchObject({
         id: visit.id,
-        state: 'TreatmentPending',
+        state: 'PlanDrafted',
         lastUpdatedById: DEV_USER_ID,
         examFindings: {
           subjective: 'Coughing, decreased appetite.',
@@ -1058,7 +1079,7 @@ describe('Visits (e2e)', () => {
       const updatedFindings = await prisma.visitExamFindings.findUniqueOrThrow({
         where: { visitId: visit.id },
       });
-      expect(updatedVisit.state).toBe('TreatmentPending');
+      expect(updatedVisit.state).toBe('PlanDrafted');
       expect(updatedFindings.completedAt).toBeInstanceOf(Date);
     });
 
@@ -1104,6 +1125,178 @@ describe('Visits (e2e)', () => {
         .send({ subjective: 'Should not save' });
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('Visit lifecycle hardening', () => {
+    it('lets an assigned technician complete and finalize a technician appointment without a veterinarian exam', async () => {
+      const patientId = await createPatient('Technician Lifecycle Patient');
+      const visit = await prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'TechnicianAppointment',
+          reason: 'Nail trim',
+          state: 'IntakeInProgress',
+          phase: 'Intake',
+          assignedTechnicianId: DEV_USER_ID,
+        },
+      });
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+        chiefComplaint: 'Nail trim',
+        historyNotes: 'No material changes',
+        weight: 20,
+        temperature: 101,
+        heartRate: 88,
+        respiratoryRate: 22,
+        crtSeconds: 1.5,
+        gumColor: 'Pink',
+        attitude: 'BAR',
+        appearance: 'Normal',
+        allergies: 'None known',
+        currentMedications: 'None',
+      });
+
+      const completed = await request(app.getHttpServer()).post(`/visits/${visit.id}/intake/complete`);
+      expect(completed.status).toBe(201);
+      expect(completed.body).toMatchObject({ state: 'TreatmentPending', phase: 'CareInProgress', assignedTechnicianId: DEV_USER_ID });
+      expect(completed.body.soapNotes[0]).toMatchObject({ status: 'Draft' });
+
+      const draft = completed.body.soapNotes[0] as { version: number };
+      const saved = await request(app.getHttpServer()).put(`/visits/${visit.id}/record/draft`).send({
+        version: draft.version,
+        subjective: 'Patient presented for nail trim.',
+        objective: 'Nails overgrown; patient BAR.',
+        assessment: 'Routine technician care appropriate.',
+        plan: 'Nails trimmed; monitor normally.',
+      });
+      expect(saved.status).toBe(200);
+
+      const finalized = await request(app.getHttpServer()).post(`/visits/${visit.id}/record/finalize`);
+      expect(finalized.status).toBe(201);
+      expect(finalized.body).toMatchObject({ status: 'Locked', veterinarianId: DEV_USER_ID });
+      const persistedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      expect(persistedVisit).toMatchObject({ state: 'RecordComplete', phase: 'RecordClosure' });
+    });
+
+    it('audits clinical work and requires documented medication stock reconciliation after reversal', async () => {
+      const patientId = await createPatient('Medication Reversal Patient');
+      const visit = await prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'WalkIn',
+          reason: 'Medication workflow',
+          state: 'PlanDrafted',
+          phase: 'PlanAndApproval',
+          primaryVeterinarianId: DEV_USER_ID,
+        },
+      });
+
+      const created = await request(app.getHttpServer()).post(`/visits/${visit.id}/work-items`).send({
+        type: 'Medication',
+        title: 'Dispense antibiotic',
+      });
+      expect(created.status).toBe(201);
+
+      const completed = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({ status: 'Completed' });
+      expect(completed.status).toBe(200);
+      const undocumentedReversal = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({ status: 'Pending' });
+      expect(undocumentedReversal.status).toBe(409);
+
+      const reversed = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({
+        status: 'Pending',
+        reason: 'Owner declined medication after it was prepared',
+      });
+      expect(reversed.status).toBe(200);
+      expect(reversed.body.result).toMatchObject({ requiresInventoryReconciliation: true });
+
+      const undocumentedReconciliation = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({ status: 'Completed' });
+      expect(undocumentedReconciliation.status).toBe(409);
+      const reconciled = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({
+        status: 'Completed',
+        reason: 'Returned sealed medication to available stock',
+      });
+      expect(reconciled.status).toBe(200);
+      expect(reconciled.body.result).toMatchObject({ requiresInventoryReconciliation: false });
+      expect(await prisma.visitWorkItemChange.count({ where: { workItemId: created.body.id } })).toBe(4);
+    });
+
+    it('enforces care completion through discharge, locks the record, preserves amendments, and keeps follow-up actionable', async () => {
+      const patientId = await createPatient('Full Closure Patient');
+      const visit = await prisma.visit.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          patientId,
+          clientId: primaryClientId,
+          visitType: 'WalkIn',
+          reason: 'Full closure workflow',
+          state: 'VeterinarianExamInProgress',
+          phase: 'Exam',
+          primaryVeterinarianId: DEV_USER_ID,
+          intake: { create: { chiefComplaint: 'Cough', completedAt: new Date() } },
+          examFindings: { create: { subjective: 'Cough', objective: 'Stable', assessment: 'URI', plan: 'Medication' } },
+        },
+      });
+      const examComplete = await request(app.getHttpServer()).post(`/visits/${visit.id}/exam/complete`);
+      expect(examComplete.status).toBe(201);
+      const draft = examComplete.body.soapNotes[0] as { version: number };
+
+      const care = await request(app.getHttpServer()).post(`/visits/${visit.id}/work-items`).send({ type: 'Treatment', title: 'Administer first dose' });
+      expect(care.status).toBe(201);
+      const blockedDischarge = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({ instructions: 'Rest', followUpRequired: false });
+      expect(blockedDischarge.status).toBe(409);
+      expect((blockedDischarge.body.message as string)).toContain('Administer first dose');
+      const deferred = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${care.body.id}`).send({ status: 'Deferred', reason: 'Owner will administer at home tonight' });
+      expect(deferred.status).toBe(200);
+
+      const discharge = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({
+        instructions: 'Rest and monitor breathing.',
+        followUpRequired: true,
+        followUpPlan: 'Reception to call tomorrow morning.',
+      });
+      expect(discharge.status).toBe(200);
+      const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceStatus: 'Paid' });
+      expect(checkout.status).toBe(201);
+      expect(checkout.body).toMatchObject({ state: 'RecordCompletionPending', phase: 'RecordClosure' });
+
+      const saved = await request(app.getHttpServer()).put(`/visits/${visit.id}/record/draft`).send({
+        version: draft.version,
+        subjective: 'Owner reports coughing.',
+        objective: 'Patient stable with mild upper airway signs.',
+        assessment: 'Suspected uncomplicated URI.',
+        plan: 'Supportive care and home monitoring.',
+      });
+      expect(saved.status).toBe(200);
+      const finalized = await request(app.getHttpServer()).post(`/visits/${visit.id}/record/finalize`);
+      expect(finalized.status).toBe(201);
+      const closedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
+      expect(closedVisit).toMatchObject({ state: 'Archived', phase: 'Closed', workflowStepId: null });
+
+      const original = await prisma.soapNote.findUniqueOrThrow({ where: { id: finalized.body.id } });
+      const amendment = await request(app.getHttpServer()).post(`/visits/${visit.id}/record/amend`).send({
+        reason: 'Clarified owner-reported timing after callback',
+        subjective: 'Owner reports coughing began two days before the visit.',
+        objective: original.objective,
+        assessment: original.assessment,
+        plan: original.plan,
+      });
+      expect(amendment.status).toBe(201);
+      expect(amendment.body).toMatchObject({ status: 'Amended', amendsSoapNoteId: original.id });
+      expect(await prisma.soapNote.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({
+        subjective: original.subjective,
+        contentHash: original.contentHash,
+        status: 'Locked',
+      });
+
+      const followUp = await prisma.visitWorkItem.findFirstOrThrow({ where: { visitId: visit.id, type: 'FollowUp' } });
+      const completedFollowUp = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${followUp.id}`).send({ status: 'Completed' });
+      expect(completedFollowUp.status).toBe(200);
     });
   });
 });

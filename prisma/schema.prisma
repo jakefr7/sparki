@@ -77,7 +77,6 @@ model Organization {
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
   visitHandoffs                VisitHandoff[]
-  visitRecordSignoffDelegates  VisitRecordSignoffDelegate[]
 
   memberships    OrganizationMembership[]
   locationAccess ClinicLocationAccess[]
@@ -108,7 +107,6 @@ model Location {
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
   visitHandoffs                VisitHandoff[]
-  visitRecordSignoffDelegates  VisitRecordSignoffDelegate[]
 
   // Location-level policy: clinics may allow operational checkout while an
   // invoice balance remains open. The balance itself stays visible work.
@@ -192,6 +190,7 @@ model User {
   visitTransitions          VisitTransition[]            @relation("VisitTransitionActor")
   assignedVisitWorkItems    VisitWorkItem[]              @relation("VisitWorkItemAssignee")
   completedVisitWorkItems   VisitWorkItem[]              @relation("VisitWorkItemCompletedBy")
+  visitWorkItemChanges     VisitWorkItemChange[]        @relation("VisitWorkItemChangeActor")
   createdVisitExceptions    VisitException[]             @relation("VisitExceptionCreatedBy")
   ownedVisitExceptions      VisitException[]             @relation("VisitExceptionOwner")
   resolvedVisitExceptions   VisitException[]             @relation("VisitExceptionResolvedBy")
@@ -1232,6 +1231,7 @@ model Visit {
   checkout            VisitCheckout?
   workflowStep        DashboardStatusColorSetting? @relation("VisitWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
   workflowStepId      String?
+  workItemChanges     VisitWorkItemChange[]
 
   @@index([organizationId])
   @@index([patientId])
@@ -1326,10 +1326,30 @@ model VisitWorkItem {
   visit        Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
   assignee     User?        @relation("VisitWorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   completedBy  User?        @relation("VisitWorkItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  changes      VisitWorkItemChange[]
 
   @@index([visitId, status])
   @@index([organizationId, locationId, assigneeId, status])
   @@index([organizationId, locationId, assigneeRole, status])
+}
+
+model VisitWorkItemChange {
+  id          String              @id @default(cuid())
+  workItemId  String
+  visitId     String
+  actorId     String
+  fromStatus  VisitWorkItemStatus?
+  toStatus    VisitWorkItemStatus
+  reason      String?
+  metadata    Json?
+  createdAt   DateTime            @default(now())
+
+  workItem VisitWorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  visit    Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  actor    User          @relation("VisitWorkItemChangeActor", fields: [actorId], references: [id])
+
+  @@index([workItemId, createdAt])
+  @@index([visitId, createdAt])
 }
 
 model VisitException {
@@ -1396,10 +1416,6 @@ model VisitRecordSignoffDelegate {
   visit          Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
   delegate       User          @relation("VisitSignoffDelegate", fields: [delegateId], references: [id], onDelete: Cascade)
   assignedBy     User          @relation("VisitSignoffAssignedBy", fields: [assignedById], references: [id])
-  Organization   Organization? @relation(fields: [organizationId], references: [id])
-  organizationId String?
-  Location       Location?     @relation(fields: [locationId], references: [id])
-  locationId     String?
 
   @@id([visitId, delegateId])
   @@index([delegateId])

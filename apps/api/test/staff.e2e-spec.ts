@@ -4,7 +4,7 @@ import { prisma } from '@sparki/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
-import { DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
+import { DEV_LOCATION_ID, DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
 
 describe('Staff (e2e)', () => {
   let app: INestApplication;
@@ -53,6 +53,15 @@ describe('Staff (e2e)', () => {
     });
     technicianId = technician.id;
 
+    await prisma.clinicLocationAccess.createMany({
+      data: [veterinarianId, technicianId].map((userId) => ({
+        organizationId: DEV_ORGANIZATION_ID,
+        clinicLocationId: DEV_LOCATION_ID,
+        userId,
+        role: userId === veterinarianId ? 'VETERINARIAN' : 'TECHNICIAN',
+      })),
+    });
+
     const otherOrganizationUser = await prisma.user.create({
       data: {
         organizationId: otherOrganizationId,
@@ -68,6 +77,7 @@ describe('Staff (e2e)', () => {
   afterAll(async () => {
     const createdUserIds = [veterinarianId, technicianId, otherOrganizationUserId].filter(Boolean);
     await prisma.staffProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
+    await prisma.clinicLocationAccess.deleteMany({ where: { userId: { in: createdUserIds } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();

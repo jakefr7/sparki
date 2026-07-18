@@ -6,6 +6,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const upstream = await proxyFetch(request, new URL(`/staff/${id}/record-signoff-permission`, env.API_URL), {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: await request.text(),
   });
   return relayJson(upstream);

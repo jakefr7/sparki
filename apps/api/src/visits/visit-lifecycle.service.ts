@@ -42,6 +42,7 @@ export interface VisitTransitionCommand {
   source?: VisitTransitionSource;
   requestId?: string;
   currentOwnerId?: string | null;
+  assignedTechnicianId?: string | null;
   nextAction?: string | null;
   timestamps?: Partial<Pick<
     Prisma.VisitUpdateInput,
@@ -71,6 +72,9 @@ export interface VisitTransitionCommand {
   };
   resolveExceptionTypes?: string[];
   workflowStepId?: string | null;
+  /** Writes that must succeed or roll back with the transition. The callback
+   * runs after the optimistic state check and before policy evaluation. */
+  prepare?: (tx: Prisma.TransactionClient) => Promise<void>;
 }
 
 @Injectable()
@@ -83,7 +87,14 @@ export class VisitLifecycleService {
           organizationId: command.organizationId,
           locationId: command.locationId,
         },
-        include: { intake: true, examFindings: true, discharge: true, checkout: true },
+        include: {
+          intake: true,
+          examFindings: true,
+          discharge: true,
+          checkout: true,
+          workItems: { where: { type: { in: ['Diagnostic', 'Estimate', 'ClientApproval', 'Treatment', 'Medication', 'ClientCommunication'] }, status: { in: ['Pending', 'InProgress'] } } },
+          exceptions: { where: { resolvedAt: null, severity: 'Critical' } },
+        },
       });
       if (!visit) throw new NotFoundException(`Visit ${command.visitId} not found`);
       if (!command.expectedStates.includes(visit.state)) {
@@ -92,7 +103,22 @@ export class VisitLifecycleService {
         );
       }
 
-      assertVisitTransitionRequirements(visit, command.toState);
+      if (command.prepare) await command.prepare(tx);
+      const policyVisit = command.prepare
+        ? await tx.visit.findUniqueOrThrow({
+            where: { id: visit.id },
+            include: {
+              intake: true,
+              examFindings: true,
+              discharge: true,
+              checkout: true,
+              workItems: { where: { type: { in: ['Diagnostic', 'Estimate', 'ClientApproval', 'Treatment', 'Medication', 'ClientCommunication'] }, status: { in: ['Pending', 'InProgress'] } } },
+              exceptions: { where: { resolvedAt: null, severity: 'Critical' } },
+            },
+          })
+        : visit;
+
+      assertVisitTransitionRequirements(policyVisit, command.toState);
 
       const workflowStepId = command.workflowStepId !== undefined
         ? command.workflowStepId
@@ -112,6 +138,7 @@ export class VisitLifecycleService {
           version: { increment: 1 },
           lastUpdatedById: command.actorId,
           ...(command.currentOwnerId !== undefined ? { currentOwnerId: command.currentOwnerId } : {}),
+          ...(command.assignedTechnicianId !== undefined ? { assignedTechnicianId: command.assignedTechnicianId } : {}),
           ...(command.nextAction !== undefined ? { nextAction: command.nextAction } : {}),
           workflowStepId,
           ...(command.timestamps ?? {}),
@@ -139,6 +166,14 @@ export class VisitLifecycleService {
       });
 
       if (command.completeWorkItemTypes?.length) {
+        const completingItems = await tx.visitWorkItem.findMany({
+          where: {
+            visitId: visit.id,
+            type: { in: command.completeWorkItemTypes },
+            status: { in: ['Pending', 'InProgress'] },
+          },
+          select: { id: true, status: true },
+        });
         await tx.visitWorkItem.updateMany({
           where: {
             visitId: visit.id,
@@ -147,6 +182,18 @@ export class VisitLifecycleService {
           },
           data: { status: 'Completed', completedAt: new Date(), completedById: command.actorId },
         });
+        for (const item of completingItems) {
+          await tx.visitWorkItemChange.create({
+            data: {
+              workItemId: item.id,
+              visitId: visit.id,
+              actorId: command.actorId,
+              fromStatus: item.status,
+              toStatus: 'Completed',
+              reason: command.reason?.trim() || 'Completed by visit workflow action',
+            },
+          });
+        }
       }
 
       for (const item of command.createWorkItems ?? []) {
@@ -154,7 +201,7 @@ export class VisitLifecycleService {
           where: { visitId: visit.id, type: item.type, status: { in: ['Pending', 'InProgress'] } },
         });
         if (!existing) {
-          await tx.visitWorkItem.create({
+          const created = await tx.visitWorkItem.create({
             data: {
               organizationId: command.organizationId,
               locationId: command.locationId,
@@ -164,6 +211,15 @@ export class VisitLifecycleService {
               assigneeId: item.assigneeId ?? null,
               assigneeRole: item.assigneeRole ?? null,
               dueAt: item.dueAt ?? null,
+            },
+          });
+          await tx.visitWorkItemChange.create({
+            data: {
+              workItemId: created.id,
+              visitId: visit.id,
+              actorId: command.actorId,
+              toStatus: 'Pending',
+              reason: 'Created by visit workflow action',
             },
           });
         }
@@ -222,7 +278,7 @@ export class VisitLifecycleService {
 
 }
 
-async function resolveWorkflowStepId(
+export async function resolveWorkflowStepId(
   tx: Prisma.TransactionClient,
   organizationId: string,
   locationId: string,
@@ -250,6 +306,8 @@ export function assertVisitTransitionRequirements(
     examFindings: { completedAt: Date | null } | null;
     discharge?: unknown | null;
     checkout?: unknown | null;
+    workItems?: Array<{ title: string }>;
+    exceptions?: Array<{ type: string }>;
   },
   target: VisitState,
 ) {
@@ -266,6 +324,12 @@ export function assertVisitTransitionRequirements(
     if (!visit.intake?.completedAt) throw new ConflictException('Complete intake before moving to discharge.');
     if (visit.visitType !== 'TechnicianAppointment' && !visit.examFindings?.completedAt) {
       throw new ConflictException('Complete the veterinarian exam before moving to discharge.');
+    }
+    if (visit.exceptions?.length) {
+      throw new ConflictException('Resolve critical visit exceptions before moving to discharge.');
+    }
+    if (visit.workItems?.length) {
+      throw new ConflictException(`Complete or defer required care before moving to discharge: ${visit.workItems.map((item) => item.title).join(', ')}.`);
     }
   }
   if (target === 'RecordCompletionPending' && (!visit.discharge || !visit.checkout)) {

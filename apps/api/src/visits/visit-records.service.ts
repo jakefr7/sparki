@@ -1,14 +1,24 @@
 import { createHash } from 'node:crypto';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { prisma, type UserRole } from '@sparki/db';
+import { prisma, type Prisma, type UserRole } from '@sparki/db';
 import type { AmendVisitRecordInput, SaveVisitRecordDraftInput } from './dto/visit-record.schema';
+import { resolveWorkflowStepId } from './visit-lifecycle.service';
 
 const OPEN_RECORD_STATUSES = ['Draft', 'ReadyForReview'] as const;
 
 @Injectable()
 export class VisitRecordsService {
   async ensureDraftForVisit(visitId: string, organizationId: string, locationId: string, authorId: string) {
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction((tx) => this.ensureDraftForVisitTx(tx, visitId, organizationId, locationId, authorId));
+  }
+
+  async ensureDraftForVisitTx(
+    tx: Prisma.TransactionClient,
+    visitId: string,
+    organizationId: string,
+    locationId: string,
+    authorId: string,
+  ) {
       const visit = await tx.visit.findFirst({
         where: { id: visitId, organizationId, locationId },
         include: { examFindings: true },
@@ -39,7 +49,6 @@ export class VisitRecordsService {
           status: 'Draft',
         },
       });
-    });
   }
 
   async listOpenForUser(organizationId: string, locationId: string, userId: string) {
@@ -103,6 +112,7 @@ export class VisitRecordsService {
   ) {
     const visit = await prisma.visit.findFirst({ where: { id: visitId, organizationId, locationId } });
     if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
+    if (visit.closedAt) throw new ConflictException('This visit is closed and its signoff assignment cannot be changed.');
     if (visit.primaryVeterinarianId !== assignedById && !['OWNER', 'PRACTICE_MANAGER'].includes(assignedByRole)) {
       throw new ForbiddenException('Only the assigned veterinarian or clinic management can delegate record signoff.');
     }
@@ -118,11 +128,29 @@ export class VisitRecordsService {
       },
     });
     if (!delegate) throw new ConflictException('That user is not authorized to finalize records for another doctor.');
-    return prisma.visitRecordSignoffDelegate.upsert({
-      where: { visitId_delegateId: { visitId, delegateId } },
-      create: { visitId, delegateId, assignedById },
-      update: { assignedById, assignedAt: new Date() },
-      include: { delegate: true },
+    return prisma.$transaction(async (tx) => {
+      await tx.visitRecordSignoffDelegate.deleteMany({ where: { visitId, delegateId: { not: delegateId } } });
+      const assignment = await tx.visitRecordSignoffDelegate.upsert({
+        where: { visitId_delegateId: { visitId, delegateId } },
+        create: { visitId, delegateId, assignedById },
+        update: { assignedById, assignedAt: new Date() },
+        include: { delegate: true },
+      });
+      await tx.visitTransition.create({
+        data: {
+          organizationId,
+          locationId,
+          visitId,
+          actorId: assignedById,
+          fromPhase: visit.phase,
+          toPhase: visit.phase,
+          fromState: visit.state,
+          toState: visit.state,
+          reason: 'Record signoff delegate assigned',
+          metadata: { delegateId },
+        },
+      });
+      return assignment;
     });
   }
 
@@ -139,7 +167,8 @@ export class VisitRecordsService {
     if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
     const signer = await prisma.user.findFirst({ where: { id: signerId, organizationId, isActive: true } });
     const delegated = visit.signoffDelegates.some((entry) => entry.delegateId === signerId);
-    if (!signer || (visit.primaryVeterinarianId !== signerId && !(delegated && signer.canFinalizeRecordsForOthers))) {
+    const assignedTechnicianMaySign = visit.visitType === 'TechnicianAppointment' && visit.assignedTechnicianId === signerId;
+    if (!signer || (visit.primaryVeterinarianId !== signerId && !assignedTechnicianMaySign && !(delegated && signer.canFinalizeRecordsForOthers))) {
       throw new ForbiddenException('You are not assigned or delegated to finalize this medical record.');
     }
     const note = visit.soapNotes.find((entry) => OPEN_RECORD_STATUSES.includes(entry.status as (typeof OPEN_RECORD_STATUSES)[number]));
@@ -168,17 +197,24 @@ export class VisitRecordsService {
         where: { visitId, type: 'RecordSignoff', status: { in: ['Pending', 'InProgress'] } },
         data: { status: 'Completed', completedById: signerId, completedAt: now },
       });
-      await tx.visit.update({
-        where: { id: visitId },
+      const workflowStepId = canClose
+        ? null
+        : await resolveWorkflowStepId(tx, organizationId, locationId, nextState, nextPhase);
+      const visitChanged = await tx.visit.updateMany({
+        where: { id: visitId, organizationId, locationId, version: visit.version, state: visit.state },
         data: {
           state: nextState,
           phase: nextPhase,
           nextAction: canClose ? null : visit.checkout?.balanceStatus === 'Outstanding' ? 'Resolve outstanding balance' : 'Complete checkout',
           ...(canClose ? { closedAt: now, archivedAt: now } : {}),
           lastUpdatedById: signerId,
+          workflowStepId,
           version: { increment: 1 },
         },
       });
+      if (visitChanged.count !== 1) {
+        throw new ConflictException('This visit changed elsewhere. Refresh before finalizing.');
+      }
       await tx.visitTransition.create({
         data: {
           organizationId,
@@ -210,7 +246,8 @@ export class VisitRecordsService {
     });
     if (!visit?.soapNotes[0]) throw new NotFoundException('Finalized medical record not found.');
     const original = visit.soapNotes[0];
-    if (visit.primaryVeterinarianId !== userId && original.veterinarianId !== userId) {
+    const assignedTechnicianMayAmend = visit.visitType === 'TechnicianAppointment' && visit.assignedTechnicianId === userId;
+    if (visit.primaryVeterinarianId !== userId && original.veterinarianId !== userId && !assignedTechnicianMayAmend) {
       throw new ForbiddenException('Only a responsible veterinarian may amend this record.');
     }
     return prisma.soapNote.create({
@@ -242,12 +279,15 @@ export class VisitRecordsService {
     const visit = await prisma.visit.findFirst({
       where: { id: visitId, organizationId, locationId },
       select: {
+        visitType: true,
         primaryVeterinarianId: true,
+        assignedTechnicianId: true,
         signoffDelegates: { where: { delegateId: userId }, select: { delegateId: true } },
       },
     });
     if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
-    if (visit.primaryVeterinarianId !== userId && visit.signoffDelegates.length === 0) {
+    const assignedTechnicianMayEdit = visit.visitType === 'TechnicianAppointment' && visit.assignedTechnicianId === userId;
+    if (visit.primaryVeterinarianId !== userId && !assignedTechnicianMayEdit && visit.signoffDelegates.length === 0) {
       throw new ForbiddenException('Only the assigned veterinarian or an authorized delegate may edit this record.');
     }
   }

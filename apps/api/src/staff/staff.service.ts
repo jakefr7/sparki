@@ -23,7 +23,7 @@ type StaffWithProfile = Prisma.UserGetPayload<typeof staffWithProfile>;
 
 @Injectable()
 export class StaffService {
-  async list(organizationId: string, query: ListStaffQuery) {
+  async list(organizationId: string, locationId: string, query: ListStaffQuery) {
     const roles = query.role
       ? query.role.filter((role) => STAFF_ROLES.includes(role))
       : STAFF_ROLES;
@@ -33,6 +33,9 @@ export class StaffService {
         organizationId,
         isActive: true,
         role: { in: roles },
+        clinicLocationAccess: {
+          some: { organizationId, clinicLocationId: locationId, isActive: true },
+        },
         ...(query.canReceiveAppointments !== undefined
           ? { staffProfile: { canReceiveAppointments: query.canReceiveAppointments } }
           : {}),
@@ -47,9 +50,14 @@ export class StaffService {
     return staff.map(toStaffSummary);
   }
 
-  async findById(id: string, organizationId: string) {
+  async findById(id: string, organizationId: string, locationId: string) {
     const staff = await prisma.user.findFirst({
-      where: { id, organizationId, role: { in: STAFF_ROLES } },
+      where: {
+        id,
+        organizationId,
+        role: { in: STAFF_ROLES },
+        clinicLocationAccess: { some: { organizationId, clinicLocationId: locationId, isActive: true } },
+      },
       ...staffWithProfile,
     });
     if (!staff) {

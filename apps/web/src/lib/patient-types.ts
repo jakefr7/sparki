@@ -427,6 +427,7 @@ export interface VisitDetail {
     signedAt: string | null;
     lockedAt: string | null;
     amendmentReason: string | null;
+    veterinarianId: string | null;
   }>;
   signoffDelegates: Array<{
     delegateId: string;
@@ -437,6 +438,16 @@ export interface VisitDetail {
       lastName: string;
       role: string;
     };
+  }>;
+  workItems: Array<{
+    id: string;
+    type: string;
+    status: string;
+    title: string;
+    assigneeId: string | null;
+    assigneeRole: string | null;
+    result: Record<string, unknown> | null;
+    completedAt: string | null;
   }>;
   discharge: {
     instructions: string;

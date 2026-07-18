@@ -10,18 +10,6 @@ import {
   DEV_USER_ID,
 } from '../src/auth/development-user.service';
 
-// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
-// sourceSystem and must survive this file's shared-org cleanup — see that
-// script's header comment for why the data is protected and persistent.
-const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
-// `{ sourceSystem: { not: X } }` alone would exclude NULL rows too
-// (SQL three-valued logic), and this file's own fixtures have
-// sourceSystem = null — so the null branch below is required or this
-// filter silently matches nothing.
-const NOT_PROTECTED = {
-  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
-};
-
 describe('Appointments (e2e)', () => {
   let app: INestApplication;
   let otherOrganizationId: string;
@@ -29,6 +17,9 @@ describe('Appointments (e2e)', () => {
   let secondaryClientId: string;
   let otherOrgClientId: string;
   let patientId: string;
+  let wellnessAppointmentTypeId: string;
+  const availabilityBlockIds: string[] = [];
+  const addedProviderAssignmentIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -38,6 +29,64 @@ describe('Appointments (e2e)', () => {
     // Any authenticated request lazily seeds the dev identity under
     // DEV_ORGANIZATION_ID; do it here so fixtures below can reference it.
     await request(app.getHttpServer()).get(`/patients/${DEV_ORGANIZATION_ID}`);
+
+    // Appointment creation now validates against the clinic's configured
+    // providers and schedule blocks. Give this suite deterministic, isolated
+    // availability instead of depending on whichever local demo schedule is
+    // present in the shared development database.
+    const appointmentTypes = await prisma.appointmentTypeSetting.findMany({
+      where: {
+        organizationId: DEV_ORGANIZATION_ID,
+        locationId: DEV_LOCATION_ID,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        appointmentType: true,
+        defaultDurationMinutes: true,
+        providers: { where: { providerId: DEV_USER_ID }, select: { providerId: true } },
+      },
+    });
+    const wellnessType = appointmentTypes.find(
+      (setting) =>
+        setting.appointmentType === 'WellnessPreventiveCare' &&
+        setting.defaultDurationMinutes === 30,
+    ) ?? appointmentTypes.find((setting) => setting.appointmentType === 'WellnessPreventiveCare');
+    if (!wellnessType) throw new Error('Appointments E2E requires an active wellness appointment type.');
+    wellnessAppointmentTypeId = wellnessType.id;
+    for (const appointmentType of appointmentTypes) {
+      if (appointmentType.providers.length === 0) {
+        await prisma.appointmentTypeProvider.create({
+          data: {
+            appointmentTypeId: appointmentType.id,
+            providerId: DEV_USER_ID,
+            organizationId: DEV_ORGANIZATION_ID,
+          },
+        });
+        addedProviderAssignmentIds.push(appointmentType.id);
+      }
+    }
+    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek += 1) {
+      const block = await prisma.schedulerSlotTemplate.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: DEV_LOCATION_ID,
+          dayOfWeek,
+          startTime: '00:00',
+          endTime: '23:59',
+          label: 'Appointments E2E availability',
+          color: '#0F766E',
+          staffId: DEV_USER_ID,
+          isGeneralAvailability: false,
+          appointmentTypes: {
+            create: appointmentTypes.map((appointmentType) => ({
+              appointmentTypeId: appointmentType.id,
+            })),
+          },
+        },
+      });
+      availabilityBlockIds.push(block.id);
+    }
 
     const otherOrganization = await prisma.organization.create({
       data: { name: 'Appointments E2E Org (other)' },
@@ -82,8 +131,14 @@ describe('Appointments (e2e)', () => {
   afterAll(async () => {
     await prisma.appointment.deleteMany({
       where: {
-        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        OR: [{ patientId }, { organizationId: otherOrganizationId }],
+      },
+    });
+    await prisma.schedulerSlotTemplate.deleteMany({ where: { id: { in: availabilityBlockIds } } });
+    await prisma.appointmentTypeProvider.deleteMany({
+      where: {
+        providerId: DEV_USER_ID,
+        appointmentTypeId: { in: addedProviderAssignmentIds },
       },
     });
     await prisma.patientClient.deleteMany({ where: { patientId } });
@@ -148,7 +203,7 @@ describe('Appointments (e2e)', () => {
         source: 'Phone',
         state: 'Scheduled',
         expectedDurationMinutes: 30,
-        colorKey: 'teal',
+        colorKey: null,
         createdById: DEV_USER_ID,
       });
       expect(new Date(response.body.scheduledAt).toISOString()).toBe('2027-01-15T15:00:00.000Z');
@@ -199,7 +254,7 @@ describe('Appointments (e2e)', () => {
         appointmentType: 'WellnessPreventiveCare',
         visitReason: 'Annual checkup',
         startTime: '2027-01-17T19:00:00.000Z',
-        colorKey: '#ff00ff',
+        colorKey: 'magenta',
       });
 
       expect(response.status).toBe(400);
@@ -479,6 +534,7 @@ describe('Appointments (e2e)', () => {
       const response = await request(app.getHttpServer()).post('/appointments').send({
         patientId,
         appointmentType: 'WellnessPreventiveCare',
+        appointmentTypeId: wellnessAppointmentTypeId,
         visitReason: 'Records prep default check',
         startTime: '2027-05-01T15:00:00.000Z',
       });
@@ -498,6 +554,7 @@ describe('Appointments (e2e)', () => {
           patient: { name: 'Prep Default Pet', species: 'Canine' },
           appointment: {
             appointmentType: 'WellnessPreventiveCare',
+            appointmentTypeId: wellnessAppointmentTypeId,
             visitReason: 'New patient records prep default check',
             startTime: '2027-05-01T16:00:00.000Z',
           },

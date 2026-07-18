@@ -25,6 +25,8 @@ import {
 } from './dto/visit-discharge.schema';
 import { VisitDischargeService } from './visit-discharge.service';
 import { VisitsService } from './visits.service';
+import { createVisitWorkItemSchema, updateVisitWorkItemSchema, type CreateVisitWorkItemInput, type UpdateVisitWorkItemInput } from './dto/visit-work-item.schema';
+import { VisitWorkItemsService } from './visit-work-items.service';
 
 @Controller('visits')
 export class VisitsController {
@@ -32,6 +34,7 @@ export class VisitsController {
     private readonly visits: VisitsService,
     private readonly records: VisitRecordsService,
     private readonly discharge: VisitDischargeService,
+    private readonly workItems: VisitWorkItemsService,
   ) {}
 
   @Post()
@@ -49,7 +52,7 @@ export class VisitsController {
 
   @Post(':id/start')
   start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.start(id, user.organizationId, user.locationId, user.id, user.role);
   }
 
@@ -69,13 +72,13 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(saveVisitIntakeSchema)) body: SaveVisitIntakeInput,
   ) {
-    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.saveIntake(id, user.organizationId, user.locationId, user.id, body);
   }
 
   @Post(':id/intake/complete')
   completeIntake(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.completeIntake(id, user.organizationId, user.locationId, user.id, user.role);
   }
 
@@ -124,7 +127,7 @@ export class VisitsController {
 
   @Get('records/open/mine')
   openRecords(@CurrentUser() user: AuthenticatedUser) {
-    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    requireRole(user, ['VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'OWNER']);
     return this.records.listOpenForUser(user.organizationId, user.locationId, user.id);
   }
 
@@ -134,7 +137,7 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(saveVisitRecordDraftSchema)) body: SaveVisitRecordDraftInput,
   ) {
-    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    requireRole(user, ['VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'OWNER']);
     return this.records.saveDraft(id, user.organizationId, user.locationId, user.id, body);
   }
 
@@ -150,7 +153,7 @@ export class VisitsController {
 
   @Post(':id/record/finalize')
   finalizeRecord(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    requireRole(user, ['VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'OWNER']);
     return this.records.finalize(id, user.organizationId, user.locationId, user.id);
   }
 
@@ -160,7 +163,7 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(amendVisitRecordSchema)) body: AmendVisitRecordInput,
   ) {
-    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    requireRole(user, ['VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'OWNER']);
     return this.records.amend(id, user.organizationId, user.locationId, user.id, body);
   }
 
@@ -188,5 +191,26 @@ export class VisitsController {
   resolveOutstandingBalance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
     return this.discharge.resolveOutstandingBalance(id, user.organizationId, user.locationId, user.id, user.role);
+  }
+
+  @Post(':id/work-items')
+  createWorkItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(createVisitWorkItemSchema)) body: CreateVisitWorkItemInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.workItems.create(id, user.organizationId, user.locationId, user.id, user.role, body);
+  }
+
+  @Put(':id/work-items/:itemId')
+  updateWorkItem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body(new ZodValidationPipe(updateVisitWorkItemSchema)) body: UpdateVisitWorkItemInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.workItems.update(id, itemId, user.organizationId, user.locationId, user.id, user.role, body);
   }
 }

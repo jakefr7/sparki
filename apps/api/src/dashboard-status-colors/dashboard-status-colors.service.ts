@@ -41,6 +41,12 @@ export class DashboardStatusColorsService {
           throw new ConflictException(`${activeCount} active visit${activeCount === 1 ? '' : 's'} currently use this step. Move them before disabling it.`);
         }
       }
+      if (existing.lifecyclePhase !== input.lifecyclePhase) {
+        const activeCount = await this.activeUsageCount(user, existing.status);
+        if (activeCount > 0) {
+          throw new ConflictException(`${activeCount} active visit${activeCount === 1 ? '' : 's'} currently use this step. Move them before changing its protected phase.`);
+        }
+      }
       const updated = await prisma.dashboardStatusColorSetting.update({ where: { id: existing.id }, data });
       await this.audit(user, existing.id, 'Updated', existing, updated);
       return updated;

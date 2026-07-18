@@ -8,9 +8,18 @@ describe('Address (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication();
-    await app.init();
+    // These assertions exercise the explicitly unconfigured behavior. Keep
+    // them deterministic even when a developer has a real Mapbox token in
+    // their local environment.
+    const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
+    delete process.env.MAPBOX_ACCESS_TOKEN;
+    try {
+      const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      app = moduleRef.createNestApplication();
+      await app.init();
+    } finally {
+      if (mapboxToken) process.env.MAPBOX_ACCESS_TOKEN = mapboxToken;
+    }
   });
 
   afterAll(async () => {

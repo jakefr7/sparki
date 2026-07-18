@@ -5,12 +5,17 @@ import { useDashboardStatusColors, type DashboardStatusColor } from '../../lib/u
 
 const EMPTY_STATUS: DashboardStatusColor = { id: '', status: '', name: '', description: '', color: '#1FA9A0', sortOrder: 100, isEnabled: true, isInClinic: false, allowedTransitionKeys: [] };
 
+function PlusIcon() { return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>; }
+function PencilIcon() { return <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true"><path d="M13.4 3.6a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2L7.5 15.5l-3.3.8.8-3.3L13.4 3.6Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>; }
+function TrashIcon() { return <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true"><path d="M4.5 6h11M8 6V4.6c0-.55.45-1 1-1h2c.55 0 1 .45 1 1V6m-6.5 0 .6 9.1c.04.7.62 1.2 1.32 1.2h5.16c.7 0 1.28-.5 1.32-1.2L14.5 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>; }
+
 export function DashboardStatusColorsSection() {
   const { colors, canManage, loading, reload } = useDashboardStatusColors();
   const [draft, setDraft] = useState<DashboardStatusColor | null>(null);
   const [editorClosing, setEditorClosing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -79,17 +84,22 @@ export function DashboardStatusColorsSection() {
   return <section className="settings-section" aria-labelledby="settings-statuses-heading">
     <div className="scheduler-settings-card__header">
       <div><h1 id="settings-statuses-heading">Statuses</h1><p className="settings-section__intro">Customize the workflow statuses used across the dashboard.</p></div>
-      {canManage ? <button type="button" className="scheduler-primary-action" onClick={() => openEditor({ ...EMPTY_STATUS, sortOrder: ((colors?.length ?? 0) + 1) * 10 })}>Add Status</button> : null}
+      <div className="settings-section-header-actions">
+        {canManage ? <button type="button" className="schedule-block-icon-button schedule-block-icon-button--add" aria-label="Add status" title="Add status" onClick={() => { setExpanded(true); openEditor({ ...EMPTY_STATUS, sortOrder: ((colors?.length ?? 0) + 1) * 10 }); }}><PlusIcon /></button> : null}
+        <button type="button" className={expanded ? 'settings-collapse-button settings-collapse-button--expanded' : 'settings-collapse-button'} aria-expanded={expanded} aria-controls="status-settings-content" aria-label={expanded ? 'Collapse statuses' : 'Expand statuses'} onClick={() => setExpanded((current) => !current)}><span aria-hidden="true" /></button>
+      </div>
     </div>
+    <div id="status-settings-content" hidden={!expanded}>
     {!loading && !canManage ? <div className="scheduler-settings-lock"><strong>View only</strong><span>Only users with admin settings permission can change statuses.</span></div> : null}
     <div className="scheduler-type-list">
       {(colors ?? []).map((entry) => <Fragment key={entry.id}><article className={draft?.id === entry.id ? 'scheduler-type-card scheduler-type-card--editing' : 'scheduler-type-card'}>
         <div className="scheduler-type-card__main"><span className="scheduler-type-card__swatch" style={{ backgroundColor: entry.color }} aria-hidden="true"/><div><strong>{entry.name}</strong><span>{entry.description || 'No description'} · {entry.isEnabled ? 'Enabled' : 'Disabled'}{entry.isInClinic ? ' · In clinic' : ''}</span></div></div>
         <span className="scheduler-type-preview" style={{ '--scheduler-preview-color': entry.color } as CSSProperties}>Preview</span>
-        {canManage ? <><button type="button" className="button-secondary" onClick={() => openEditor(entry)}>Edit</button><button type="button" className="button-secondary" onClick={() => void remove(entry)}>Delete</button></> : null}
+        {canManage ? <div className="settings-row-icon-actions"><button type="button" className="schedule-block-icon-button" aria-label={`Edit ${entry.name}`} title="Edit" onClick={() => openEditor(entry)}><PencilIcon /></button><button type="button" className="schedule-block-icon-button schedule-block-icon-button--danger" aria-label={`Delete ${entry.name}`} title="Delete" onClick={() => void remove(entry)}><TrashIcon /></button></div> : null}
       </article>{draft?.id === entry.id ? editor : null}</Fragment>)}
     </div>
     {draft && !draft.id ? <div className={editorClosing ? 'status-editor-modal status-editor-modal--closing' : 'status-editor-modal'} role="presentation" onMouseDown={closeEditor}><div className="status-editor-modal__panel" role="dialog" aria-modal="true" aria-label="Create status" onMouseDown={(event) => event.stopPropagation()}>{editor}</div></div> : null}
     {message ? <p className="settings-save-message" role="status">{message}</p> : null}
+    </div>
   </section>;
 }

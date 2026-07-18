@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AppointmentType, ConfirmationStatus, RecordsPrepStatus } from '@sparki/db';
+import { AppointmentSource, AppointmentType, ConfirmationStatus, RecordsPrepStatus } from '@sparki/db';
 import { createClientSchema } from '../../clients/dto/create-client.schema';
 
 export const APPOINTMENT_COLOR_KEYS = [
@@ -30,6 +30,7 @@ const appointmentFields = {
   appointmentType: z.nativeEnum(AppointmentType),
   // Optional only for compatibility with older API clients during rollout.
   appointmentTypeId: z.string().min(1).optional(),
+  source: z.nativeEnum(AppointmentSource).optional(),
   visitReason: z.string().min(1).max(500),
   startTime: z.coerce.date(),
   expectedDurationMinutes: z.coerce
@@ -39,6 +40,7 @@ const appointmentFields = {
     .max(24 * 60)
     .optional(),
   assignedProviderId: z.string().min(1).optional(),
+  scheduleBlockId: z.string().min(1).optional(),
   colorKey: z
     .union([z.enum(APPOINTMENT_COLOR_KEYS), z.string().regex(/^#[0-9A-Fa-f]{6}$/)])
     .optional(),
@@ -92,6 +94,7 @@ export const linkAppointmentPatientSchema = z.object({
 export type LinkAppointmentPatientInput = z.infer<typeof linkAppointmentPatientSchema>;
 
 export const moveAppointmentSchema = z.object({
+  appointmentTypeId: z.string().min(1).optional(),
   startTime: z.coerce.date(),
   expectedDurationMinutes: z.coerce
     .number()
@@ -100,6 +103,9 @@ export const moveAppointmentSchema = z.object({
     .max(24 * 60)
     .optional(),
   assignedProviderId: z.string().min(1).optional().nullable(),
+  scheduleBlockId: z.string().min(1).optional(),
+  reason: z.string().trim().min(1).max(500).optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 export type MoveAppointmentInput = z.infer<typeof moveAppointmentSchema>;
@@ -109,6 +115,11 @@ export const updateAppointmentNoteSchema = z.object({
 });
 
 export type UpdateAppointmentNoteInput = z.infer<typeof updateAppointmentNoteSchema>;
+
+export const cancelAppointmentSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+});
+export type CancelAppointmentInput = z.infer<typeof cancelAppointmentSchema>;
 
 // Tech/assistant records-research status and receptionist-facing manual
 // confirmation/reminder status — see prisma/schema.prisma's Appointment

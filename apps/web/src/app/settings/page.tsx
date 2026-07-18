@@ -5,23 +5,25 @@ import { DashboardShell } from '../../components/dashboard-shell';
 import { AccountSection } from '../../components/settings/account-section';
 import { AdminSection } from '../../components/settings/admin-section';
 import { AppearanceSection } from '../../components/settings/appearance-section';
+import { ProfileSection } from '../../components/settings/profile-section';
 import { useCurrentUser } from '../../lib/use-current-user';
 import { MANAGE_ADMIN_SETTINGS } from '../../lib/permissions';
 
 const UPCOMING_SECTIONS = ['Notifications', 'Clinic', 'Users', 'Keyboard Shortcuts', 'About'];
 
-type TabId = 'account' | 'appearance' | 'admin';
+type TabId = 'profile' | 'account' | 'appearance' | 'admin';
 
 export default function SettingsPage() {
   const { user } = useCurrentUser();
   const isAdmin = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
-  const [activeTab, setActiveTab] = useState<TabId>('account');
+  const [activeTab, setActiveTab] = useState<TabId>('profile');
 
   return (
     <DashboardShell activeHref="/settings" eyebrow="Settings" title="Settings">
       <div className="settings-page">
         <nav aria-label="Settings sections">
           <ul className="settings-nav">
+            <li><button type="button" className={activeTab === 'profile' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'profile' ? 'page' : undefined} onClick={() => setActiveTab('profile')}>Profile</button></li>
             <li>
               <button
                 type="button"
@@ -78,6 +80,7 @@ export default function SettingsPage() {
         </nav>
 
         <div className="settings-sections-stack">
+          {activeTab === 'profile' && <ProfileSection />}
           {activeTab === 'account' && <AccountSection />}
           {activeTab === 'appearance' && <AppearanceSection />}
           {activeTab === 'admin' && isAdmin && <AdminSection />}

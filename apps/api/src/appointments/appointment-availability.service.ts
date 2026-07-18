@@ -20,9 +20,34 @@ function minutes(value: string) {
   return hours! * 60 + mins!;
 }
 
-function atLocalMinutes(day: Date, value: number) {
-  const result = new Date(day);
-  result.setHours(Math.floor(value / 60), value % 60, 0, 0);
+function zonedParts(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value);
+  return { year: value('year'), month: value('month'), day: value('day'), hour: value('hour'), minute: value('minute') };
+}
+
+function atZonedMinutes(day: Date, value: number, timeZone: string) {
+  const desired = Date.UTC(
+    day.getUTCFullYear(),
+    day.getUTCMonth(),
+    day.getUTCDate(),
+    Math.floor(value / 60),
+    value % 60,
+  );
+  let result = new Date(desired);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const actual = zonedParts(result, timeZone);
+    const actualClock = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute);
+    result = new Date(result.getTime() + desired - actualClock);
+  }
   return result;
 }
 
@@ -37,11 +62,10 @@ export class AppointmentAvailabilityService {
     locationId: string,
     input: AppointmentAvailabilityInput,
     db: DbClient = prisma,
+    excludeAppointmentId?: string,
   ) {
-    const rangeStart = new Date(input.startDate);
-    rangeStart.setHours(0, 0, 0, 0);
-    const rangeEnd = new Date(input.endDate);
-    rangeEnd.setHours(23, 59, 59, 999);
+    const queryStart = new Date(input.startDate.getTime() - 24 * 60 * 60 * 1000);
+    const queryEnd = new Date(input.endDate.getTime() + 24 * 60 * 60 * 1000);
 
     const appointmentType = await db.appointmentTypeSetting.findFirst({
       where: { id: input.appointmentTypeId, organizationId, locationId, isActive: true },
@@ -53,14 +77,34 @@ export class AppointmentAvailabilityService {
     if (assignedProviderIds.length === 0) return { durationMinutes, slotIntervalMinutes: 30, providers: [], slots: [], configurationError: 'NO_ASSIGNED_PROVIDERS' };
     if (input.providerId && !assignedProviderIds.includes(input.providerId)) return { durationMinutes, slotIntervalMinutes: 30, providers: [], slots: [], configurationError: 'PROVIDER_NOT_ASSIGNED' };
 
-    const [settings, templates, appointments, providers] = await Promise.all([
+    const restrictionCount = await db.appointmentTypeSlotTemplate.count({
+      where: { appointmentTypeId: appointmentType.id },
+    });
+    const hasBlockRestrictions = restrictionCount > 0;
+    if (hasBlockRestrictions) {
+      const activeBlockCount = await db.appointmentTypeSlotTemplate.count({
+        where: {
+          appointmentTypeId: appointmentType.id,
+          slotTemplate: { organizationId, locationId, isActive: true, deletedAt: null },
+        },
+      });
+      if (activeBlockCount === 0) {
+        return { durationMinutes, slotIntervalMinutes: 30, providers: [], slots: [], configurationError: 'NO_ACTIVE_ASSIGNED_BLOCKS' };
+      }
+    }
+
+    const [settings, location, templates, appointments, providers] = await Promise.all([
       db.schedulerSettings.findUnique({ where: { locationId } }),
+      db.location.findFirst({ where: { id: locationId, organizationId }, select: { timeZone: true } }),
       db.schedulerSlotTemplate.findMany({
         where: {
           organizationId,
           locationId,
           isActive: true,
           deletedAt: null,
+          ...(hasBlockRestrictions
+            ? { isGeneralAvailability: false, appointmentTypes: { some: { appointmentTypeId: appointmentType.id } } }
+            : { isGeneralAvailability: true }),
           ...(input.providerId
             ? { OR: [{ staffId: input.providerId }, { staffId: null }] }
             : {}),
@@ -71,10 +115,11 @@ export class AppointmentAvailabilityService {
         where: {
           organizationId,
           locationId,
-          scheduledAt: { gte: rangeStart, lte: rangeEnd },
+          ...(excludeAppointmentId ? { id: { not: excludeAppointmentId } } : {}),
+          scheduledAt: { gte: queryStart, lte: queryEnd },
           state: { in: [...BOOKED_STATES] },
         },
-        select: { scheduledAt: true, expectedDurationMinutes: true, providerId: true, appointmentTypeSetting: { select: { defaultDurationMinutes: true } } },
+        select: { scheduledAt: true, expectedDurationMinutes: true, providerId: true, room: true, appointmentTypeSetting: { select: { defaultDurationMinutes: true } } },
       }),
       db.user.findMany({
         where: {
@@ -90,14 +135,19 @@ export class AppointmentAvailabilityService {
     ]);
 
     const interval = settings?.slotIntervalMinutes ?? 30;
+    const timeZone = location?.timeZone ?? 'America/Chicago';
+    const first = zonedParts(input.startDate, timeZone);
+    const last = zonedParts(input.endDate, timeZone);
+    const firstDay = new Date(Date.UTC(first.year, first.month - 1, first.day, 12));
+    const lastDay = new Date(Date.UTC(last.year, last.month - 1, last.day, 12));
     const providerIds = new Set(providers.map((provider) => provider.id));
     const slots: AppointmentAvailabilitySlot[] = [];
     const now = new Date();
 
     for (const template of templates) {
-      const day = new Date(rangeStart);
-      while (day <= rangeEnd) {
-        if (day.getDay() === template.dayOfWeek) {
+      const day = new Date(firstDay);
+      while (day <= lastDay) {
+        if (day.getUTCDay() === template.dayOfWeek) {
           const eligibleProviders = template.staffId
             ? providerIds.has(template.staffId)
               ? [template.staffId]
@@ -114,11 +164,13 @@ export class AppointmentAvailabilityService {
               cursor + durationMinutes <= minutes(template.endTime);
               cursor += interval
             ) {
-              const start = atLocalMinutes(day, cursor);
+              const start = atZonedMinutes(day, cursor, timeZone);
               const end = new Date(start.getTime() + durationMinutes * 60_000);
               if (start <= now) continue;
               const conflict = appointments.some((appointment) => {
-                if (appointment.providerId && appointment.providerId !== providerId) return false;
+                const providerConflict = !appointment.providerId || appointment.providerId === providerId;
+                const roomConflict = Boolean(template.room && appointment.room === template.room);
+                if (!providerConflict && !roomConflict) return false;
                 const appointmentEnd = new Date(
                   appointment.scheduledAt.getTime() +
                     (appointment.expectedDurationMinutes ?? appointment.appointmentTypeSetting?.defaultDurationMinutes ?? 0) * 60_000,
@@ -138,7 +190,7 @@ export class AppointmentAvailabilityService {
             }
           }
         }
-        day.setDate(day.getDate() + 1);
+        day.setUTCDate(day.getUTCDate() + 1);
       }
     }
 
@@ -155,7 +207,30 @@ export class AppointmentAvailabilityService {
     startTime: Date,
     providerId: string | undefined,
     db: DbClient = prisma,
+    excludeAppointmentId?: string,
   ) {
+    return Boolean(await this.resolveBooking(
+      organizationId,
+      locationId,
+      appointmentTypeId,
+      startTime,
+      providerId,
+      undefined,
+      db,
+      excludeAppointmentId,
+    ));
+  }
+
+  async resolveBooking(
+    organizationId: string,
+    locationId: string,
+    appointmentTypeId: string,
+    startTime: Date,
+    providerId?: string,
+    blockId?: string,
+    db: DbClient = prisma,
+    excludeAppointmentId?: string,
+  ): Promise<AppointmentAvailabilitySlot | null> {
     const result = await this.find(
       organizationId,
       locationId,
@@ -166,9 +241,13 @@ export class AppointmentAvailabilityService {
         endDate: startTime,
       },
       db,
+      excludeAppointmentId,
     );
-    return result.slots.some(
-      (slot) => slot.start === startTime.toISOString() && (!providerId || slot.providerId === providerId),
-    );
+    return result.slots.find(
+      (slot) =>
+        slot.start === startTime.toISOString() &&
+        (!providerId || slot.providerId === providerId) &&
+        (!blockId || slot.blockId === blockId),
+    ) ?? null;
   }
 }

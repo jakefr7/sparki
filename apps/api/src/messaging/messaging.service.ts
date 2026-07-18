@@ -4,7 +4,7 @@ import type { AuthenticatedUser } from '../auth/types';
 import type { CreateConversationInput, CreateMessageInput, UpdateMembershipInput, UpdateMessageInput } from './dto/messaging.schema';
 
 const staffRoles = ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'] as const;
-const personSelect = { id: true, firstName: true, lastName: true, displayName: true, role: true, staffProfile: { select: { jobTitle: true, color: true } } } as const;
+const personSelect = { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, statusEmoji: true, statusText: true, role: true, staffProfile: { select: { jobTitle: true, color: true } } } as const;
 const messageInclude = { sender: { select: personSelect }, replyTo: { select: { id: true, body: true, sender: { select: personSelect } } }, reactions: { include: { user: { select: personSelect } } }, mentions: { select: { userId: true } }, attachments: true } as const;
 
 function cleanBody(body: string) { return body.replace(/<[^>]*>/g, '').split(String.fromCharCode(0)).join('').trim(); }

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   conversationName,
   personName,
@@ -30,6 +30,7 @@ async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
 }
 const initials = (person: MessagePerson) =>
   `${person.firstName[0] ?? ''}${person.lastName[0] ?? ''}`;
+const avatar = (person: MessagePerson) => person.avatarUrl ? <img src={person.avatarUrl} alt="" /> : initials(person);
 const time = (value: string) =>
   new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
@@ -40,7 +41,12 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const [showDetails, setShowDetails] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
+  const [channelsOpen, setChannelsOpen] = useState(true);
+  const [directsOpen, setDirectsOpen] = useState(true);
+  const [navFilter, setNavFilter] = useState<'all' | 'unread'>('all');
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [replyingTo, setReplyingTo] = useState<StaffMessage | null>(null);
   const [creatorMode, setCreatorMode] = useState<'channel' | 'direct' | null>(null);
   const [directory, setDirectory] = useState<MessagePerson[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -147,6 +153,7 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
           body: draft,
           clientNonce: crypto.randomUUID(),
           mentionIds,
+          replyToId: replyingTo?.id,
           linkedRecords: [],
           uploadedAttachments: attachments,
         }),
@@ -155,6 +162,7 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
       setMentionIds([]);
       setAttachments([]);
       setComposerTool(null);
+      setReplyingTo(null);
       const body = (await api(`conversations/${active.id}/messages`)) as {
         messages: StaffMessage[];
       };
@@ -267,15 +275,18 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
     return (
       <button
         key={conversation.id}
-        className={
-          activeId === conversation.id ? 'team-nav-item team-nav-item--active' : 'team-nav-item'
-        }
+        className={[
+          'team-nav-item',
+          activeId === conversation.id ? 'team-nav-item--active' : '',
+          conversation.unreadCount ? 'team-nav-item--unread' : '',
+          conversation.membership.notificationLevel === 'MUTED' ? 'team-nav-item--muted' : '',
+        ].filter(Boolean).join(' ')}
         onClick={() => setActiveId(conversation.id)}
       >
         {channel ? (
           <span className="team-nav-item__channel">#</span>
         ) : (
-          <span className="team-nav-item__avatar">{other ? initials(other) : 'TM'}</span>
+          <span className="team-nav-item__avatar">{other ? avatar(other) : 'TM'}</span>
         )}
         <span>
           <strong>{conversationName(conversation, currentUserId)}</strong>
@@ -311,21 +322,16 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
             placeholder="Search team messages"
           />
         </label>
-        <div className="team-inbox-summary">
-          <span>
-            <strong>{unread}</strong> unread
-          </span>
-          <span>
-            <strong>{channels.length}</strong> channels
-          </span>
-          <span>
-            <strong>{directs.length}</strong> direct
-          </span>
+        <div className="team-nav-filters" role="tablist" aria-label="Conversation filters">
+          <button type="button" role="tab" aria-selected={navFilter === 'all'} onClick={() => setNavFilter('all')}>All</button>
+          <button type="button" role="tab" aria-selected={navFilter === 'unread'} onClick={() => setNavFilter('unread')}>Unread {unread ? <span>{unread}</span> : null}</button>
         </div>
         <nav>
           <section>
             <div>
-              <h3>Channels</h3>
+              <button type="button" className="team-nav-section-toggle" onClick={() => setChannelsOpen((value) => !value)} aria-expanded={channelsOpen}>
+                <span>{channelsOpen ? '⌄' : '›'}</span><h3>Channels</h3>
+              </button>
               <button
                 type="button"
                 aria-label="Create channel"
@@ -334,11 +340,13 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                 ＋
               </button>
             </div>
-            {channels.map((row) => item(row, true))}
+            {channelsOpen ? channels.filter((row) => navFilter === 'all' || row.unreadCount > 0).map((row) => item(row, true)) : null}
           </section>
           <section>
             <div>
-              <h3>Direct messages</h3>
+              <button type="button" className="team-nav-section-toggle" onClick={() => setDirectsOpen((value) => !value)} aria-expanded={directsOpen}>
+                <span>{directsOpen ? '⌄' : '›'}</span><h3>Direct messages</h3>
+              </button>
               <button
                 type="button"
                 aria-label="Start direct message"
@@ -347,7 +355,7 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                 ＋
               </button>
             </div>
-            {directs.map((row) => item(row, false))}
+            {directsOpen ? directs.filter((row) => navFilter === 'all' || row.unreadCount > 0).map((row) => item(row, false)) : null}
           </section>
         </nav>
         <footer>
@@ -372,15 +380,13 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                 </span>
                 <div>
                   <h2>{conversationName(active, currentUserId)}</h2>
-                  <p>
-                    {active.type === 'DIRECT'
-                      ? 'Private conversation'
-                      : `${active.members.length} members · Team channel`}
-                  </p>
+                  <div className="team-header-participants" aria-label={`${active.members.length} participants`}>
+                    <span className="team-avatar-stack">{active.members.slice(0, 3).map((member) => <i key={member.userId}>{avatar(member.user)}</i>)}</span>
+                    <small>{active.type === 'DIRECT' ? 'Private conversation' : `${active.members.length} members`}</small>
+                  </div>
                 </div>
               </div>
               <div>
-                <button title="Search this conversation">⌕</button>
                 <button
                   className={
                     showDetails
@@ -393,34 +399,21 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                 </button>
               </div>
             </header>
-            <div className="team-channel-banner">
-              <div>
-                <strong>
-                  {active.type === 'DIRECT'
-                    ? `Conversation with ${conversationName(active, currentUserId)}`
-                    : `Welcome to #${conversationName(active, currentUserId)}`}
-                </strong>
-                <p>
-                  {active.type === 'DIRECT'
-                    ? 'Messages here are private between conversation members.'
-                    : 'Use this space for focused clinic updates, handoffs, and decisions.'}
-                </p>
-              </div>
-              <span>
-                {new Date(active.lastMessageAt).toLocaleDateString([], {
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              </span>
-            </div>
             <div className="team-message-timeline">
-              {messages.map((message, index) => {
-                const previous = messages[index - 1];
-                const grouped = previous?.senderId === message.senderId;
+              {messages.filter((message) => !conversationSearch || message.body.toLowerCase().includes(conversationSearch.toLowerCase())).map((message, index, visibleMessages) => {
+                const previous = visibleMessages[index - 1];
+                const grouped = previous?.senderId === message.senderId && new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() < 5 * 60 * 1000;
                 const own = message.senderId === currentUserId;
+                const messageDate = new Date(message.createdAt).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+                const previousVisible = visibleMessages[index - 1];
+                const previousDate = previousVisible ? new Date(previousVisible.createdAt).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) : '';
+                const showDate = messageDate !== previousDate;
+                const showUnread = Boolean(active.membership.lastReadAt && new Date(message.createdAt) > new Date(active.membership.lastReadAt) && (!previousVisible || new Date(previousVisible.createdAt) <= new Date(active.membership.lastReadAt)));
                 return (
+                  <div key={message.id}>
+                  {showDate ? <div className="team-date-divider"><span>{messageDate}</span></div> : null}
+                  {showUnread ? <div className="team-new-divider"><span>New messages</span></div> : null}
                   <article
-                    key={message.id}
                     className={[
                       'team-timeline-message',
                       grouped ? 'team-timeline-message--grouped' : '',
@@ -432,17 +425,35 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                     {grouped ? (
                       <span />
                     ) : (
-                      <span className="team-message-avatar">{initials(message.sender)}</span>
+                      <span
+                        className="team-message-avatar"
+                        style={{ background: message.sender.staffProfile?.color ?? undefined }}
+                      >
+                        {avatar(message.sender)}
+                      </span>
                     )}
                     <div>
                       {grouped ? null : (
                         <header>
                           <strong>{own ? 'You' : personName(message.sender)}</strong>
-                          <span>{ROLES[message.sender.role]}</span>
                           <time>{time(message.createdAt)}</time>
                         </header>
                       )}
+                      {message.replyTo ? <blockquote className="team-reply-quote"><strong>{personName(message.replyTo.sender)}</strong><span>{message.replyTo.body}</span></blockquote> : null}
                       <p>{message.deletedAt ? <em>Message removed</em> : message.body}</p>
+                      <div className="team-message-actions" aria-label="Message actions">
+                        <button type="button" title="Reply" onClick={() => setReplyingTo(message)}>↩</button>
+                        <button type="button" title="Add reaction" aria-label="Add reaction" onClick={() => setReactionMessageId((current) => current === message.id ? null : message.id)}>☺</button>
+                        {own ? <button type="button" title="Edit">✎</button> : null}
+                        <button type="button" title="Save">⌖</button><button type="button" title="More options">•••</button>
+                        {reactionMessageId === message.id ? (
+                          <div className="team-reaction-picker" role="menu" aria-label="Choose a reaction">
+                            {['👍', '❤️', '😂', '🎉', '✅', '👀', '🙏', '🐾'].map((emoji) => (
+                              <button type="button" role="menuitem" key={emoji} onClick={() => void addReaction(message.id, emoji)}>{emoji}</button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                       {message.attachments.map((attachment) => (
                         <Link
                           key={attachment.id}
@@ -477,39 +488,16 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                             </button>
                           );
                         })}
-                        <button
-                          type="button"
-                          className="team-add-reaction"
-                          aria-label="Add reaction"
-                          onClick={() =>
-                            setReactionMessageId((current) =>
-                              current === message.id ? null : message.id,
-                            )
-                          }
-                        >
-                          ☺＋
-                        </button>
-                        {reactionMessageId === message.id ? (
-                          <div className="team-reaction-picker">
-                            {['👍', '❤️', '😂', '🎉', '✅', '👀', '🙏', '🐾'].map((emoji) => (
-                              <button
-                                type="button"
-                                key={emoji}
-                                onClick={() => void addReaction(message.id, emoji)}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
                       </div>
                     </div>
                   </article>
+                  </div>
                 );
               })}
               <div ref={end} />
             </div>
             <form className="team-page-composer" onSubmit={send}>
+              {replyingTo ? <div className="team-reply-context"><span><small>Replying to {replyingTo.senderId === currentUserId ? 'yourself' : personName(replyingTo.sender)}</small><strong>{replyingTo.body}</strong></span><button type="button" onClick={() => setReplyingTo(null)} aria-label="Cancel reply">×</button></div> : null}
               {attachments.map((attachment, index) => (
                 <div className="team-composer-attachment" key={attachment.storageKey}>
                   <span>
@@ -544,7 +532,7 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                 <div className="team-composer-popover team-composer-mentions">
                   {directory.map((person) => (
                     <button type="button" key={person.id} onClick={() => addMention(person)}>
-                      <span className="team-message-avatar">{initials(person)}</span>
+                      <span className="team-message-avatar">{avatar(person)}</span>
                       <span>
                         <strong>{personName(person)}</strong>
                         <small>{ROLES[person.role] ?? person.role}</small>
@@ -564,6 +552,8 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder={`Message ${active.type === 'DIRECT' ? conversationName(active, currentUserId) : `#${conversationName(active, currentUserId)}`}`}
                   rows={2}
+                  onKeyDown={(event: ReactKeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
+                  onInput={(event) => { event.currentTarget.style.height = 'auto'; event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 144)}px`; }}
                 />
                 <button
                   disabled={(!draft.trim() && attachments.length === 0) || sending || uploading}
@@ -617,63 +607,39 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
       {active && showDetails ? (
         <aside className="team-context-panel">
           <header>
-            <span>
-              {active.type === 'DIRECT' ? conversationName(active, currentUserId).charAt(0) : '#'}
-            </span>
-            <h2>{conversationName(active, currentUserId)}</h2>
-            <p>{active.type === 'DIRECT' ? 'Direct message' : 'Team channel'}</p>
+            <div><span className="eyebrow">Channel details</span><h2>{conversationName(active, currentUserId)}</h2></div>
+            <button type="button" onClick={() => setShowDetails(false)} aria-label="Close details">×</button>
           </header>
           <section>
-            <h3>About</h3>
+            <h3>Description</h3>
             <p>
               {active.type === 'DIRECT'
                 ? 'A private internal conversation. Messages are never copied into a patient medical record.'
                 : 'A shared space for clinic coordination and operational handoffs.'}
             </p>
-            <dl>
-              <div>
-                <dt>Created</dt>
-                <dd>{new Date(active.lastMessageAt).toLocaleDateString()}</dd>
-              </div>
-              <div>
-                <dt>Notifications</dt>
-                <dd>{active.membership.notificationLevel === 'ALL' ? 'All messages' : 'Custom'}</dd>
-              </div>
-            </dl>
           </section>
+          <section className="team-detail-controls">
+            <label><span>Notifications</span><select value={active.membership.notificationLevel} onChange={(event) => void api(`conversations/${active.id}/membership`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notificationLevel: event.target.value }) }).then(load)}><option value="ALL">All messages</option><option value="MENTIONS">Mentions only</option><option value="MUTED">Muted</option></select></label>
+            <label><span>Search conversation</span><input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Search messages…" /></label>
+          </section>
+          <section><button className="team-resource-row"><span>⌖</span><div><strong>Pinned messages</strong><small>Review saved clinical handoffs</small></div></button><button className="team-resource-row"><span>↗</span><div><strong>Shared files</strong><small>{messages.reduce((count, message) => count + message.attachments.length, 0)} files and attachments</small></div></button></section>
           <section>
             <div className="team-context-heading">
               <h3>Members</h3>
-              <span>{active.members.length}</span>
+              <button type="button" onClick={() => void openCreator('channel')}>Add members</button>
             </div>
             {active.members.map((member) => (
               <div className="team-context-person" key={member.userId}>
-                <span>{initials(member.user)}</span>
+                <span>{avatar(member.user)}</span>
                 <div>
                   <strong>{personName(member.user)}</strong>
-                  <small>{ROLES[member.user.role]}</small>
+                  <small>{member.user.statusEmoji ? `${member.user.statusEmoji} ${member.user.statusText ?? ''}` : ROLES[member.user.role]}</small>
                 </div>
                 <i className="team-online-dot" />
               </div>
             ))}
           </section>
-          <section>
-            <h3>Shared resources</h3>
-            <button className="team-resource-row">
-              <span>↗</span>
-              <div>
-                <strong>Linked Sparki records</strong>
-                <small>View records shared in this conversation</small>
-              </div>
-            </button>
-            <button className="team-resource-row">
-              <span>＋</span>
-              <div>
-                <strong>Files and attachments</strong>
-                <small>Browse shared documents</small>
-              </div>
-            </button>
-          </section>
+          <section className="team-danger-actions"><button type="button" onClick={() => void api(`conversations/${active.id}/membership`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isArchived: true }) }).then(load)}>Archive channel</button><button type="button">Leave channel</button>{active.members.some((member) => member.userId === currentUserId && ['OWNER','PRACTICE_MANAGER'].includes(member.user.role)) ? <button type="button">Manage channel</button> : null}</section>
         </aside>
       ) : null}
       {creatorMode ? (

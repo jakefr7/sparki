@@ -1,11 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
+import { requireRole } from '../auth/require-role';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AppointmentsService } from './appointments.service';
 import { appointmentAvailabilitySchema, type AppointmentAvailabilityInput } from './dto/appointment-availability.schema';
+import { scheduleRangeSchema, type ScheduleRangeInput } from './dto/schedule-range.schema';
 import {
   createAppointmentSchema,
+  cancelAppointmentSchema,
   createAppointmentWithNewPatientSchema,
   linkAppointmentPatientSchema,
   moveAppointmentSchema,
@@ -13,6 +16,7 @@ import {
   updateConfirmationStatusSchema,
   updateRecordsPrepStatusSchema,
   type CreateAppointmentInput,
+  type CancelAppointmentInput,
   type CreateAppointmentWithNewPatientInput,
   type LinkAppointmentPatientInput,
   type MoveAppointmentInput,
@@ -38,6 +42,7 @@ export class AppointmentsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createAppointmentSchema)) body: CreateAppointmentInput,
   ) {
+    requireSchedulingOperator(user);
     return this.appointments.create(user.organizationId, user.locationId, user.id, body);
   }
 
@@ -48,6 +53,7 @@ export class AppointmentsController {
     @Body(new ZodValidationPipe(createAppointmentWithNewPatientSchema))
     body: CreateAppointmentWithNewPatientInput,
   ) {
+    requireSchedulingOperator(user);
     return this.appointments.createWithNewPatient(
       user.organizationId,
       user.locationId,
@@ -56,9 +62,22 @@ export class AppointmentsController {
     );
   }
 
+  @Get('schedule')
+  schedule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(scheduleRangeSchema)) query: ScheduleRangeInput,
+  ) {
+    return this.appointments.listForScheduleRange(
+      user.organizationId,
+      user.locationId,
+      query.startDate,
+      query.endDate,
+    );
+  }
+
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.appointments.findById(id, user.organizationId);
+    return this.appointments.findById(id, user.organizationId, user.locationId);
   }
 
   @Patch(':id/records-prep-status')
@@ -67,7 +86,8 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRecordsPrepStatusSchema)) body: UpdateRecordsPrepStatusInput,
   ) {
-    return this.appointments.updateRecordsPrepStatus(id, user.organizationId, body);
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'TECHNICIAN', 'ASSISTANT']);
+    return this.appointments.updateRecordsPrepStatus(id, user.organizationId, user.locationId, body);
   }
 
   @Patch(':id/confirmation-status')
@@ -76,7 +96,8 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateConfirmationStatusSchema)) body: UpdateConfirmationStatusInput,
   ) {
-    return this.appointments.updateConfirmationStatus(id, user.organizationId, body);
+    requireSchedulingOperator(user);
+    return this.appointments.updateConfirmationStatus(id, user.organizationId, user.locationId, body);
   }
 
   @Post(':id/link-patient')
@@ -85,7 +106,8 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(linkAppointmentPatientSchema)) body: LinkAppointmentPatientInput,
   ) {
-    return this.appointments.linkPatient(id, user.organizationId, body);
+    requireSchedulingOperator(user);
+    return this.appointments.linkPatient(id, user.organizationId, user.locationId, body);
   }
 
   @Patch(':id/move')
@@ -94,7 +116,8 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(moveAppointmentSchema)) body: MoveAppointmentInput,
   ) {
-    return this.appointments.move(id, user.organizationId, user.locationId, body);
+    requireSchedulingOperator(user);
+    return this.appointments.move(id, user.organizationId, user.locationId, user.id, body);
   }
 
   @Patch(':id/note')
@@ -103,26 +126,45 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateAppointmentNoteSchema)) body: UpdateAppointmentNoteInput,
   ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
     return this.appointments.updateNote(id, user.organizationId, user.locationId, body);
   }
 
   @Post(':id/confirm')
   confirm(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.appointments.confirm(id, user.organizationId);
+    requireSchedulingOperator(user);
+    return this.appointments.confirm(id, user.organizationId, user.locationId, user.id);
   }
 
   @Post(':id/arrive')
   markArrived(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.appointments.markArrived(id, user.organizationId);
+    requireSchedulingOperator(user);
+    return this.appointments.markArrived(id, user.organizationId, user.locationId, user.id);
   }
 
   @Post(':id/cancel')
-  cancel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.appointments.cancel(id, user.organizationId);
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(cancelAppointmentSchema)) body: CancelAppointmentInput,
+  ) {
+    requireSchedulingOperator(user);
+    return this.appointments.cancel(id, user.organizationId, user.locationId, user.id, body.reason);
   }
 
   @Post(':id/no-show')
   markNoShow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.appointments.markNoShow(id, user.organizationId);
+    requireSchedulingOperator(user);
+    return this.appointments.markNoShow(id, user.organizationId, user.locationId, user.id);
   }
+
+  @Get(':id/history')
+  history(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.appointments.history(id, user.organizationId, user.locationId);
+  }
+}
+
+function requireSchedulingOperator(user: AuthenticatedUser) {
+  requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
 }

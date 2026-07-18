@@ -1098,11 +1098,7 @@ export function OperationsCommandCenter({
   const { user: currentUser } = useCurrentUser();
   const firstName = currentUser?.name?.split(' ')[0];
   const [selectedRole, setSelectedRole] = useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
-  const [greeting, setGreeting] = useState(() => greetingForDate(new Date(), firstName));
-
-  useEffect(() => {
-    setGreeting(greetingForDate(new Date(), firstName));
-  }, [firstName]);
+  const greeting = useMemo(() => greetingForDate(new Date(), firstName), [firstName]);
 
   useEffect(() => {
     if (!ENABLE_DEV_ROLE_PREVIEW) {

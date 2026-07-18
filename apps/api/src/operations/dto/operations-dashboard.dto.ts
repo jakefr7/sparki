@@ -19,6 +19,7 @@ export interface DashboardClientSummary {
 
 export interface DashboardAppointmentSummary {
   id: string;
+  appointmentTypeSettingId: string | null;
   type: string;
   reason: string;
   state: string;
@@ -34,6 +35,9 @@ export interface DashboardAppointmentSummary {
   lastSeenAt: Date | null;
   recordsPrepStatus: string;
   confirmationStatus: string;
+  room: string | null;
+  schedulerSlotTemplateId: string | null;
+  schedulingIssue: string | null;
 }
 
 export interface DashboardVisitSummary {

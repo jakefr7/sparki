@@ -77,6 +77,7 @@ export function useNewAppointmentModal(onCreated?: (appointment: NewAppointmentC
       initialDurationMinutes={context?.durationMinutes ?? null}
       initialProviderId={context?.providerId ?? null}
       initialAppointmentTypeId={context?.appointmentTypeId ?? null}
+      initialAppointmentTypeSettingId={editingAppointment?.appointmentTypeSettingId ?? null}
       editingAppointmentId={editingAppointment?.id ?? null}
       initialVisitReason={editingAppointment?.reason ?? null}
       providers={providers}

@@ -4,6 +4,7 @@ export const appointmentAvailabilitySchema = z
   .object({
     appointmentTypeId: z.string().min(1),
     providerId: z.string().min(1).optional(),
+    excludeAppointmentId: z.string().min(1).optional(),
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
   })

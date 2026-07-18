@@ -783,7 +783,7 @@ describe('Appointments (e2e)', () => {
 
       const response = await request(app.getHttpServer()).post(
         `/appointments/${appointment.id}/cancel`,
-      );
+      ).send({ reason: 'Client requested cancellation' });
 
       expect(response.status).toBe(201);
       expect(response.body.state).toBe('Cancelled');
@@ -796,7 +796,7 @@ describe('Appointments (e2e)', () => {
 
         const response = await request(app.getHttpServer()).post(
           `/appointments/${appointment.id}/cancel`,
-        );
+        ).send({ reason: 'Client requested cancellation' });
 
         expect(response.status).toBe(409);
       },

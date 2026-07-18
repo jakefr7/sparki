@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
-import { type AppointmentTypeValue } from '../../lib/patient-types';
+import { APPOINTMENT_TYPES, appointmentTypeLabel, type AppointmentTypeValue } from '../../lib/patient-types';
 
 const INTERVAL_OPTIONS = [15, 20, 30, 45, 60] as const;
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -29,6 +29,7 @@ interface SchedulerSlotTemplate {
   staffId: string | null;
   room: string | null;
   isActive: boolean;
+  appointmentTypeIds: string[];
 }
 
 interface SchedulerConfig {
@@ -36,6 +37,20 @@ interface SchedulerConfig {
   appointmentTypes: AppointmentTypeSetting[];
   slotTemplates: SchedulerSlotTemplate[];
   canManage: boolean;
+}
+
+function normalizeSlotTemplate(
+  template: SchedulerSlotTemplate & { appointmentTypes?: Array<{ appointmentTypeId: string }> },
+  fallbackAppointmentTypeIds: string[] = [],
+): SchedulerSlotTemplate {
+  return {
+    ...template,
+    appointmentTypeIds: Array.isArray(template.appointmentTypeIds)
+      ? template.appointmentTypeIds
+      : Array.isArray(template.appointmentTypes)
+        ? template.appointmentTypes.map((assignment) => assignment.appointmentTypeId)
+        : fallbackAppointmentTypeIds,
+  };
 }
 
 const EMPTY_TEMPLATE: SchedulerSlotTemplate = {
@@ -48,6 +63,7 @@ const EMPTY_TEMPLATE: SchedulerSlotTemplate = {
   staffId: null,
   room: '',
   isActive: true,
+  appointmentTypeIds: [],
 };
 
 function shortDay(dayOfWeek: number): string {
@@ -122,6 +138,7 @@ export function SchedulerSettingsSection() {
   const [blockFeedback, setBlockFeedback] = useState<{ text: string; tone: 'success' | 'error' } | null>(
     null,
   );
+  const [expandedSections, setExpandedSections] = useState({ grid: false, types: false, blocks: false });
   const blockFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sortedAppointmentTypes = useMemo(
@@ -142,7 +159,12 @@ export function SchedulerSettingsSection() {
     fetch('/api/scheduler-config', { cache: 'no-store' })
       .then((response) => (response.ok ? (response.json() as Promise<SchedulerConfig>) : null))
       .then((body) => {
-        if (!cancelled) setConfig(body);
+        if (!cancelled && body) {
+          setConfig({
+            ...body,
+            slotTemplates: body.slotTemplates.map((template) => normalizeSlotTemplate(template)),
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setConfig(null);
@@ -172,6 +194,10 @@ export function SchedulerSettingsSection() {
     blockFeedbackTimeout.current = setTimeout(() => setBlockFeedback(null), 4000);
   }
 
+  function toggleSection(section: keyof typeof expandedSections) {
+    setExpandedSections((current) => ({ ...current, [section]: !current[section] }));
+  }
+
   async function saveInterval(value: number) {
     setSaving('interval');
     setMessage(null);
@@ -192,7 +218,10 @@ export function SchedulerSettingsSection() {
   }
 
   async function saveAppointmentType(setting: AppointmentTypeSetting) {
-    if (!setting.appointmentType) return;
+    if (!setting.appointmentType) {
+      setMessage('Choose an appointment category before saving.');
+      return;
+    }
     setSaving(setting.id);
     setMessage(null);
     const response = await fetch('/api/scheduler-config/appointment-types', {
@@ -216,9 +245,9 @@ export function SchedulerSettingsSection() {
         current
           ? {
               ...current,
-              appointmentTypes: current.appointmentTypes.map((candidate) =>
-                candidate.appointmentType === saved.appointmentType ? saved : candidate,
-              ),
+              appointmentTypes: current.appointmentTypes.some((candidate) => candidate.id === saved.id)
+                ? current.appointmentTypes.map((candidate) => candidate.id === saved.id ? saved : candidate)
+                : [...current.appointmentTypes, saved],
             }
           : current,
       );
@@ -226,7 +255,8 @@ export function SchedulerSettingsSection() {
       setTypeDraft(null);
       setMessage('Appointment type updated.');
     } else {
-      setMessage('Could not update appointment type.');
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      setMessage(body?.message ?? 'Could not update appointment type.');
     }
     setSaving(null);
   }
@@ -242,14 +272,20 @@ export function SchedulerSettingsSection() {
     setTypeDraft({ id: '', appointmentType: null, name: '', description: null, defaultDurationMinutes: 0, color: '#1FA9A0', isActive: true, sortOrder: (sortedAppointmentTypes.length + 1) * 10, providers: [], isBookable: false });
   }
 
+  function closeTypeEditor() {
+    setEditingTypeId(null);
+    setTypeDraft(null);
+  }
+
   function openAddBlock() {
+    setExpandedSections((current) => ({ ...current, blocks: true }));
     setDraftTemplate(EMPTY_TEMPLATE);
     setBlockFormError(null);
     setBlockModalOpen(true);
   }
 
   function openEditBlock(template: SchedulerSlotTemplate) {
-    setDraftTemplate(template);
+    setDraftTemplate(normalizeSlotTemplate(template));
     setBlockFormError(null);
     setBlockModalOpen(true);
   }
@@ -278,7 +314,10 @@ export function SchedulerSettingsSection() {
       body: JSON.stringify(payload),
     });
     if (response.ok) {
-      const saved = (await response.json()) as SchedulerSlotTemplate;
+      const saved = normalizeSlotTemplate(
+        (await response.json()) as SchedulerSlotTemplate,
+        draftTemplate.appointmentTypeIds,
+      );
       setConfig((current) =>
         current
           ? {
@@ -293,7 +332,8 @@ export function SchedulerSettingsSection() {
       closeBlockModal();
       showBlockFeedback('Schedule block saved.', 'success');
     } else {
-      setBlockFormError('Could not save schedule block.');
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      setBlockFormError(body?.message ?? 'Could not save schedule block.');
     }
     setBlockSaving(false);
   }
@@ -331,7 +371,8 @@ export function SchedulerSettingsSection() {
             }
           : current,
       );
-      showBlockFeedback("Couldn't update schedule block visibility.", 'error');
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      showBlockFeedback(body?.message ?? "Couldn't update schedule block visibility.", 'error');
     }
     setTogglingBlockId(null);
   }
@@ -358,7 +399,8 @@ export function SchedulerSettingsSection() {
       );
       showBlockFeedback('Schedule block deleted.', 'success');
     } else {
-      showBlockFeedback("Couldn't delete schedule block.", 'error');
+      const body = await response.json().catch(() => null) as { message?: string } | null;
+      showBlockFeedback(body?.message ?? "Couldn't delete schedule block.", 'error');
     }
     setDeletingBlockId(null);
   }
@@ -391,11 +433,12 @@ export function SchedulerSettingsSection() {
               <h2 id="schedule-grid-heading">Schedule Grid</h2>
               <p>Control the time spacing used across the calendar.</p>
             </div>
-            {saving === 'interval' ? (
-              <span className="scheduler-settings-saving">Saving...</span>
-            ) : null}
+            <div className="settings-section-header-actions">
+              {saving === 'interval' ? <span className="scheduler-settings-saving">Saving...</span> : null}
+              <button type="button" className={expandedSections.grid ? 'settings-collapse-button settings-collapse-button--expanded' : 'settings-collapse-button'} aria-expanded={expandedSections.grid} aria-controls="schedule-grid-content" aria-label={expandedSections.grid ? 'Collapse schedule grid' : 'Expand schedule grid'} onClick={() => toggleSection('grid')}><span aria-hidden="true" /></button>
+            </div>
           </div>
-          <div className="scheduler-interval-control" aria-label="Time slot interval">
+          <div id="schedule-grid-content" className="scheduler-interval-control" aria-label="Time slot interval" hidden={!expandedSections.grid}>
             {INTERVAL_OPTIONS.map((minutes) => (
               <button
                 key={minutes}
@@ -420,14 +463,17 @@ export function SchedulerSettingsSection() {
               <h2 id="appointment-types-heading">Appointment Types</h2>
               <p>Manage duration, color, availability, and which doctors can perform each appointment.</p>
             </div>
-            {canManage ? <button type="button" className="scheduler-primary-action" onClick={beginTypeCreate}>New Appointment Type</button> : null}
+            <div className="settings-section-header-actions">
+              {canManage ? <button type="button" className="schedule-block-icon-button schedule-block-icon-button--add" aria-label="Add appointment type" title="Add appointment type" onClick={() => { setExpandedSections((current) => ({ ...current, types: true })); beginTypeCreate(); }}><PlusIcon /></button> : null}
+              <button type="button" className={expandedSections.types ? 'settings-collapse-button settings-collapse-button--expanded' : 'settings-collapse-button'} aria-expanded={expandedSections.types} aria-controls="appointment-types-content" aria-label={expandedSections.types ? 'Collapse appointment types' : 'Expand appointment types'} onClick={() => toggleSection('types')}><span aria-hidden="true" /></button>
+            </div>
           </div>
-          <div className="scheduler-type-list">
-            {[...sortedAppointmentTypes, ...(editingTypeId === '' && typeDraft ? [typeDraft] : [])].map((setting) => {
+          <div id="appointment-types-content" className="scheduler-type-list" hidden={!expandedSections.types}>
+            {sortedAppointmentTypes.map((setting) => {
               const editorDraft = editingTypeId === setting.id ? typeDraft : null;
-              const displaySetting = editorDraft ?? setting;
+              const displaySetting = setting;
               return (
-                <article key={setting.id} className="scheduler-type-card">
+                <article key={setting.id} className={editorDraft ? 'scheduler-type-card scheduler-type-card--editing' : 'scheduler-type-card'}>
                   <div className="scheduler-type-card__main">
                     <span
                       className="scheduler-type-card__swatch"
@@ -463,98 +509,120 @@ export function SchedulerSettingsSection() {
                   {canManage ? (
                     <button
                       type="button"
-                      className="button-secondary"
+                      className="schedule-block-icon-button"
+                      aria-label={`Edit ${setting.name}`}
+                      title="Edit"
                       onClick={() => beginTypeEdit(setting)}
                     >
-                      Edit
+                      <PencilIcon />
                     </button>
-                  ) : null}
-                  {editorDraft ? (
-                    <form
-                      className="scheduler-type-editor"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void saveAppointmentType(editorDraft);
-                      }}
-                    >
-                      <label>
-                        <span>Display name</span>
-                        <input
-                          value={editorDraft.name}
-                          onChange={(event) =>
-                            setTypeDraft((current) =>
-                              current ? { ...current, name: event.target.value } : current,
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        <span>Description (optional)</span>
-                        <input value={editorDraft.description ?? ''} onChange={(event) => setTypeDraft((current) => current ? { ...current, description: event.target.value } : current)} />
-                      </label>
-                      <label>
-                        <span>Default duration</span>
-                        <input type="number" min="5" max="1440" step="5" value={editorDraft.defaultDurationMinutes} onChange={(event) => setTypeDraft((current) => current ? { ...current, defaultDurationMinutes: Number(event.target.value) } : current)} />
-                      </label>
-                      <label>
-                        <span>Color</span>
-                        <input
-                          type="color"
-                          value={editorDraft.color}
-                          onChange={(event) =>
-                            setTypeDraft((current) =>
-                              current ? { ...current, color: event.target.value } : current,
-                            )
-                          }
-                        />
-                      </label>
-                      <fieldset className="appointment-type-doctors">
-                        <legend>Doctors who can perform this appointment</legend>
-                        <div className="appointment-type-doctors__actions">
-                          <button type="button" onClick={() => setTypeDraft((current) => current ? { ...current, providers: eligibleProviders.map((provider) => ({ ...provider, isActive: true })) } : current)}>Select all eligible doctors</button>
-                          <button type="button" onClick={() => setTypeDraft((current) => current ? { ...current, providers: [] } : current)}>Clear all</button>
-                        </div>
-                        {eligibleProviders.map((provider) => <label key={provider.id}><input type="checkbox" checked={editorDraft.providers.some((selected) => selected.id === provider.id)} onChange={(event) => setTypeDraft((current) => current ? { ...current, providers: event.target.checked ? [...current.providers, { ...provider, isActive: true }] : current.providers.filter((selected) => selected.id !== provider.id) } : current)} />{provider.displayName}</label>)}
-                        {editorDraft.providers.length === 0 ? <p role="alert">This appointment type will not be available for new appointments until at least one doctor is assigned.</p> : null}
-                      </fieldset>
-                      <label className="scheduler-type-editor__toggle">
-                        <input
-                          type="checkbox"
-                          checked={editorDraft.isActive}
-                          onChange={(event) =>
-                            setTypeDraft((current) =>
-                              current ? { ...current, isActive: event.target.checked } : current,
-                            )
-                          }
-                        />
-                        Active
-                      </label>
-                      <div className="scheduler-type-editor__actions">
-                        <button
-                          type="submit"
-                          className="scheduler-primary-action"
-                          disabled={saving === editorDraft.id}
-                        >
-                          {saving === editorDraft.id ? 'Saving...' : 'Save changes'}
-                        </button>
-                        <button
-                          type="button"
-                          className="button-secondary"
-                          onClick={() => {
-                            setEditingTypeId(null);
-                            setTypeDraft(null);
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
                   ) : null}
                 </article>
               );
             })}
           </div>
         </section>
+
+        {typeDraft ? (
+          <div
+            className={typeDraft.id ? 'appointment-type-editor-inline' : 'status-editor-modal'}
+            role={typeDraft.id ? 'region' : 'presentation'}
+            aria-label={typeDraft.id ? `Edit ${typeDraft.name}` : undefined}
+            onMouseDown={typeDraft.id ? undefined : closeTypeEditor}
+          >
+            <div
+              className={typeDraft.id ? 'appointment-type-editor-inline__panel' : 'status-editor-modal__panel appointment-type-editor-modal__panel'}
+              role={typeDraft.id ? undefined : 'dialog'}
+              aria-modal={typeDraft.id ? undefined : true}
+              aria-labelledby="appointment-type-editor-heading"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <form
+                className="scheduler-type-editor status-editor appointment-type-editor"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void saveAppointmentType(typeDraft);
+                }}
+              >
+                <div className="status-editor__heading">
+                  <div>
+                    <span className="eyebrow">Appointment settings</span>
+                    <h2 id="appointment-type-editor-heading">
+                      {typeDraft.id ? `Edit ${typeDraft.name}` : 'Create appointment type'}
+                    </h2>
+                    <p>Control scheduling, appearance, duration, and eligible doctors.</p>
+                  </div>
+                  <span
+                    className="appointment-type-editor__preview"
+                    style={{ '--status-editor-color': typeDraft.color } as CSSProperties}
+                  >
+                    <span>{typeDraft.name || 'Appointment preview'}</span>
+                    <small>{typeDraft.defaultDurationMinutes || 0} min</small>
+                  </span>
+                </div>
+
+                <div className="appointment-type-editor__details">
+                  <label>
+                    <span>Category</span>
+                    <select
+                      value={typeDraft.appointmentType ?? ''}
+                      onChange={(event) => setTypeDraft({ ...typeDraft, appointmentType: event.target.value as AppointmentTypeValue })}
+                      required
+                    >
+                      <option value="" disabled>Select category</option>
+                      {APPOINTMENT_TYPES.map((type) => <option key={type} value={type}>{appointmentTypeLabel(type)}</option>)}
+                    </select>
+                  </label>
+                  <label className="appointment-type-editor__name">
+                    <span>Display name</span>
+                    <input autoFocus value={typeDraft.name} onChange={(event) => setTypeDraft({ ...typeDraft, name: event.target.value })} required />
+                  </label>
+                  <label className="appointment-type-editor__description">
+                    <span>Description</span>
+                    <input value={typeDraft.description ?? ''} onChange={(event) => setTypeDraft({ ...typeDraft, description: event.target.value })} placeholder="Explain when this appointment type is used" />
+                  </label>
+                  <label>
+                    <span>Default duration</span>
+                    <div className="appointment-type-editor__duration"><input type="number" min="5" max="1440" step="5" value={typeDraft.defaultDurationMinutes} onChange={(event) => setTypeDraft({ ...typeDraft, defaultDurationMinutes: Number(event.target.value) })} required /><strong>minutes</strong></div>
+                  </label>
+                  <label>
+                    <span>Color</span>
+                    <span className="status-editor__color-control"><input type="color" value={typeDraft.color} onChange={(event) => setTypeDraft({ ...typeDraft, color: event.target.value })} /><strong>{typeDraft.color.toUpperCase()}</strong></span>
+                  </label>
+                </div>
+
+                <div className="appointment-type-editor__behavior">
+                  <div><h3>Availability</h3><p>Choose whether staff can use this appointment type.</p></div>
+                  <label className="status-editor__switch">
+                    <input type="checkbox" checked={typeDraft.isActive} onChange={(event) => setTypeDraft({ ...typeDraft, isActive: event.target.checked })} />
+                    <span aria-hidden="true" />
+                    <div><strong>Active</strong><small>Show this type in scheduling and booking workflows.</small></div>
+                  </label>
+                </div>
+
+                <fieldset className="appointment-type-editor__doctors">
+                  <legend>Eligible doctors</legend>
+                  <div className="appointment-type-editor__doctors-heading">
+                    <p>Select every doctor who can perform this appointment.</p>
+                    <div><button type="button" onClick={() => setTypeDraft({ ...typeDraft, providers: eligibleProviders.map((provider) => ({ ...provider, isActive: true })) })}>Select all</button><button type="button" onClick={() => setTypeDraft({ ...typeDraft, providers: [] })}>Clear</button></div>
+                  </div>
+                  <div className="appointment-type-editor__doctor-grid">
+                    {eligibleProviders.map((provider) => {
+                      const selected = typeDraft.providers.some((candidate) => candidate.id === provider.id);
+                      return <label key={provider.id} className={selected ? 'appointment-type-editor__doctor appointment-type-editor__doctor--selected' : 'appointment-type-editor__doctor'}><input type="checkbox" checked={selected} onChange={(event) => setTypeDraft({ ...typeDraft, providers: event.target.checked ? [...typeDraft.providers, { ...provider, isActive: true }] : typeDraft.providers.filter((candidate) => candidate.id !== provider.id) })} /><span aria-hidden="true" /><div><strong>{provider.displayName}</strong><small>{selected ? 'Eligible' : 'Not eligible'}</small></div></label>;
+                    })}
+                  </div>
+                  {typeDraft.providers.length === 0 ? <p className="appointment-type-editor__warning" role="alert">Assign at least one doctor before this appointment type can be booked.</p> : null}
+                </fieldset>
+
+                <div className="scheduler-type-editor__actions status-editor__actions">
+                  <button type="submit" className="scheduler-primary-action" disabled={saving === typeDraft.id}>{saving === typeDraft.id ? 'Saving…' : typeDraft.id ? 'Save appointment type' : 'Create appointment type'}</button>
+                  <button type="button" className="button-secondary" onClick={closeTypeEditor}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
 
         <section className="scheduler-settings-card" aria-labelledby="schedule-blocks-heading">
           <div className="scheduler-settings-card__header">
@@ -586,6 +654,7 @@ export function SchedulerSettingsSection() {
                   <PlusIcon />
                 </button>
               ) : null}
+              <button type="button" className={expandedSections.blocks ? 'settings-collapse-button settings-collapse-button--expanded' : 'settings-collapse-button'} aria-expanded={expandedSections.blocks} aria-controls="schedule-blocks-content" aria-label={expandedSections.blocks ? 'Collapse schedule blocks' : 'Expand schedule blocks'} onClick={() => toggleSection('blocks')}><span aria-hidden="true" /></button>
             </div>
           </div>
 
@@ -596,7 +665,7 @@ export function SchedulerSettingsSection() {
             </p>
           ) : null}
 
-          <div className="schedule-block-list">
+          <div id="schedule-blocks-content" className="schedule-block-list" hidden={!expandedSections.blocks}>
             {sortedBlocks.length > 0 ? (
               sortedBlocks.map((template) => (
                 <div
@@ -616,6 +685,14 @@ export function SchedulerSettingsSection() {
                       {shortDay(template.dayOfWeek)} · {timeLabel(template.startTime)}–
                       {timeLabel(template.endTime)}
                       {template.room ? ` · ${template.room}` : ''}
+                    </span>
+                    <span>
+                      {(template.appointmentTypeIds ?? []).length > 0
+                        ? (template.appointmentTypeIds ?? [])
+                            .map((id) => config?.appointmentTypes.find((type) => type.id === id)?.name)
+                            .filter(Boolean)
+                            .join(', ')
+                        : 'All unassigned appointment styles'}
                     </span>
                   </div>
 
@@ -684,9 +761,17 @@ export function SchedulerSettingsSection() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="schedule-block-modal__header">
-              <h2 id="schedule-block-modal-heading">
-                {isEditingBlock ? 'Edit schedule block' : 'Add schedule block'}
-              </h2>
+              <div>
+                <span className="eyebrow">Scheduler availability</span>
+                <h2 id="schedule-block-modal-heading">
+                  {isEditingBlock ? 'Edit schedule block' : 'Add schedule block'}
+                </h2>
+                <p>Define when specific appointment styles can be booked.</p>
+              </div>
+              <span className="schedule-block-modal__preview" style={{ '--schedule-block-preview': draftTemplate.color } as CSSProperties}>
+                <strong>{draftTemplate.label || 'Block preview'}</strong>
+                <small>{DAY_LABELS[draftTemplate.dayOfWeek]} · {timeLabel(draftTemplate.startTime)}–{timeLabel(draftTemplate.endTime)}</small>
+              </span>
               <button
                 type="button"
                 className="schedule-block-modal__close"
@@ -750,16 +835,53 @@ export function SchedulerSettingsSection() {
                   />
                 </label>
               </div>
-              <label>
-                <span>Room / provider (optional)</span>
-                <input
-                  value={draftTemplate.room ?? ''}
-                  onChange={(event) =>
-                    setDraftTemplate((current) => ({ ...current, room: event.target.value }))
-                  }
-                  placeholder="Room 2 / Dr. Patel"
-                />
-              </label>
+              <div className="schedule-block-modal__form-row">
+                <label>
+                  <span>Provider (optional)</span>
+                  <select
+                    value={draftTemplate.staffId ?? ''}
+                    onChange={(event) => setDraftTemplate((current) => ({ ...current, staffId: event.target.value || null }))}
+                  >
+                    <option value="">Any eligible provider</option>
+                    {eligibleProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Room (optional)</span>
+                  <input
+                    value={draftTemplate.room ?? ''}
+                    onChange={(event) => setDraftTemplate((current) => ({ ...current, room: event.target.value }))}
+                    placeholder="Room 2"
+                  />
+                </label>
+              </div>
+              <fieldset className="schedule-block-style-picker">
+                <legend>Appointment styles allowed in this block</legend>
+                <p>Select one or more styles to make them bookable only inside their assigned blocks. Leave empty for general availability.</p>
+                <div className="schedule-block-style-picker__grid">
+                {sortedAppointmentTypes.filter((type) => type.isActive).map((type) => {
+                  const selected = draftTemplate.appointmentTypeIds.includes(type.id);
+                  return (
+                  <label key={type.id} className={selected ? 'schedule-block-style-picker__option schedule-block-style-picker__option--selected' : 'schedule-block-style-picker__option'}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={(event) =>
+                        setDraftTemplate((current) => ({
+                          ...current,
+                          appointmentTypeIds: event.target.checked
+                            ? [...current.appointmentTypeIds, type.id]
+                            : current.appointmentTypeIds.filter((id) => id !== type.id),
+                        }))
+                      }
+                    />
+                    <span aria-hidden="true" style={{ backgroundColor: type.color }} />
+                    <div><strong>{type.name}</strong><small>{selected ? 'Allowed in this block' : 'Not assigned'}</small></div>
+                  </label>
+                  );
+                })}
+                </div>
+              </fieldset>
               <div className="schedule-block-modal__form-row schedule-block-modal__form-row--tight">
                 <label>
                   <span>Color</span>

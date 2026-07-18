@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AppConfigService } from '../config/app-config.service';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { loginSchema, type LoginInput } from './dto/login.schema';
+import { updateProfileSchema, type UpdateProfileInput } from './dto/update-profile.schema';
 import { MANAGE_ADMIN_SETTINGS } from './permissions';
 import { Public } from './public.decorator';
 import { ROLE_PERMISSIONS } from './role-permissions';
@@ -54,5 +55,18 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return { user: toMeResponse(user) };
+  }
+
+  @Get('profile')
+  profile(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.getProfile(user.id);
+  }
+
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileInput,
+  ) {
+    return this.auth.updateProfile(user.id, body);
   }
 }

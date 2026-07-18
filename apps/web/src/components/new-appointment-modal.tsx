@@ -42,6 +42,7 @@ export interface NewAppointmentCreatedSummary {
   client: { id: string; firstName: string; lastName: string } | null;
   provider: { id: string; displayName: string; role: string } | null;
   room: string | null;
+  schedulerSlotTemplateId: string | null;
   appointmentType: AppointmentTypeValue;
   appointmentTypeSettingId: string;
 }
@@ -55,6 +56,8 @@ interface CreatedAppointmentResponse {
   expectedDurationMinutes: number | null;
   colorKey: string | null;
   providerId: string | null;
+  room: string | null;
+  schedulerSlotTemplateId: string | null;
 }
 
 interface AvailabilitySlot {
@@ -70,7 +73,7 @@ interface AvailabilityResponse {
   durationMinutes: number;
   slotIntervalMinutes: number;
   slots: AvailabilitySlot[];
-  configurationError?: 'NO_ASSIGNED_PROVIDERS' | 'PROVIDER_NOT_ASSIGNED' | 'APPOINTMENT_TYPE_UNAVAILABLE';
+  configurationError?: 'NO_ASSIGNED_PROVIDERS' | 'PROVIDER_NOT_ASSIGNED' | 'APPOINTMENT_TYPE_UNAVAILABLE' | 'NO_ACTIVE_ASSIGNED_BLOCKS';
 }
 
 /** Shape returned by POST /appointments/new-patient — the created Appointment
@@ -85,6 +88,8 @@ interface CreatedAppointmentWithNewPatientResponse {
   expectedDurationMinutes: number | null;
   colorKey: string | null;
   providerId: string | null;
+  room: string | null;
+  schedulerSlotTemplateId: string | null;
   patient: { id: string; name: string; species: string };
   client: { id: string; firstName: string; lastName: string };
 }
@@ -202,6 +207,7 @@ export function NewAppointmentModal({
   initialStartTime,
   initialProviderId,
   initialAppointmentTypeId,
+  initialAppointmentTypeSettingId,
   providers,
   appointmentTypes,
   onClose,
@@ -215,6 +221,7 @@ export function NewAppointmentModal({
   initialDurationMinutes?: number | null;
   initialProviderId?: string | null;
   initialAppointmentTypeId?: AppointmentTypeValue | null;
+  initialAppointmentTypeSettingId?: string | null;
   providers: StaffMember[];
   appointmentTypes?: AppointmentTypeSetting[];
   onClose: () => void;
@@ -230,9 +237,11 @@ export function NewAppointmentModal({
         .sort((a, b) => a.sortOrder - b.sortOrder),
     [settings],
   );
-  const defaultSetting = initialAppointmentTypeId
-    ? activeAppointmentTypes.find((setting) => setting.appointmentType === initialAppointmentTypeId)
-    : undefined;
+  const defaultSetting = initialAppointmentTypeSettingId
+    ? activeAppointmentTypes.find((setting) => setting.id === initialAppointmentTypeSettingId)
+    : initialAppointmentTypeId
+      ? activeAppointmentTypes.find((setting) => setting.appointmentType === initialAppointmentTypeId)
+      : undefined;
   const defaultAppointmentType = defaultSetting?.appointmentType ?? 'WellnessPreventiveCare';
   const initialStartDate = useMemo(() => {
     if (initialStartTime instanceof Date) return initialStartTime;
@@ -277,8 +286,10 @@ export function NewAppointmentModal({
     useState<AppointmentTypeValue>(defaultAppointmentType);
   const [appointmentTypeSettingId, setAppointmentTypeSettingId] = useState(defaultSetting?.id ?? '');
   const [visitReason, setVisitReason] = useState(initialVisitReason ?? '');
+  const [bookingSource, setBookingSource] = useState('Phone');
   const [assignedProviderId, setAssignedProviderId] = useState(initialProviderId ?? '');
   const [selectedSlotProviderId, setSelectedSlotProviderId] = useState('');
+  const [selectedSlotBlockId, setSelectedSlotBlockId] = useState('');
   const [clientFirstName, setClientFirstName] = useState('');
   const [clientLastName, setClientLastName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
@@ -313,7 +324,14 @@ export function NewAppointmentModal({
   const [selectedDate, setSelectedDate] = useState(formatDateInput(initialStartDate));
   const todayValue = formatDateInput(new Date());
   const [dateStripStart, setDateStripStart] = useState(() => {
-    const date = new Date();
+    const date = editingAppointmentId ? new Date(initialStartDate) : new Date();
+    if (editingAppointmentId) {
+      const mondayOffset = date.getDay() === 0 ? -6 : 1 - date.getDay();
+      date.setDate(date.getDate() + mondayOffset);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (date < today) date.setTime(today.getTime());
+    }
     if (date.getDay() === 6) date.setDate(date.getDate() + 2);
     if (date.getDay() === 0) date.setDate(date.getDate() + 1);
     return formatDateInput(date);
@@ -327,6 +345,7 @@ export function NewAppointmentModal({
     setAvailability([]);
     setStartTime('');
     setSelectedSlotProviderId('');
+    setSelectedSlotBlockId('');
   }, [appointmentTypeSettingId, assignedProviderId]);
 
   useEffect(() => {
@@ -343,6 +362,7 @@ export function NewAppointmentModal({
       endDate: end.toISOString(),
     });
     if (assignedProviderId) query.set('providerId', assignedProviderId);
+    if (editingAppointmentId) query.set('excludeAppointmentId', editingAppointmentId);
     setAvailabilityLoading(true);
     setAvailabilityError(false);
     setConfigurationError(undefined);
@@ -384,7 +404,7 @@ export function NewAppointmentModal({
       })
       .finally(() => setAvailabilityLoading(false));
     return () => controller.abort();
-  }, [appointmentTypeSettingId, assignedProviderId, availabilityVersion, initialProviderId, initialStartDate, dateStripStart, bookingLimit]);
+  }, [appointmentTypeSettingId, assignedProviderId, availabilityVersion, initialProviderId, initialStartDate, dateStripStart, bookingLimit, editingAppointmentId]);
 
   useEffect(() => {
     const trimmed = patientQuery.trim();
@@ -480,6 +500,7 @@ export function NewAppointmentModal({
     setAppointmentDate(date);
     setStartTime('');
     setSelectedSlotProviderId('');
+    setSelectedSlotBlockId('');
   }
 
   function jumpToDate(date: string) {
@@ -517,6 +538,7 @@ export function NewAppointmentModal({
     setAppointmentDate(formatDateInput(date));
     setStartTime(formatTimeInput(date));
     setSelectedSlotProviderId(slot.providerId ?? '');
+    setSelectedSlotBlockId(slot.blockId);
     setError(null);
   }
 
@@ -598,10 +620,12 @@ export function NewAppointmentModal({
         appointment: {
           appointmentType,
           appointmentTypeId: appointmentTypeSettingId,
+          source: bookingSource,
           visitReason: visitReason.trim() || selectedTypeSetting?.name || appointmentTypeLabel(appointmentType),
           startTime: startsAtDate.toISOString(),
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: selectedSlotProviderId || assignedProviderId || undefined,
+          scheduleBlockId: selectedSlotBlockId || undefined,
           primaryCareVetName: primaryCareVetName.trim() || undefined,
           previousClinicName: previousClinicName.trim() || undefined,
           previousRecordsSource: previousRecordsSource.trim() || undefined,
@@ -634,9 +658,13 @@ export function NewAppointmentModal({
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            appointmentTypeId: appointmentTypeSettingId,
             startTime: startsAt.toISOString(),
             expectedDurationMinutes: Number(durationMinutes),
             assignedProviderId: selectedSlotProviderId || assignedProviderId || null,
+            scheduleBlockId: selectedSlotBlockId || undefined,
+            reason: 'Updated from appointment editor',
+            note: visitReason.trim(),
           }),
         });
         if (response.status === 409) {
@@ -658,7 +686,8 @@ export function NewAppointmentModal({
           patient: { id: selectedPatient.id, name: selectedPatient.name, species: selectedPatient.species },
           client: selectedPatient.primaryClient ? { id: selectedPatient.primaryClient.id, firstName: selectedPatient.primaryClient.firstName, lastName: selectedPatient.primaryClient.lastName } : null,
           provider: selectedProvider ? { id: selectedProvider.id, displayName: selectedProvider.displayName, role: selectedProvider.role } : null,
-          room: null,
+          room: updated.room,
+          schedulerSlotTemplateId: updated.schedulerSlotTemplateId,
           appointmentType,
           appointmentTypeSettingId,
         });
@@ -688,7 +717,8 @@ export function NewAppointmentModal({
                 role: selectedProvider.role,
               }
             : null,
-          room: null,
+          room: created.room,
+          schedulerSlotTemplateId: created.schedulerSlotTemplateId,
           appointmentType,
           appointmentTypeSettingId,
         });
@@ -708,10 +738,12 @@ export function NewAppointmentModal({
           clientId: selectedPatient.primaryClient?.id,
           appointmentType,
           appointmentTypeId: appointmentTypeSettingId,
+          source: bookingSource,
           visitReason: visitReason.trim() || selectedTypeSetting?.name || appointmentTypeLabel(appointmentType),
           startTime: startsAt.toISOString(),
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: selectedSlotProviderId || assignedProviderId || undefined,
+          scheduleBlockId: selectedSlotBlockId || undefined,
         }),
       });
 
@@ -756,7 +788,8 @@ export function NewAppointmentModal({
               role: selectedProvider.role,
             }
           : null,
-        room: null,
+        room: created.room,
+        schedulerSlotTemplateId: created.schedulerSlotTemplateId,
         appointmentType,
         appointmentTypeSettingId,
       });
@@ -790,7 +823,7 @@ export function NewAppointmentModal({
           </div>
           <div className="new-appointment-preferences">
             <FieldError label="Appointment type" error={fieldErrors.appointmentType}>
-              <select value={appointmentTypeSettingId} onChange={(event) => handleAppointmentTypeChange(event.target.value)} required disabled={Boolean(editingAppointmentId)}>
+              <select value={appointmentTypeSettingId} onChange={(event) => handleAppointmentTypeChange(event.target.value)} required>
                 <option value="" disabled>Select appointment type</option>
                 {activeAppointmentTypes.map((setting) => <option key={setting.id} value={setting.id}>{setting.name} · {setting.defaultDurationMinutes} min</option>)}
               </select>
@@ -801,6 +834,17 @@ export function NewAppointmentModal({
                 {eligibleProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
               </select>
             </FieldError>
+            {!editingAppointmentId ? (
+              <FieldError label="Booking source">
+                <select value={bookingSource} onChange={(event) => setBookingSource(event.target.value)}>
+                  <option value="Phone">Phone</option>
+                  <option value="InClinic">In clinic</option>
+                  <option value="FollowUp">Follow-up</option>
+                  <option value="Reminder">Reminder</option>
+                  <option value="Other">Other</option>
+                </select>
+              </FieldError>
+            ) : null}
           </div>
 
           <div className="new-appointment-availability" aria-live="polite">
@@ -823,6 +867,12 @@ export function NewAppointmentModal({
               <div className="new-appointment-empty">
                 <strong>No doctors are assigned to this appointment type.</strong>
                 <span>Update Appointment Types in Settings before booking.</span>
+              </div>
+            ) : null}
+            {!availabilityLoading && !availabilityError && configurationError === 'NO_ACTIVE_ASSIGNED_BLOCKS' ? (
+              <div className="new-appointment-empty">
+                <strong>This appointment style has no active schedule blocks.</strong>
+                <span>Activate or assign a schedule block in Settings before booking.</span>
               </div>
             ) : null}
             {!appointmentTypeSettingId ? (

@@ -38,6 +38,19 @@ describe('scheduler config schemas', () => {
     expect(result.success).toBe(true);
   });
 
+  it('requires every appointment style to declare its canonical category', () => {
+    const result = upsertAppointmentTypeSettingSchema.safeParse({
+      name: 'Orthopedic Surgery',
+      defaultDurationMinutes: 120,
+      color: '#2563EB',
+      isActive: true,
+      sortOrder: 40,
+      providerIds: ['provider-1'],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects slot templates whose end time is not after the start time', () => {
     const result = upsertSlotTemplateSchema.safeParse({
       dayOfWeek: 2,

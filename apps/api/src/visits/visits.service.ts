@@ -116,7 +116,7 @@ export class VisitsService {
     let primaryVeterinarianId: string | null = input.primaryVeterinarianId ?? null;
 
     if (input.appointmentId) {
-      const appointment = await this.appointments.findById(input.appointmentId, organizationId);
+      const appointment = await this.appointments.findById(input.appointmentId, organizationId, locationId);
 
       if (appointment.state !== 'Arrived') {
         throw new ConflictException(

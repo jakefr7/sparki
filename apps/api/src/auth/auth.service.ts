@@ -8,6 +8,7 @@ import { WorkOS } from '@workos-inc/node';
 import { prisma, type User } from '@sparki/db';
 import { AppConfigService } from '../config/app-config.service';
 import type { AuthenticatedUser } from './types';
+import type { UpdateProfileInput } from './dto/update-profile.schema';
 
 const DEVELOPMENT_LOGIN_PASSWORD = 'SparkiTest123!';
 const DEVELOPMENT_SESSION_PREFIX = 'dev:';
@@ -53,6 +54,27 @@ export class AuthService {
 
   get isConfigured(): boolean {
     return Boolean(this.workos && this.clientId && this.cookiePassword);
+  }
+
+  async getProfile(userId: string) {
+    return prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { id: true, email: true, phone: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, statusEmoji: true, statusText: true, role: true },
+    });
+  }
+
+  async updateProfile(userId: string, input: UpdateProfileInput) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: {
+        displayName: input.displayName,
+        phone: input.phone || null,
+        avatarUrl: input.avatarUrl || null,
+        statusEmoji: input.statusEmoji || null,
+        statusText: input.statusText || null,
+      },
+      select: { id: true, email: true, phone: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, statusEmoji: true, statusText: true, role: true },
+    });
   }
 
   private requireConfigured(): { workos: WorkOS; clientId: string; cookiePassword: string } {

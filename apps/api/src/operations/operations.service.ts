@@ -119,6 +119,7 @@ function toClientSummary(
 function toDashboardAppointment(appointment: AppointmentWithContext): DashboardAppointmentSummary {
   return {
     id: appointment.id,
+    appointmentTypeSettingId: appointment.appointmentTypeSettingId,
     type: appointment.appointmentTypeSetting?.name ?? appointment.type,
     reason: appointment.reason,
     state: appointment.state,
@@ -134,6 +135,9 @@ function toDashboardAppointment(appointment: AppointmentWithContext): DashboardA
     lastSeenAt: appointment.lastSeenAt,
     recordsPrepStatus: appointment.recordsPrepStatus,
     confirmationStatus: appointment.confirmationStatus,
+    room: appointment.room,
+    schedulerSlotTemplateId: appointment.schedulerSlotTemplateId,
+    schedulingIssue: null,
   };
 }
 

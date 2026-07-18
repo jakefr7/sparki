@@ -23,7 +23,7 @@ export type UpdateSchedulerSettingsInput = z.infer<typeof updateSchedulerSetting
 
 export const upsertAppointmentTypeSettingSchema = z.object({
   id: z.string().min(1).optional(),
-  appointmentType: z.nativeEnum(AppointmentType).optional().nullable(),
+  appointmentType: z.nativeEnum(AppointmentType),
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional().nullable(),
   defaultDurationMinutes: z.coerce.number().int().min(5).max(24 * 60),
@@ -46,6 +46,7 @@ export const upsertSlotTemplateSchema = z
     staffId: z.string().min(1).optional().nullable(),
     room: z.string().max(80).optional().nullable(),
     isActive: z.boolean(),
+    appointmentTypeIds: z.array(z.string().min(1)).max(100).default([]),
   })
   .refine((value) => value.startTime < value.endTime, {
     message: 'End time must be after start time',

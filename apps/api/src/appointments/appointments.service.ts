@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { prisma, type AppointmentSource, type AppointmentState } from '@sparki/db';
+import { prisma, type AppointmentSource, type AppointmentState, type Prisma } from '@sparki/db';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import type {
   CreateAppointmentInput,
@@ -18,6 +18,7 @@ import type {
 import { SchedulerConfigService } from '../scheduler-config/scheduler-config.service';
 import { AppointmentAvailabilityService } from './appointment-availability.service';
 import type { AppointmentAvailabilityInput } from './dto/appointment-availability.schema';
+import type { DashboardAppointmentSummary } from '../operations/dto/operations-dashboard.dto';
 
 /**
  * This slice creates appointments directly as committed bookings from
@@ -73,7 +74,13 @@ export class AppointmentsService {
   ) {}
 
   availability(organizationId: string, locationId: string, input: AppointmentAvailabilityInput) {
-    return this.appointmentAvailability.find(organizationId, locationId, input);
+    return this.appointmentAvailability.find(
+      organizationId,
+      locationId,
+      input,
+      prisma,
+      input.excludeAppointmentId,
+    );
   }
 
   async create(
@@ -93,6 +100,12 @@ export class AppointmentsService {
     const clientId = input.clientId ?? patient.clients[0]?.client.id ?? null;
     if (input.clientId) {
       await assertBelongsToOrganization(prisma.client, 'Client', input.clientId, organizationId);
+      const patientClient = await prisma.patientClient.findUnique({
+        where: { patientId_clientId: { patientId: patient.id, clientId: input.clientId } },
+      });
+      if (!patientClient) {
+        throw new BadRequestException('The selected client is not linked to this patient.');
+      }
     }
 
     if (input.assignedProviderId) {
@@ -118,39 +131,54 @@ export class AppointmentsService {
       throw new ConflictException(`The selected doctor is not assigned to ${appointmentTypeSetting.name}. Choose another doctor or appointment type.`);
     }
     const duration = appointmentTypeSetting.defaultDurationMinutes;
-    return prisma.$transaction(async (tx) => {
-      const available = await this.appointmentAvailability.isAvailable(
+    return serializableTransaction(async (tx) => {
+      const reservation = await this.appointmentAvailability.resolveBooking(
         organizationId,
         locationId,
         appointmentTypeSetting.id,
         input.startTime,
         input.assignedProviderId,
+        input.scheduleBlockId,
         tx,
       );
-      if (!available) {
+      if (!reservation?.providerId) {
         throw new ConflictException('That appointment time is no longer available.');
       }
-      return tx.appointment.create({ data: {
+      const created = await tx.appointment.create({ data: {
         organizationId,
         locationId,
         patientId: patient.id,
         clientId,
-        type: input.appointmentType,
+        type: appointmentTypeSetting.appointmentType ?? input.appointmentType,
         appointmentTypeSettingId: appointmentTypeSetting.id,
         reason: input.visitReason,
-        source: DEFAULT_SOURCE,
+        source: input.source ?? DEFAULT_SOURCE,
         state: DEFAULT_STATE,
         scheduledAt: input.startTime,
         expectedDurationMinutes: duration,
         colorKey: input.colorKey ?? null,
-        providerId: input.assignedProviderId ?? null,
+        providerId: reservation.providerId,
+        schedulerSlotTemplateId: reservation.blockId,
+        room: reservation.room,
         primaryCareVetName: input.primaryCareVetName ?? null,
         previousClinicName: input.previousClinicName ?? null,
         previousRecordsSource: input.previousRecordsSource ?? null,
         lastSeenAt: input.lastSeenAt ?? null,
         createdById,
       } });
-    }, { isolationLevel: 'Serializable' });
+      await tx.appointmentChange.create({
+        data: {
+          organizationId,
+          locationId,
+          appointmentId: created.id,
+          actorId: createdById,
+          action: 'Created',
+          before: {},
+          after: appointmentChangeSnapshot(created),
+        },
+      });
+      return created;
+    });
   }
 
   /**
@@ -167,7 +195,7 @@ export class AppointmentsService {
     createdById: string,
     input: CreateAppointmentWithNewPatientInput,
   ) {
-    return prisma.$transaction(async (tx) => {
+    return serializableTransaction(async (tx) => {
       // Checked inside the transaction (not before it, unlike the plain
       // create() above) so a bad provider rolls back the Client/Patient this
       // same call just created, instead of only guarding writes that hadn't
@@ -192,15 +220,16 @@ export class AppointmentsService {
         throw new ConflictException(`The selected doctor is not assigned to ${selectedType.name}. Choose another doctor or appointment type.`);
       }
 
-      const available = await this.appointmentAvailability.isAvailable(
+      const reservation = await this.appointmentAvailability.resolveBooking(
         organizationId,
         locationId,
         selectedType.id,
         input.appointment.startTime,
         input.appointment.assignedProviderId,
+        input.appointment.scheduleBlockId,
         tx,
       );
-      if (!available) {
+      if (!reservation?.providerId) {
         throw new ConflictException('That appointment time is no longer available.');
       }
 
@@ -246,21 +275,23 @@ export class AppointmentsService {
         data: { patientId: patient.id, clientId: client.id, isPrimary: true },
       });
 
-      return tx.appointment.create({
+      const created = await tx.appointment.create({
         data: {
           organizationId,
           locationId,
           patientId: patient.id,
           clientId: client.id,
-          type: input.appointment.appointmentType,
+          type: selectedType.appointmentType ?? input.appointment.appointmentType,
           appointmentTypeSettingId: selectedType.id,
           reason: input.appointment.visitReason,
-          source: DEFAULT_SOURCE,
+          source: input.appointment.source ?? DEFAULT_SOURCE,
           state: DEFAULT_STATE,
           scheduledAt: input.appointment.startTime,
           expectedDurationMinutes: selectedType.defaultDurationMinutes,
           colorKey: input.appointment.colorKey ?? null,
-          providerId: input.appointment.assignedProviderId ?? null,
+          providerId: reservation.providerId,
+          schedulerSlotTemplateId: reservation.blockId,
+          room: reservation.room,
           primaryCareVetName: input.appointment.primaryCareVetName ?? null,
           previousClinicName: input.appointment.previousClinicName ?? null,
           previousRecordsSource: input.appointment.previousRecordsSource ?? null,
@@ -272,11 +303,23 @@ export class AppointmentsService {
           client: { select: { id: true, firstName: true, lastName: true } },
         },
       });
-    }, { isolationLevel: 'Serializable' });
+      await tx.appointmentChange.create({
+        data: {
+          organizationId,
+          locationId,
+          appointmentId: created.id,
+          actorId: createdById,
+          action: 'Created',
+          before: {},
+          after: appointmentChangeSnapshot(created),
+        },
+      });
+      return created;
+    });
   }
 
-  async findById(id: string, organizationId: string) {
-    const appointment = await prisma.appointment.findFirst({ where: { id, organizationId } });
+  async findById(id: string, organizationId: string, locationId: string) {
+    const appointment = await prisma.appointment.findFirst({ where: { id, organizationId, locationId } });
     if (!appointment) {
       throw new NotFoundException(`Appointment ${id} not found`);
     }
@@ -288,9 +331,11 @@ export class AppointmentsService {
   async updateRecordsPrepStatus(
     id: string,
     organizationId: string,
+    locationId: string,
     input: UpdateRecordsPrepStatusInput,
   ) {
-    await this.findById(id, organizationId);
+    const appointment = await this.findById(id, organizationId, locationId);
+    assertAppointmentNotHistorical(appointment);
     return prisma.appointment.update({
       where: { id },
       data: { recordsPrepStatus: input.recordsPrepStatus },
@@ -303,17 +348,19 @@ export class AppointmentsService {
   async updateConfirmationStatus(
     id: string,
     organizationId: string,
+    locationId: string,
     input: UpdateConfirmationStatusInput,
   ) {
-    await this.findById(id, organizationId);
+    const appointment = await this.findById(id, organizationId, locationId);
+    assertAppointmentNotHistorical(appointment);
     return prisma.appointment.update({
       where: { id },
       data: { confirmationStatus: input.confirmationStatus },
     });
   }
 
-  async linkPatient(id: string, organizationId: string, input: LinkAppointmentPatientInput) {
-    const appointment = await this.findById(id, organizationId);
+  async linkPatient(id: string, organizationId: string, locationId: string, input: LinkAppointmentPatientInput) {
+    const appointment = await this.findById(id, organizationId, locationId);
     const patient = await prisma.patient.findFirst({
       where: { id: input.patientId, organizationId },
       include: { clients: { where: { isPrimary: true }, include: { client: true } } },
@@ -345,41 +392,100 @@ export class AppointmentsService {
     });
   }
 
-  async move(id: string, organizationId: string, locationId: string, input: MoveAppointmentInput) {
-    const appointment = await prisma.appointment.findFirst({
-      where: { id, organizationId, locationId },
-    });
-    if (!appointment) {
-      throw new NotFoundException(`Appointment ${id} not found`);
+  async move(
+    id: string,
+    organizationId: string,
+    locationId: string,
+    actorId: string,
+    input: MoveAppointmentInput,
+  ) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (input.startTime < today) {
+      throw new ConflictException('This appointment can’t be moved to a past date.');
     }
+    return serializableTransaction(async (tx) => {
+      const appointment = await tx.appointment.findFirst({
+        where: { id, organizationId, locationId },
+        include: { appointmentTypeSetting: { include: { providers: true } } },
+      });
+      if (!appointment) throw new NotFoundException(`Appointment ${id} not found`);
+      if (!['Scheduled', 'PreVisitPending', 'Confirmed'].includes(appointment.state)) {
+        throw new ConflictException(`A ${appointment.state} appointment cannot be rescheduled.`);
+      }
+      if (appointment.scheduledAt < today) {
+        throw new ConflictException('Historical appointments cannot be rescheduled.');
+      }
 
-    if (input.assignedProviderId) {
-      await assertBelongsToOrganization(
-        prisma.user,
-        'Provider',
-        input.assignedProviderId,
+      const setting = input.appointmentTypeId
+        ? await tx.appointmentTypeSetting.findFirst({
+            where: { id: input.appointmentTypeId, organizationId, locationId, isActive: true },
+            include: { providers: true },
+          })
+        : appointment.appointmentTypeSetting?.isActive
+          ? appointment.appointmentTypeSetting
+          : await tx.appointmentTypeSetting.findFirst({
+              where: { organizationId, locationId, appointmentType: appointment.type, isActive: true },
+              include: { providers: true },
+            });
+      if (!setting) throw new ConflictException('This appointment has no active appointment style and cannot be moved.');
+
+      const providerId = input.assignedProviderId === undefined
+        ? appointment.providerId ?? undefined
+        : input.assignedProviderId ?? undefined;
+      if (!providerId) throw new ConflictException('Assign a provider before moving this appointment.');
+      if (!setting.providers.some((assignment) => assignment.providerId === providerId)) {
+        throw new ConflictException(`${setting.name} cannot be scheduled with the selected provider.`);
+      }
+
+      const reservation = await this.appointmentAvailability.resolveBooking(
         organizationId,
+        locationId,
+        setting.id,
+        input.startTime,
+        providerId,
+        input.scheduleBlockId,
+        tx,
+        appointment.id,
       );
-    }
+      if (!reservation) {
+        throw new ConflictException('That time is unavailable because it is outside an eligible block or conflicts with another appointment.');
+      }
 
-    return prisma.appointment.update({
-      where: { id },
-      data: {
-        scheduledAt: input.startTime,
-        expectedDurationMinutes:
-          input.expectedDurationMinutes ?? appointment.expectedDurationMinutes,
-        providerId:
-          input.assignedProviderId === undefined
-            ? appointment.providerId
-            : input.assignedProviderId || null,
-      },
-      include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
+      const updated = await tx.appointment.update({
+        where: { id },
+        data: {
+          scheduledAt: input.startTime,
+          expectedDurationMinutes: appointment.expectedDurationMinutes ?? setting.defaultDurationMinutes,
+          providerId,
+          appointmentTypeSettingId: setting.id,
+          type: setting.appointmentType ?? appointment.type,
+          schedulerSlotTemplateId: reservation.blockId,
+          room: reservation.room,
+          ...(input.note !== undefined ? { reason: input.note || appointment.reason } : {}),
+        },
+        include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
+      });
+      await tx.appointmentChange.create({
+        data: {
+          organizationId,
+          locationId,
+          appointmentId: appointment.id,
+          actorId,
+          action: 'Rescheduled',
+          reason: input.reason ?? null,
+          before: appointmentChangeSnapshot(appointment),
+          after: appointmentChangeSnapshot(updated),
+        },
+      });
+      return updated;
     });
   }
 
   async updateNote(id: string, organizationId: string, locationId: string, input: UpdateAppointmentNoteInput) {
     const appointment = await prisma.appointment.findFirst({ where: { id, organizationId, locationId } });
     if (!appointment) throw new NotFoundException(`Appointment ${id} not found`);
+    assertAppointmentNotHistorical(appointment);
     return prisma.appointment.update({
       where: { id },
       data: { reason: input.note || appointment.type },
@@ -419,9 +525,81 @@ export class AppointmentsService {
     const { start, end } = dayBoundsFor(new Date());
     return prisma.appointment.findMany({
       where: { organizationId, scheduledAt: { gte: start, lt: end } },
-      include: { patient: true, client: true, provider: true, appointmentTypeSetting: true },
+      include: {
+        patient: true,
+        client: true,
+        provider: true,
+        appointmentTypeSetting: { include: { providers: true } },
+      },
       orderBy: { scheduledAt: 'asc' },
     });
+  }
+
+  /** Complete appointment feed for the scheduler's visible date range. */
+  async listForScheduleRange(
+    organizationId: string,
+    locationId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<DashboardAppointmentSummary[]> {
+    const appointments = await prisma.appointment.findMany({
+      where: {
+        organizationId,
+        locationId,
+        scheduledAt: { gte: startDate, lt: endDate },
+      },
+      include: {
+        patient: true,
+        client: true,
+        provider: true,
+        appointmentTypeSetting: { include: { providers: true } },
+      },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      appointmentTypeSettingId: appointment.appointmentTypeSettingId,
+      type: appointment.appointmentTypeSetting?.name ?? appointment.type,
+      reason: appointment.reason,
+      state: appointment.state,
+      scheduledAt: appointment.scheduledAt,
+      expectedDurationMinutes: appointment.expectedDurationMinutes,
+      colorKey: appointment.colorKey ?? appointment.appointmentTypeSetting?.color ?? null,
+      patient: appointment.patient
+        ? {
+            id: appointment.patient.id,
+            name: appointment.patient.name,
+            species: appointment.patient.species,
+            imageUrl: appointment.patient.imageUrl,
+          }
+        : null,
+      client: appointment.client
+        ? {
+            id: appointment.client.id,
+            firstName: appointment.client.firstName,
+            lastName: appointment.client.lastName,
+          }
+        : null,
+      provider: appointment.provider
+        ? {
+            id: appointment.provider.id,
+            displayName:
+              appointment.provider.displayName ??
+              `${appointment.provider.firstName} ${appointment.provider.lastName}`,
+            role: appointment.provider.role,
+          }
+        : null,
+      primaryCareVetName: appointment.primaryCareVetName,
+      previousClinicName: appointment.previousClinicName,
+      previousRecordsSource: appointment.previousRecordsSource,
+      lastSeenAt: appointment.lastSeenAt,
+      recordsPrepStatus: appointment.recordsPrepStatus,
+      confirmationStatus: appointment.confirmationStatus,
+      room: appointment.room,
+      schedulerSlotTemplateId: appointment.schedulerSlotTemplateId,
+      schedulingIssue: schedulingIssueFor(appointment),
+    }));
   }
 
   /** Org-wide sibling of listUpcomingForPatient, for dashboards that aren't
@@ -439,28 +617,43 @@ export class AppointmentsService {
     });
   }
 
-  async confirm(id: string, organizationId: string) {
-    return this.transitionTo(id, organizationId, 'Confirmed');
+  async confirm(id: string, organizationId: string, locationId: string, actorId: string) {
+    return this.transitionTo(id, organizationId, locationId, actorId, 'Confirmed');
   }
 
-  async markArrived(id: string, organizationId: string) {
-    return this.transitionTo(id, organizationId, 'Arrived');
+  async markArrived(id: string, organizationId: string, locationId: string, actorId: string) {
+    return this.transitionTo(id, organizationId, locationId, actorId, 'Arrived');
   }
 
-  async cancel(id: string, organizationId: string) {
-    return this.transitionTo(id, organizationId, 'Cancelled');
+  async cancel(id: string, organizationId: string, locationId: string, actorId: string, reason: string) {
+    return this.transitionTo(id, organizationId, locationId, actorId, 'Cancelled', reason);
   }
 
-  async markNoShow(id: string, organizationId: string) {
-    return this.transitionTo(id, organizationId, 'NoShow');
+  async markNoShow(id: string, organizationId: string, locationId: string, actorId: string) {
+    return this.transitionTo(id, organizationId, locationId, actorId, 'NoShow');
+  }
+
+  async history(id: string, organizationId: string, locationId: string) {
+    await this.findById(id, organizationId, locationId);
+    return prisma.appointmentChange.findMany({
+      where: { appointmentId: id, organizationId, locationId },
+      include: {
+        actor: { select: { id: true, firstName: true, lastName: true, displayName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   private async transitionTo(
     id: string,
     organizationId: string,
+    locationId: string,
+    actorId: string,
     targetState: keyof typeof ALLOWED_PREDECESSORS,
+    reason?: string,
   ) {
-    const appointment = await this.findById(id, organizationId);
+    const appointment = await this.findById(id, organizationId, locationId);
+    assertAppointmentNotHistorical(appointment);
     const allowedPredecessors = ALLOWED_PREDECESSORS[targetState];
 
     if (!allowedPredecessors.includes(appointment.state)) {
@@ -469,6 +662,90 @@ export class AppointmentsService {
       );
     }
 
-    return prisma.appointment.update({ where: { id }, data: { state: targetState } });
+    return prisma.$transaction(async (tx) => {
+      const changed = await tx.appointment.updateMany({
+        where: { id, organizationId, locationId, state: appointment.state },
+        data: { state: targetState },
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException('This appointment changed while you were viewing it. Refresh and try again.');
+      }
+      const updated = await tx.appointment.findUniqueOrThrow({ where: { id } });
+      await tx.appointmentChange.create({
+        data: {
+          organizationId,
+          locationId,
+          appointmentId: id,
+          actorId,
+          action: targetState,
+          reason: reason ?? null,
+          before: appointmentChangeSnapshot(appointment),
+          after: appointmentChangeSnapshot(updated),
+        },
+      });
+      return updated;
+    });
+  }
+}
+
+function appointmentChangeSnapshot(appointment: {
+  scheduledAt: Date;
+  expectedDurationMinutes: number | null;
+  providerId: string | null;
+  appointmentTypeSettingId: string | null;
+  schedulerSlotTemplateId: string | null;
+  room: string | null;
+  state: string;
+}) {
+  return {
+    scheduledAt: appointment.scheduledAt.toISOString(),
+    expectedDurationMinutes: appointment.expectedDurationMinutes,
+    providerId: appointment.providerId,
+    appointmentTypeSettingId: appointment.appointmentTypeSettingId,
+    schedulerSlotTemplateId: appointment.schedulerSlotTemplateId,
+    room: appointment.room,
+    state: appointment.state,
+  };
+}
+
+function schedulingIssueFor(appointment: {
+  scheduledAt: Date;
+  state: string;
+  providerId: string | null;
+  schedulerSlotTemplateId: string | null;
+  appointmentTypeSetting: { isActive: boolean; providers: Array<{ providerId: string }> } | null;
+}): string | null {
+  if (appointment.scheduledAt < new Date()) return null;
+  if (!['Scheduled', 'PreVisitPending', 'Confirmed', 'Arrived', 'VisitCreated'].includes(appointment.state)) return null;
+  if (!appointment.appointmentTypeSetting?.isActive) return 'Appointment style is inactive';
+  if (!appointment.providerId) return 'Provider is not assigned';
+  if (!appointment.appointmentTypeSetting.providers.some(({ providerId }) => providerId === appointment.providerId)) {
+    return 'Provider is not eligible for this appointment style';
+  }
+  if (!appointment.schedulerSlotTemplateId) return 'Schedule block is not assigned';
+  return null;
+}
+
+async function serializableTransaction<T>(
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(work, { isolationLevel: 'Serializable' });
+    } catch (caught) {
+      const code = typeof caught === 'object' && caught && 'code' in caught
+        ? String((caught as { code?: unknown }).code)
+        : null;
+      if (code !== 'P2034') throw caught;
+    }
+  }
+  throw new ConflictException('That schedule changed while you were booking. Please choose the time again.');
+}
+
+function assertAppointmentNotHistorical(appointment: { scheduledAt: Date }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (appointment.scheduledAt < today) {
+    throw new ConflictException('Historical appointments are read-only.');
   }
 }

@@ -24,19 +24,22 @@ import {
   CONFIRMATION_STATUSES,
   type DashboardAppointmentSummary,
   type AppointmentTypeValue,
-  type OperationsDashboard,
   type StaffMember,
 } from '../lib/patient-types';
 
 type SchedulerView = 'day' | 'week';
 
 export interface SchedulerAppointment extends DashboardAppointmentSummary {
-  room: string | null;
 }
 
 interface SelectedSlot {
   startsAt: Date;
   endsAt: Date;
+}
+
+interface PendingAppointmentMove {
+  appointmentId: string;
+  slot: SelectedSlot;
 }
 
 type AppointmentColorKey =
@@ -65,6 +68,7 @@ interface SchedulerSlotTemplate {
   staffId: string | null;
   room: string | null;
   isActive: boolean;
+  appointmentTypeIds: string[];
 }
 
 interface SchedulerConfig {
@@ -178,6 +182,16 @@ function formatRange(anchorDate: Date, view: SchedulerView): string {
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatDateTime(date: Date): string {
+  return date.toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function formatHour(hour: number): string {
@@ -315,7 +329,7 @@ function uniqueAppointments(appointments: SchedulerAppointment[]): SchedulerAppo
 }
 
 function toSchedulerAppointment(appointment: DashboardAppointmentSummary): SchedulerAppointment {
-  return { ...appointment, room: null };
+  return appointment;
 }
 
 function slotStartsAt(day: Date, slotIndex: number, slotIntervalMinutes: number): Date {
@@ -382,6 +396,27 @@ function slotOverlapsTemplate(slot: SelectedSlot, templates: SchedulerSlotTempla
   });
 }
 
+function slotContainedByTemplate(slot: SelectedSlot, templates: SchedulerSlotTemplate[]): boolean {
+  const slotStart = slot.startsAt.getHours() * 60 + slot.startsAt.getMinutes();
+  const slotEnd = slot.endsAt.getHours() * 60 + slot.endsAt.getMinutes();
+  return templates.some((template) =>
+    template.isActive &&
+    template.dayOfWeek === slot.startsAt.getDay() &&
+    slotStart >= minutesFromTime(template.startTime) &&
+    slotEnd <= minutesFromTime(template.endTime),
+  );
+}
+
+function templateForAppointment(
+  appointment: SchedulerAppointment,
+  templates: SchedulerSlotTemplate[],
+): SchedulerSlotTemplate | null {
+  const startsAt = new Date(appointment.scheduledAt);
+  const duration = appointment.expectedDurationMinutes ?? 30;
+  const slot = { startsAt, endsAt: new Date(startsAt.getTime() + duration * 60_000) };
+  return templates.find((template) => slotContainedByTemplate(slot, [template])) ?? null;
+}
+
 function appointmentsForDay(
   appointments: SchedulerAppointment[],
   day: Date,
@@ -414,6 +449,8 @@ export function SchedulerPage() {
     useState<SchedulerConfig>(FALLBACK_SCHEDULER_CONFIG);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [pendingMove, setPendingMove] = useState<PendingAppointmentMove | null>(null);
+  const [draggingAppointmentId, setDraggingAppointmentId] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState<SchedulerAppointment | null>(null);
@@ -423,37 +460,39 @@ export function SchedulerPage() {
   const [editingAppointment, setEditingAppointment] = useState<NewAppointmentCreatedSummary | null>(null);
 
   const loadSchedulerData = useCallback(
-    async (signal?: AbortSignal) => {
+    async (rangeStart: Date, rangeEnd: Date, signal?: AbortSignal) => {
       setLoading(true);
       setLoadError(null);
       try {
         const requestInit: RequestInit = signal
           ? { cache: 'no-store', signal }
           : { cache: 'no-store' };
-        const [dashboardResponse, staffResponse, configResponse] = await Promise.all([
-          fetch('/api/operations/dashboard', requestInit),
+        const rangeQuery = new URLSearchParams({
+          startDate: rangeStart.toISOString(),
+          endDate: rangeEnd.toISOString(),
+        });
+        const [appointmentsResponse, staffResponse, configResponse] = await Promise.all([
+          fetch(`/api/appointments/schedule?${rangeQuery.toString()}`, requestInit),
           fetch('/api/staff?canReceiveAppointments=true', requestInit),
           fetch('/api/scheduler-config', requestInit),
         ]);
 
-        if (!dashboardResponse.ok) {
-          throw new Error(`Schedule failed to load (${dashboardResponse.status})`);
+        if (!appointmentsResponse.ok) {
+          throw new Error(`Schedule failed to load (${appointmentsResponse.status})`);
         }
-        const dashboard = (await dashboardResponse.json()) as OperationsDashboard;
+        const scheduleAppointments =
+          (await appointmentsResponse.json()) as DashboardAppointmentSummary[];
         const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
         const config = configResponse.ok
           ? ((await configResponse.json()) as SchedulerConfig)
           : FALLBACK_SCHEDULER_CONFIG;
 
-        const loadedAppointments = dashboard
-          ? uniqueAppointments([
-              ...dashboard.todaysAppointments.map(toSchedulerAppointment),
-              ...dashboard.upcomingAppointments.map(toSchedulerAppointment),
-            ])
-          : [];
+        const loadedAppointments = uniqueAppointments(
+          scheduleAppointments.map(toSchedulerAppointment),
+        );
 
         setAppointments(loadedAppointments);
-        setGeneratedAt(dashboard.generatedAt);
+        setGeneratedAt(new Date().toISOString());
         setProviders(staff);
         setSchedulerConfig(config);
       } catch (caught) {
@@ -470,12 +509,6 @@ export function SchedulerPage() {
   );
 
   useEffect(() => {
-    const controller = new AbortController();
-    void loadSchedulerData(controller.signal);
-    return () => controller.abort();
-  }, [loadSchedulerData]);
-
-  useEffect(() => {
     const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
@@ -487,6 +520,14 @@ export function SchedulerPage() {
     const weekStart = startOfWeek(anchorDate);
     return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   }, [anchorDate, view]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const rangeStart = startOfDay(days[0]!);
+    const rangeEnd = addDays(startOfDay(days[days.length - 1]!), 1);
+    void loadSchedulerData(rangeStart, rangeEnd, controller.signal);
+    return () => controller.abort();
+  }, [days, loadSchedulerData]);
 
   const filteredAppointments = useMemo(
     () =>
@@ -544,6 +585,81 @@ export function SchedulerPage() {
     );
   }
 
+  function requestAppointmentMove(appointmentId: string, slot: SelectedSlot) {
+    const appointment = appointments.find((candidate) => candidate.id === appointmentId);
+    if (!appointment) return;
+    const targetDay = startOfDay(slot.startsAt);
+    if (targetDay < today) {
+      setMoveError('This appointment can’t be moved to a past date.');
+      return;
+    }
+    const duration = appointment.expectedDurationMinutes ?? 30;
+    const fullSlot = {
+      startsAt: slot.startsAt,
+      endsAt: new Date(slot.startsAt.getTime() + duration * 60_000),
+    };
+    const restriction = moveRestriction(appointment, fullSlot);
+    if (restriction) {
+      setMoveError(restriction);
+      return;
+    }
+    const restrictedBlocks = appointment.appointmentTypeSettingId
+      ? schedulerConfig.slotTemplates.filter((template) =>
+          template.appointmentTypeIds?.includes(appointment.appointmentTypeSettingId!),
+        )
+      : [];
+    if (restrictedBlocks.length > 0 && !slotContainedByTemplate(fullSlot, restrictedBlocks)) {
+      const styleName = schedulerConfig.appointmentTypes.find(
+        (type) => type.id === appointment.appointmentTypeSettingId,
+      )?.name ?? appointment.type;
+      setMoveError(`${styleName} can only be moved into a schedule block assigned to that appointment style.`);
+      return;
+    }
+    setMoveError(null);
+    setPendingMove({ appointmentId, slot: fullSlot });
+  }
+
+  function moveRestriction(appointment: SchedulerAppointment, slot: SelectedSlot): string | null {
+    if (startOfDay(slot.startsAt) < today) return 'Past dates are unavailable';
+    const duration = appointment.expectedDurationMinutes ?? 30;
+    const fullSlot = { startsAt: slot.startsAt, endsAt: new Date(slot.startsAt.getTime() + duration * 60_000) };
+    const providerId = appointment.provider?.id ?? null;
+    const eligibleDayBlocks = schedulerConfig.slotTemplates.filter((template) =>
+      template.isActive &&
+      template.dayOfWeek === slot.startsAt.getDay() &&
+      (!template.staffId || template.staffId === providerId),
+    );
+    const restrictedBlocks = appointment.appointmentTypeSettingId
+      ? eligibleDayBlocks.filter((template) => template.appointmentTypeIds?.includes(appointment.appointmentTypeSettingId!))
+      : [];
+    const generalBlocks = eligibleDayBlocks.filter((template) => (template.appointmentTypeIds ?? []).length === 0);
+    const styleHasRestrictions = appointment.appointmentTypeSettingId
+      ? schedulerConfig.slotTemplates.some((template) => template.appointmentTypeIds?.includes(appointment.appointmentTypeSettingId!))
+      : false;
+    if (styleHasRestrictions && !slotContainedByTemplate(fullSlot, restrictedBlocks)) {
+      return 'Outside this appointment style’s block';
+    }
+    if (!styleHasRestrictions && !slotContainedByTemplate(fullSlot, generalBlocks)) {
+      const insideReservedBlock = slotContainedByTemplate(fullSlot, eligibleDayBlocks);
+      return insideReservedBlock
+        ? 'Reserved for other appointment styles'
+        : 'Outside available scheduling hours';
+    }
+    const targetBlock = (styleHasRestrictions ? restrictedBlocks : generalBlocks)
+      .find((template) => slotContainedByTemplate(fullSlot, [template]));
+    const conflict = appointments.some((candidate) => {
+      if (candidate.id === appointment.id) return false;
+      const providerConflict = candidate.provider?.id === providerId;
+      const roomConflict = Boolean(targetBlock?.room && candidate.room === targetBlock.room);
+      if (!providerConflict && !roomConflict) return false;
+      if (['Cancelled', 'NoShow', 'Completed'].includes(candidate.state)) return false;
+      const candidateStart = new Date(candidate.scheduledAt);
+      const candidateEnd = new Date(candidateStart.getTime() + (candidate.expectedDurationMinutes ?? 30) * 60_000);
+      return fullSlot.startsAt < candidateEnd && fullSlot.endsAt > candidateStart;
+    });
+    return conflict ? 'Conflicts with another appointment' : null;
+  }
+
   async function handleAppointmentMove(appointmentId: string, slot: SelectedSlot) {
     const appointment = appointments.find((candidate) => candidate.id === appointmentId);
     if (!appointment) return;
@@ -552,6 +668,19 @@ export function SchedulerPage() {
       ...appointment,
       scheduledAt: slot.startsAt.toISOString(),
     };
+    const eligibleBlocks = schedulerConfig.slotTemplates.filter((template) =>
+      template.isActive &&
+      template.dayOfWeek === slot.startsAt.getDay() &&
+      (!template.staffId || template.staffId === appointment.provider?.id) &&
+      slotContainedByTemplate(slot, [template]),
+    );
+    const styleHasRestrictions = Boolean(appointment.appointmentTypeSettingId) &&
+      schedulerConfig.slotTemplates.some((template) => template.appointmentTypeIds?.includes(appointment.appointmentTypeSettingId!));
+    const targetBlock = eligibleBlocks.find((template) =>
+      styleHasRestrictions
+        ? template.appointmentTypeIds?.includes(appointment.appointmentTypeSettingId!)
+        : (template.appointmentTypeIds ?? []).length === 0,
+    );
     setMoveError(null);
 
     const previousAppointments = appointments;
@@ -569,6 +698,8 @@ export function SchedulerPage() {
           startTime: slot.startsAt.toISOString(),
           expectedDurationMinutes: appointment.expectedDurationMinutes ?? undefined,
           assignedProviderId: appointment.provider?.id ?? null,
+          scheduleBlockId: targetBlock?.id,
+          reason: 'Moved by drag and drop',
         }),
       });
 
@@ -587,15 +718,30 @@ export function SchedulerPage() {
       setAppointments((current) =>
         uniqueAppointments(
           current.map((candidate) =>
-            candidate.id === appointmentId ? toSchedulerAppointment(updated) : candidate,
+            candidate.id === appointmentId
+              ? {
+                  ...candidate,
+                  scheduledAt: updated.scheduledAt,
+                  expectedDurationMinutes: updated.expectedDurationMinutes,
+                  provider: updated.provider,
+                  appointmentTypeSettingId: updated.appointmentTypeSettingId,
+                }
+              : candidate,
           ),
         ),
       );
-    } catch {
+    } catch (caught) {
       setAppointments(previousAppointments);
-      setMoveError('Could not move the appointment. The schedule was restored.');
+      setMoveError(caught instanceof Error ? caught.message : 'Could not move the appointment. The schedule was restored.');
     }
   }
+
+  const pendingMoveAppointment = pendingMove
+    ? appointments.find((appointment) => appointment.id === pendingMove.appointmentId) ?? null
+    : null;
+  const draggingAppointment = draggingAppointmentId
+    ? appointments.find((appointment) => appointment.id === draggingAppointmentId) ?? null
+    : null;
 
   return (
     <DashboardShell
@@ -629,7 +775,7 @@ export function SchedulerPage() {
           </p>
         ) : null}
         {view === 'week' ? (
-          <WeekSchedulerGrid
+        <WeekSchedulerGrid
             days={days}
             appointments={filteredAppointments}
             today={today}
@@ -639,7 +785,13 @@ export function SchedulerPage() {
             slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
-            onAppointmentMove={handleAppointmentMove}
+            onAppointmentMove={requestAppointmentMove}
+            onPrevious={() => move(-1)}
+            onNext={() => move(1)}
+            draggingAppointment={draggingAppointment}
+            onAppointmentDragStart={setDraggingAppointmentId}
+            onAppointmentDragEnd={() => setDraggingAppointmentId(null)}
+            getMoveRestriction={moveRestriction}
           />
         ) : (
           <DaySchedulerGrid
@@ -652,14 +804,13 @@ export function SchedulerPage() {
             slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
-            onAppointmentMove={handleAppointmentMove}
+            onAppointmentMove={requestAppointmentMove}
+            draggingAppointment={draggingAppointment}
+            onAppointmentDragStart={setDraggingAppointmentId}
+            onAppointmentDragEnd={() => setDraggingAppointmentId(null)}
+            getMoveRestriction={moveRestriction}
           />
         )}
-        {moveError ? (
-          <p className="scheduler-inline-error" role="alert">
-            {moveError}
-          </p>
-        ) : null}
         {bookingNote ? (
           <p className="scheduler-inline-note" role="status">
             {bookingNote}
@@ -687,6 +838,7 @@ export function SchedulerPage() {
           )}
           initialProviderId={editingAppointment?.provider?.id ?? (providerFilter === 'all' ? null : providerFilter)}
           initialAppointmentTypeId={editingAppointment?.appointmentType ?? null}
+          initialAppointmentTypeSettingId={editingAppointment?.appointmentTypeSettingId ?? null}
           providers={providers}
           appointmentTypes={schedulerConfig.appointmentTypes}
           onClose={() => { setSelectedSlot(null); setEditingAppointment(null); }}
@@ -740,12 +892,56 @@ export function SchedulerPage() {
             setSelectedSlot({ startsAt: start, endsAt: new Date(start.getTime() + (appointment.expectedDurationMinutes ?? 30) * 60_000) });
           }}
           onCancelled={(id) => {
-            setAppointments((current) => current.filter((item) => item.id !== id));
+            setAppointments((current) => current.map((item) => item.id === id ? { ...item, state: 'Cancelled' } : item));
             setSelectedAppointment(null);
             setBookingNote('Appointment cancelled.');
           }}
         />
       )}
+      {pendingMove && pendingMoveAppointment ? (
+        <ModalFrame
+          title="Move appointment"
+          subtitle={appointmentPatientName(pendingMoveAppointment)}
+          onClose={() => setPendingMove(null)}
+          variant="move-confirm"
+        >
+          <div className="scheduler-move-confirmation">
+            <div><span>Current</span><strong>{formatDateTime(new Date(pendingMoveAppointment.scheduledAt))}</strong></div>
+            <span className="scheduler-move-confirmation__arrow" aria-hidden="true">→</span>
+            <div className="scheduler-move-confirmation__new"><span>New</span><strong>{formatDateTime(pendingMove.slot.startsAt)}</strong></div>
+          </div>
+          <div className="scheduler-modal__actions">
+            <button type="button" className="button-secondary" onClick={() => setPendingMove(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="scheduler-primary-action"
+              onClick={() => {
+                const move = pendingMove;
+                setPendingMove(null);
+                void handleAppointmentMove(move.appointmentId, move.slot);
+              }}
+            >
+              Move appointment
+            </button>
+          </div>
+        </ModalFrame>
+      ) : null}
+      {moveError ? (
+        <ModalFrame
+          title="Can’t move appointment"
+          onClose={() => setMoveError(null)}
+          variant="move-error"
+        >
+          <p className="scheduler-move-error-message" role="alert">{moveError}</p>
+          <div className="scheduler-modal__actions">
+            <button type="button" className="scheduler-primary-action" onClick={() => setMoveError(null)}>
+              Close
+            </button>
+          </div>
+        </ModalFrame>
+      ) : null}
     </DashboardShell>
   );
 }
@@ -765,6 +961,8 @@ function toSchedulerCreatedAppointment(
     lastSeenAt: null,
     recordsPrepStatus: 'NotStarted',
     confirmationStatus: 'NotSent',
+    schedulerSlotTemplateId: appointment.schedulerSlotTemplateId,
+    schedulingIssue: null,
   };
 }
 
@@ -793,14 +991,14 @@ function SchedulerToolbar({
         <button type="button" onClick={onToday}>
           Today
         </button>
-        <div className="scheduler-toolbar__stepper" aria-label="Navigate scheduler">
+        {view === 'day' ? <div className="scheduler-toolbar__stepper" aria-label="Navigate scheduler">
           <button type="button" onClick={onPrevious} aria-label="Previous date range">
             <span aria-hidden="true">&lt;</span>
           </button>
           <button type="button" onClick={onNext} aria-label="Next date range">
             <span aria-hidden="true">&gt;</span>
           </button>
-        </div>
+        </div> : null}
         <strong>{rangeLabel}</strong>
       </div>
       <div className="scheduler-toolbar__meta">
@@ -897,6 +1095,12 @@ function WeekSchedulerGrid({
   onSlotClick,
   onAppointmentClick,
   onAppointmentMove,
+  onPrevious,
+  onNext,
+  draggingAppointment,
+  onAppointmentDragStart,
+  onAppointmentDragEnd,
+  getMoveRestriction,
 }: {
   days: Date[];
   appointments: SchedulerAppointment[];
@@ -908,26 +1112,35 @@ function WeekSchedulerGrid({
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
   onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  draggingAppointment: SchedulerAppointment | null;
+  onAppointmentDragStart: (appointmentId: string) => void;
+  onAppointmentDragEnd: () => void;
+  getMoveRestriction: (appointment: SchedulerAppointment, slot: SelectedSlot) => string | null;
 }) {
   const todayIndex = days.findIndex((day) => isSameDay(day, currentTime));
   return (
-    <section className="scheduler-calendar-card" aria-label="Week appointment calendar">
+    <section className={draggingAppointment ? 'scheduler-calendar-card scheduler-calendar-card--dragging' : 'scheduler-calendar-card'} aria-label="Week appointment calendar">
       <div className="scheduler-week">
         <div className="scheduler-week__header">
-          <div className="scheduler-time-gutter" aria-hidden="true" />
+          <div className="scheduler-time-gutter scheduler-week-nav-cell">
+            <button type="button" className="scheduler-week-nav-button" onClick={onPrevious} aria-label="Previous week"><span aria-hidden="true">‹</span></button>
+          </div>
           {days.map((day) => (
             <div
               key={day.toISOString()}
-              className={
-                isSameDay(day, today)
-                  ? 'scheduler-day-heading scheduler-day-heading--today'
-                  : 'scheduler-day-heading'
-              }
+              className={[
+                'scheduler-day-heading',
+                isSameDay(day, today) ? 'scheduler-day-heading--today' : '',
+                day < today && !isSameDay(day, today) ? 'scheduler-day-heading--past' : '',
+              ].filter(Boolean).join(' ')}
             >
               <span>{day.toLocaleDateString([], { weekday: 'short' })}</span>
               <strong>{day.getDate()}</strong>
             </div>
           ))}
+          <button type="button" className="scheduler-week-nav-button scheduler-week-nav-button--next" onClick={onNext} aria-label="Next week"><span aria-hidden="true">›</span></button>
         </div>
         <div className="scheduler-week__body">
           <TimeColumn />
@@ -944,6 +1157,10 @@ function WeekSchedulerGrid({
               onSlotClick={onSlotClick}
               onAppointmentClick={onAppointmentClick}
               onAppointmentMove={onAppointmentMove}
+              draggingAppointment={draggingAppointment}
+              onAppointmentDragStart={onAppointmentDragStart}
+              onAppointmentDragEnd={onAppointmentDragEnd}
+              getMoveRestriction={getMoveRestriction}
             />
           ))}
           {todayIndex >= 0 ? (
@@ -970,6 +1187,10 @@ function DaySchedulerGrid({
   onSlotClick,
   onAppointmentClick,
   onAppointmentMove,
+  draggingAppointment,
+  onAppointmentDragStart,
+  onAppointmentDragEnd,
+  getMoveRestriction,
 }: {
   day: Date;
   appointments: SchedulerAppointment[];
@@ -981,10 +1202,14 @@ function DaySchedulerGrid({
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
   onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
+  draggingAppointment: SchedulerAppointment | null;
+  onAppointmentDragStart: (appointmentId: string) => void;
+  onAppointmentDragEnd: () => void;
+  getMoveRestriction: (appointment: SchedulerAppointment, slot: SelectedSlot) => string | null;
 }) {
   return (
     <section
-      className="scheduler-calendar-card scheduler-calendar-card--day"
+      className={draggingAppointment ? 'scheduler-calendar-card scheduler-calendar-card--day scheduler-calendar-card--dragging' : 'scheduler-calendar-card scheduler-calendar-card--day'}
       aria-label="Day appointment calendar"
     >
       <div
@@ -1012,6 +1237,10 @@ function DaySchedulerGrid({
           onSlotClick={onSlotClick}
           onAppointmentClick={onAppointmentClick}
           onAppointmentMove={onAppointmentMove}
+          draggingAppointment={draggingAppointment}
+          onAppointmentDragStart={onAppointmentDragStart}
+          onAppointmentDragEnd={onAppointmentDragEnd}
+          getMoveRestriction={getMoveRestriction}
         />
         {isSameDay(day, currentTime) ? (
           <CurrentTimeIndicator currentTime={currentTime} todayIndex={0} columnCount={1} />
@@ -1086,6 +1315,10 @@ function SchedulerDayColumn({
   onSlotClick,
   onAppointmentClick,
   onAppointmentMove,
+  draggingAppointment,
+  onAppointmentDragStart,
+  onAppointmentDragEnd,
+  getMoveRestriction,
 }: {
   day: Date;
   today: Date;
@@ -1097,16 +1330,37 @@ function SchedulerDayColumn({
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
   onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
+  draggingAppointment: SchedulerAppointment | null;
+  onAppointmentDragStart: (appointmentId: string) => void;
+  onAppointmentDragEnd: () => void;
+  getMoveRestriction: (appointment: SchedulerAppointment, slot: SelectedSlot) => string | null;
 }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const isPastDay = day < today && !isSameDay(day, today);
+  const targetSlot = dropTarget
+    ? timeSlotsFor(day, slotIntervalMinutes).find((slot) => slot.startsAt.toISOString() === dropTarget) ?? null
+    : null;
+  const targetDuration = draggingAppointment?.expectedDurationMinutes ?? 30;
+  const fullTargetSlot = targetSlot
+    ? { startsAt: targetSlot.startsAt, endsAt: new Date(targetSlot.startsAt.getTime() + targetDuration * 60_000) }
+    : null;
+  const restriction = draggingAppointment && fullTargetSlot
+    ? getMoveRestriction(draggingAppointment, fullTargetSlot)
+    : null;
+
+  useEffect(() => {
+    if (!draggingAppointment) setDropTarget(null);
+  }, [draggingAppointment]);
 
   return (
     <div
-      className={
-        isSameDay(day, today)
-          ? 'scheduler-day-column scheduler-day-column--today'
-          : 'scheduler-day-column'
-      }
+      className={[
+        'scheduler-day-column',
+        isSameDay(day, today) ? 'scheduler-day-column--today' : '',
+        isPastDay ? 'scheduler-day-column--past' : '',
+        draggingAppointment ? 'scheduler-day-column--drag-active' : '',
+        targetSlot ? 'scheduler-day-column--drag-target' : '',
+      ].filter(Boolean).join(' ')}
       style={{ '--scheduler-slot-count': slotCount(slotIntervalMinutes) } as CSSProperties}
     >
       {slotTemplates.map((template) => (
@@ -1138,11 +1392,16 @@ function SchedulerDayColumn({
               type="button"
               className={slotClassName}
               aria-label={`New appointment at ${formatTime(slot.startsAt)}`}
-              onClick={() => onSlotClick(slot)}
+              onClick={() => {
+                if (!isPastDay) onSlotClick(slot);
+              }}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'move';
                 setDropTarget(slotKey);
+                const edge = 72;
+                if (event.clientY < edge) window.scrollBy({ top: -10, behavior: 'auto' });
+                if (event.clientY > window.innerHeight - edge) window.scrollBy({ top: 10, behavior: 'auto' });
               }}
               onDragLeave={() => setDropTarget(null)}
               onDrop={(event) => {
@@ -1159,6 +1418,16 @@ function SchedulerDayColumn({
           );
         })}
       </div>
+      {draggingAppointment && fullTargetSlot ? (
+        <div
+          className={restriction ? 'scheduler-drop-preview scheduler-drop-preview--invalid' : 'scheduler-drop-preview scheduler-drop-preview--valid'}
+          style={appointmentStyle({ ...draggingAppointment, scheduledAt: fullTargetSlot.startsAt.toISOString() })}
+          aria-live="polite"
+        >
+          <span>{fullTargetSlot.startsAt.toLocaleDateString([], { weekday: 'short' })} · {formatTime(fullTargetSlot.startsAt)}–{formatTime(fullTargetSlot.endsAt)}</span>
+          <strong>{restriction ?? appointmentPatientName(draggingAppointment)}</strong>
+        </div>
+      ) : null}
       {appointments.map((appointment) => (
         <SchedulerAppointmentCard
           key={appointment.id}
@@ -1166,6 +1435,11 @@ function SchedulerDayColumn({
           appointmentTypes={appointmentTypes}
           compact={compact}
           style={appointmentStyle(appointment)}
+          blockColor={templateForAppointment(appointment, slotTemplates)?.color ?? null}
+          dragging={draggingAppointment?.id === appointment.id}
+          readOnly={isPastDay}
+          onDragStart={() => onAppointmentDragStart(appointment.id)}
+          onDragEnd={onAppointmentDragEnd}
           onClick={() => onAppointmentClick(appointment)}
         />
       ))}
@@ -1176,8 +1450,6 @@ function SchedulerDayColumn({
           style={slotTemplateOverlayStyle(template)}
           aria-hidden="true"
         >
-          <span>{template.label}</span>
-          {template.room ? <small>{template.room}</small> : null}
         </div>
       ))}
     </div>
@@ -1189,12 +1461,22 @@ function SchedulerAppointmentCard({
   appointmentTypes,
   compact = false,
   style,
+  blockColor,
+  dragging,
+  readOnly,
+  onDragStart,
+  onDragEnd,
   onClick,
 }: {
   appointment: SchedulerAppointment;
   appointmentTypes: AppointmentTypeSetting[];
   compact?: boolean | undefined;
   style: { top: string; height: string };
+  blockColor: string | null;
+  dragging: boolean;
+  readOnly: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
   onClick: () => void;
 }) {
   const careTeamMeta = appointmentCareTeamMeta(appointment);
@@ -1203,23 +1485,38 @@ function SchedulerAppointmentCard({
     ...style,
     '--scheduler-card-accent': color,
     '--scheduler-card-bg': colorWithAlpha(color, '14'),
+    '--scheduler-block-tint': blockColor ? colorWithAlpha(blockColor, '2e') : 'transparent',
   } as CSSProperties;
 
   return (
     <button
       type="button"
-      className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''}`}
+      className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''} ${dragging ? 'scheduler-appointment-card--dragging' : ''} ${readOnly ? 'scheduler-appointment-card--past' : ''}`}
       style={cardStyle}
-      draggable
+      draggable={!readOnly}
       onDragStart={(event) => {
+        if (readOnly) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', appointment.id);
+        const dragGhost = document.createElement('span');
+        dragGhost.className = 'scheduler-drag-ghost';
+        dragGhost.textContent = appointmentPatientName(appointment);
+        document.body.appendChild(dragGhost);
+        event.dataTransfer.setDragImage(dragGhost, 12, 12);
+        window.requestAnimationFrame(() => dragGhost.remove());
+        onDragStart();
       }}
+      onDragEnd={onDragEnd}
       onClick={onClick}
     >
-      <span className="scheduler-appointment-card__drag" aria-hidden="true">
-        ::
-      </span>
+      {!readOnly ? (
+        <span className="scheduler-appointment-card__drag" aria-hidden="true">
+          ::
+        </span>
+      ) : null}
       <strong>{appointmentPatientName(appointment)}</strong>
       <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
         {appointmentPrimaryMeta(appointment, appointmentTypes)}
@@ -1237,6 +1534,9 @@ function SchedulerAppointmentCard({
           {STATUS_LABELS[appointment.state] ?? appointment.state}
         </small>
       )}
+      {appointment.schedulingIssue ? (
+        <small className="scheduler-appointment-card__issue" title={appointment.schedulingIssue}>Needs review</small>
+      ) : null}
     </button>
   );
 }
@@ -1246,18 +1546,20 @@ function ModalFrame({
   subtitle,
   children,
   onClose,
+  variant,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
+  variant?: 'move-error' | 'move-confirm';
 }) {
   useLockBodyScroll(true);
 
   return (
     <div className="scheduler-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="scheduler-modal"
+        className={variant ? `scheduler-modal scheduler-modal--${variant}` : 'scheduler-modal'}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -1269,7 +1571,7 @@ function ModalFrame({
             {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button type="button" onClick={onClose} aria-label="Close dialog">
-            x
+            ×
           </button>
         </div>
         {children}
@@ -1295,10 +1597,13 @@ export function AppointmentDetailPopover({
 }) {
   const color = appointmentColor(appointment, appointmentTypes);
   const startsAt = new Date(appointment.scheduledAt);
+  const today = startOfDay(new Date());
+  const isPastAppointment = startsAt < today;
   const [note, setNote] = useState(appointment.reason ?? '');
   const [savingNote, setSavingNote] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function saveNote() {
@@ -1321,7 +1626,11 @@ export function AppointmentDetailPopover({
     setCancelling(true);
     setActionError(null);
     try {
-      const response = await fetch(`/api/appointments/${encodeURIComponent(appointment.id)}/cancel`, { method: 'POST' });
+      const response = await fetch(`/api/appointments/${encodeURIComponent(appointment.id)}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
       if (response.ok) onCancelled(appointment.id);
       else setActionError('Could not cancel the appointment. Please try again.');
     } finally {
@@ -1346,26 +1655,37 @@ export function AppointmentDetailPopover({
           <div><dt>Room</dt><dd>{appointment.room ?? 'Not assigned'}</dd></div>
           <div><dt>Schedule color</dt><dd><span className="scheduler-color-readout" style={{ '--scheduler-readout-color': color } as CSSProperties}>{appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}</span></dd></div>
         </dl>
-        <div className="appointment-viewer__note">
-          <div><label htmlFor="appointment-note">Appointment note</label><small>Visible to the clinic team</small></div>
-          <textarea id="appointment-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for this appointment" />
-          <button type="button" onClick={() => void saveNote()} disabled={savingNote || note === appointment.reason}>{savingNote ? 'Saving…' : 'Save Note'}</button>
-        </div>
+        {isPastAppointment ? (
+          <div className="appointment-viewer__note appointment-viewer__note--read-only">
+            <div><span>Appointment note</span><small>Historical appointment · View only</small></div>
+            <p>{appointment.reason || 'No appointment note recorded.'}</p>
+          </div>
+        ) : (
+          <div className="appointment-viewer__note">
+            <div><label htmlFor="appointment-note">Appointment note</label><small>Visible to the clinic team</small></div>
+            <textarea id="appointment-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for this appointment" />
+            <button type="button" onClick={() => void saveNote()} disabled={savingNote || note === appointment.reason}>{savingNote ? 'Saving…' : 'Save Note'}</button>
+          </div>
+        )}
         {actionError ? <p className="scheduler-modal__error" role="alert">{actionError}</p> : null}
         <div className="appointment-viewer__actions">
-          <button type="button" className="scheduler-primary-action" onClick={onReschedule}>Reschedule</button>
+          {!isPastAppointment ? <button type="button" className="scheduler-primary-action" onClick={onReschedule}>Reschedule</button> : null}
           {appointment.patient ? <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}>Open Patient Profile</Link> : null}
-          <button type="button" className="appointment-viewer__cancel" onClick={() => setConfirmCancel(true)}>Cancel Appointment</button>
+          {!isPastAppointment ? <button type="button" className="appointment-viewer__cancel" onClick={() => setConfirmCancel(true)}>Cancel Appointment</button> : null}
         </div>
-        {confirmCancel ? (
+        {confirmCancel && !isPastAppointment ? (
           <div className="appointment-cancel-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="cancel-appointment-title">
             <div className="appointment-cancel-confirmation__panel">
               <span className="appointment-cancel-confirmation__icon" aria-hidden="true">!</span>
               <h3 id="cancel-appointment-title">Cancel this appointment?</h3>
               <p>{appointmentPatientName(appointment)} will be removed from the schedule. This cannot be undone.</p>
+              <label className="appointment-cancel-confirmation__reason">
+                <span>Reason</span>
+                <textarea value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} maxLength={500} placeholder="Why is this appointment being cancelled?" autoFocus />
+              </label>
               <div>
                 <button type="button" className="scheduler-secondary-action" disabled={cancelling} onClick={() => setConfirmCancel(false)}>No, Keep It</button>
-                <button type="button" className="appointment-cancel-confirmation__yes" disabled={cancelling} onClick={() => void cancelAppointment()}>{cancelling ? 'Cancelling…' : 'Yes, Cancel'}</button>
+                <button type="button" className="appointment-cancel-confirmation__yes" disabled={cancelling || !cancelReason.trim()} onClick={() => void cancelAppointment()}>{cancelling ? 'Cancelling…' : 'Yes, Cancel'}</button>
               </div>
             </div>
           </div>

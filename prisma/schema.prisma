@@ -58,6 +58,8 @@ model Organization {
   patientAlerts PatientAlert[]
   patientMedications PatientMedication[]
   appointments Appointment[]
+  appointmentChanges AppointmentChange[]
+  schedulerConfigChanges SchedulerConfigChange[]
   visits       Visit[]
   appointmentTypeSettings AppointmentTypeSetting[]
   appointmentTypeProviders AppointmentTypeProvider[]
@@ -80,12 +82,15 @@ model Location {
   id             String   @id @default(cuid())
   organizationId String
   name           String
+  timeZone       String   @default("America/Chicago")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   users        User[]
   appointments Appointment[]
+  appointmentChanges AppointmentChange[]
+  schedulerConfigChanges SchedulerConfigChange[]
   visits       Visit[]
   appointmentTypeSettings AppointmentTypeSetting[]
   schedulerSettings       SchedulerSettings?
@@ -124,6 +129,9 @@ model User {
   // Override for the two-line firstName/lastName default (e.g. "Dr. Priya
   // Shah") — nullable because most users are fine with the computed default.
   displayName    String?
+  avatarUrl      String?
+  statusEmoji    String?
+  statusText     String?
   role           UserRole
   isActive       Boolean  @default(true)
   // Sparki owns authorization; WorkOS AuthKit owns authentication (see
@@ -152,6 +160,8 @@ model User {
 
   createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
   providedAppointments Appointment[] @relation("AppointmentProvider")
+  appointmentChanges   AppointmentChange[] @relation("AppointmentChangeActor")
+  schedulerConfigChanges SchedulerConfigChange[] @relation("SchedulerConfigChangeActor")
   appointmentTypeAssignments AppointmentTypeProvider[]
 
   ownedVisits               Visit[] @relation("VisitOwner")
@@ -520,6 +530,8 @@ model Appointment {
   expectedDurationMinutes Int?
   colorKey                String?
   appointmentTypeSettingId String?
+  schedulerSlotTemplateId  String?
+  room                     String?
 
   // Records-request context gathered at booking time for a New Patient
   // (Anna's receptionist workflow) — all optional, since most existing-
@@ -559,13 +571,59 @@ model Appointment {
   client       Client?      @relation(fields: [clientId], references: [id])
   provider     User?        @relation("AppointmentProvider", fields: [providerId], references: [id])
   appointmentTypeSetting AppointmentTypeSetting? @relation(fields: [appointmentTypeSettingId], references: [id])
+  schedulerSlotTemplate SchedulerSlotTemplate? @relation(fields: [schedulerSlotTemplateId], references: [id], onDelete: SetNull)
   createdBy    User?        @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
   visit        Visit?
+  changes      AppointmentChange[]
 
   @@index([organizationId])
   @@index([locationId, scheduledAt])
   @@index([patientId])
   @@index([appointmentTypeSettingId])
+  @@index([schedulerSlotTemplateId])
+}
+
+model AppointmentChange {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  appointmentId  String
+  actorId        String?
+  action         String
+  reason         String?
+  before         Json
+  after          Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  appointment  Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("AppointmentChangeActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([locationId, createdAt])
+  @@index([appointmentId, createdAt])
+}
+
+model SchedulerConfigChange {
+  id             String   @id @default(cuid())
+  organizationId String
+  locationId     String
+  actorId        String?
+  entityType     String
+  entityId       String
+  action         String
+  before         Json
+  after          Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  actor        User?        @relation("SchedulerConfigChangeActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([locationId, createdAt])
+  @@index([entityType, entityId, createdAt])
 }
 
 model AppointmentTypeSetting {
@@ -586,8 +644,9 @@ model AppointmentTypeSetting {
   location     Location     @relation(fields: [locationId], references: [id])
   providers    AppointmentTypeProvider[]
   appointments Appointment[]
+  slotTemplates AppointmentTypeSlotTemplate[]
 
-  @@unique([locationId, appointmentType])
+  @@index([locationId, appointmentType])
   @@index([organizationId])
   @@index([locationId, isActive, sortOrder])
 }
@@ -605,6 +664,22 @@ model AppointmentTypeProvider {
   @@id([appointmentTypeId, providerId])
   @@index([organizationId])
   @@index([providerId])
+}
+
+// Explicit booking eligibility between a clinic-defined appointment style
+// (for example "Spay") and a recurring schedule block. A style with at least
+// one assignment may only be booked inside its assigned blocks; styles with
+// no assignments retain the location's general availability.
+model AppointmentTypeSlotTemplate {
+  appointmentTypeId String
+  slotTemplateId    String
+  createdAt         DateTime @default(now())
+
+  appointmentType AppointmentTypeSetting @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+  slotTemplate    SchedulerSlotTemplate @relation(fields: [slotTemplateId], references: [id], onDelete: Cascade)
+
+  @@id([appointmentTypeId, slotTemplateId])
+  @@index([slotTemplateId])
 }
 
 // The Command Center dashboard's coarse status pill sequence (see
@@ -936,12 +1011,15 @@ model SchedulerSlotTemplate {
   staffId        String?
   room           String?
   isActive       Boolean   @default(true)
+  isGeneralAvailability Boolean @default(true)
   deletedAt      DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   location     Location     @relation(fields: [locationId], references: [id])
+  appointmentTypes AppointmentTypeSlotTemplate[]
+  appointments Appointment[]
 
   @@index([organizationId])
   @@index([locationId, dayOfWeek, isActive])

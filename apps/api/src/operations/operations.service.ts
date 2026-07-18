@@ -29,6 +29,7 @@ const visitWithContext = Prisma.validator<Prisma.VisitDefaultArgs>()({
     assignedTechnician: true,
     currentOwner: true,
     intake: true,
+    workflowStep: true,
   },
 });
 type VisitWithContext = Prisma.VisitGetPayload<typeof visitWithContext>;
@@ -47,7 +48,7 @@ export class OperationsService {
    * each already indexed on organizationId, then everything else is derived
    * in memory.
    */
-  async getDashboard(organizationId: string): Promise<OperationsDashboard> {
+  async getDashboard(organizationId: string, locationId: string): Promise<OperationsDashboard> {
     const [todaysAppointments, upcomingAppointments, activeVisits] = await Promise.all([
       this.appointments.listTodayForOrganization(organizationId) as Promise<
         AppointmentWithContext[]
@@ -55,7 +56,7 @@ export class OperationsService {
       this.appointments.listUpcomingForOrganization(organizationId) as Promise<
         AppointmentWithContext[]
       >,
-      this.visits.listActiveForOrganization(organizationId) as Promise<VisitWithContext[]>,
+      this.visits.listActiveForOrganization(organizationId, locationId) as Promise<VisitWithContext[]>,
     ]);
 
     const now = new Date();
@@ -162,6 +163,7 @@ function toDashboardVisit(visit: VisitWithContext, now: Date): DashboardVisitSum
     assignedTechnician: toPersonSummary(visit.assignedTechnician),
     currentOwner: toPersonSummary(visit.currentOwner),
     intakeSummaryAvailable: Boolean(visit.intake?.completedAt),
+    workflowStatusKey: visit.workflowStep?.status ?? null,
   };
 }
 

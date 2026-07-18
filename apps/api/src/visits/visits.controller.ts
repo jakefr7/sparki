@@ -4,14 +4,35 @@ import { requireRole } from '../auth/require-role';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { createVisitSchema, type CreateVisitInput } from './dto/create-visit.schema';
+import { deferEmergencyIntakeSchema, type DeferEmergencyIntakeInput } from './dto/defer-emergency-intake.schema';
 import { saveExamFindingsSchema, type SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import { saveVisitIntakeSchema, type SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import { setDashboardStatusSchema, type SetDashboardStatusInput } from './dto/set-dashboard-status.schema';
+import {
+  amendVisitRecordSchema,
+  delegateVisitSignoffSchema,
+  saveVisitRecordDraftSchema,
+  type AmendVisitRecordInput,
+  type DelegateVisitSignoffInput,
+  type SaveVisitRecordDraftInput,
+} from './dto/visit-record.schema';
+import { VisitRecordsService } from './visit-records.service';
+import {
+  completeVisitCheckoutSchema,
+  saveVisitDischargeSchema,
+  type CompleteVisitCheckoutInput,
+  type SaveVisitDischargeInput,
+} from './dto/visit-discharge.schema';
+import { VisitDischargeService } from './visit-discharge.service';
 import { VisitsService } from './visits.service';
 
 @Controller('visits')
 export class VisitsController {
-  constructor(private readonly visits: VisitsService) {}
+  constructor(
+    private readonly visits: VisitsService,
+    private readonly records: VisitRecordsService,
+    private readonly discharge: VisitDischargeService,
+  ) {}
 
   @Post()
   create(
@@ -23,13 +44,13 @@ export class VisitsController {
 
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.visits.findById(id, user.organizationId);
+    return this.visits.findById(id, user.organizationId, user.locationId);
   }
 
   @Post(':id/start')
   start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
-    return this.visits.start(id, user.organizationId, user.id);
+    return this.visits.start(id, user.organizationId, user.locationId, user.id, user.role);
   }
 
   @Post(':id/dashboard-status')
@@ -38,7 +59,8 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(setDashboardStatusSchema)) body: SetDashboardStatusInput,
   ) {
-    return this.visits.setDashboardStatus(id, user.organizationId, user.id, body.statusKey);
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.visits.setDashboardStatus(id, user.organizationId, user.locationId, user.id, user.role, body.statusKey);
   }
 
   @Put(':id/intake')
@@ -48,18 +70,36 @@ export class VisitsController {
     @Body(new ZodValidationPipe(saveVisitIntakeSchema)) body: SaveVisitIntakeInput,
   ) {
     requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
-    return this.visits.saveIntake(id, user.organizationId, user.id, body);
+    return this.visits.saveIntake(id, user.organizationId, user.locationId, user.id, body);
   }
 
   @Post(':id/intake/complete')
   completeIntake(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     requireRole(user, ['TECHNICIAN', 'ASSISTANT']);
-    return this.visits.completeIntake(id, user.organizationId, user.id);
+    return this.visits.completeIntake(id, user.organizationId, user.locationId, user.id, user.role);
+  }
+
+  @Post(':id/intake/defer-emergency')
+  deferEmergencyIntake(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(deferEmergencyIntakeSchema)) body: DeferEmergencyIntakeInput,
+  ) {
+    requireRole(user, ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.visits.deferEmergencyIntake(
+      id,
+      user.organizationId,
+      user.locationId,
+      user.id,
+      user.role,
+      body.reason,
+    );
   }
 
   @Post(':id/exam/start')
   startExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.visits.startExam(id, user.organizationId, user.id);
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.visits.startExam(id, user.organizationId, user.locationId, user.id, user.role);
   }
 
   @Put(':id/exam-findings')
@@ -68,7 +108,8 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(saveExamFindingsSchema)) body: SaveExamFindingsInput,
   ) {
-    return this.visits.saveExamFindings(id, user.organizationId, user.id, body);
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.visits.saveExamFindings(id, user.organizationId, user.locationId, user.id, body);
   }
 
   // Clinical exam completion is veterinarian-owned per
@@ -78,6 +119,74 @@ export class VisitsController {
   @Post(':id/exam/complete')
   completeExam(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     requireRole(user, ['VETERINARIAN', 'OWNER']);
-    return this.visits.completeExam(id, user.organizationId, user.id);
+    return this.visits.completeExam(id, user.organizationId, user.locationId, user.id, user.role);
+  }
+
+  @Get('records/open/mine')
+  openRecords(@CurrentUser() user: AuthenticatedUser) {
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.records.listOpenForUser(user.organizationId, user.locationId, user.id);
+  }
+
+  @Put(':id/record/draft')
+  saveRecordDraft(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(saveVisitRecordDraftSchema)) body: SaveVisitRecordDraftInput,
+  ) {
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.records.saveDraft(id, user.organizationId, user.locationId, user.id, body);
+  }
+
+  @Post(':id/record/delegate')
+  delegateRecordSignoff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(delegateVisitSignoffSchema)) body: DelegateVisitSignoffInput,
+  ) {
+    requireRole(user, ['VETERINARIAN', 'OWNER', 'PRACTICE_MANAGER']);
+    return this.records.delegate(id, user.organizationId, user.locationId, user.id, user.role, body.delegateId);
+  }
+
+  @Post(':id/record/finalize')
+  finalizeRecord(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.records.finalize(id, user.organizationId, user.locationId, user.id);
+  }
+
+  @Post(':id/record/amend')
+  amendRecord(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(amendVisitRecordSchema)) body: AmendVisitRecordInput,
+  ) {
+    requireRole(user, ['VETERINARIAN', 'OWNER']);
+    return this.records.amend(id, user.organizationId, user.locationId, user.id, body);
+  }
+
+  @Put(':id/discharge')
+  saveDischarge(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(saveVisitDischargeSchema)) body: SaveVisitDischargeInput,
+  ) {
+    requireRole(user, ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
+    return this.discharge.saveDischarge(id, user.organizationId, user.locationId, user.id, body);
+  }
+
+  @Post(':id/checkout/complete')
+  completeCheckout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(completeVisitCheckoutSchema)) body: CompleteVisitCheckoutInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.discharge.completeCheckout(id, user.organizationId, user.locationId, user.id, user.role, body);
+  }
+
+  @Post(':id/checkout/resolve-balance')
+  resolveOutstandingBalance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.discharge.resolveOutstandingBalance(id, user.organizationId, user.locationId, user.id, user.role);
   }
 }

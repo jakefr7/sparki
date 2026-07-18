@@ -51,31 +51,36 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  locations    Location[]
-  users        User[]
-  clients      Client[]
-  patients     Patient[]
-  patientAlerts PatientAlert[]
-  patientMedications PatientMedication[]
-  appointments Appointment[]
-  appointmentChanges AppointmentChange[]
-  schedulerConfigChanges SchedulerConfigChange[]
-  visits       Visit[]
-  appointmentTypeSettings AppointmentTypeSetting[]
-  appointmentTypeProviders AppointmentTypeProvider[]
-  schedulerSettings       SchedulerSettings[]
-  schedulerSlotTemplates  SchedulerSlotTemplate[]
+  locations                    Location[]
+  users                        User[]
+  clients                      Client[]
+  patients                     Patient[]
+  patientAlerts                PatientAlert[]
+  patientMedications           PatientMedication[]
+  appointments                 Appointment[]
+  appointmentChanges           AppointmentChange[]
+  schedulerConfigChanges       SchedulerConfigChange[]
+  visits                       Visit[]
+  appointmentTypeSettings      AppointmentTypeSetting[]
+  appointmentTypeProviders     AppointmentTypeProvider[]
+  schedulerSettings            SchedulerSettings[]
+  schedulerSlotTemplates       SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
-  notes Note[]
-  tasks Task[]
-  conversations MessagingConversation[]
-  messages MessagingMessage[]
-  messageAttachments MessagingAttachment[]
-  clientCommunicationThreads ClientCommunicationThread[]
-  clientCommunicationMessages ClientCommunicationMessage[]
+  notes                        Note[]
+  tasks                        Task[]
+  conversations                MessagingConversation[]
+  messages                     MessagingMessage[]
+  messageAttachments           MessagingAttachment[]
+  clientCommunicationThreads   ClientCommunicationThread[]
+  clientCommunicationMessages  ClientCommunicationMessage[]
+  visitTransitions             VisitTransition[]
+  visitWorkItems               VisitWorkItem[]
+  visitExceptions              VisitException[]
+  visitHandoffs                VisitHandoff[]
+  visitRecordSignoffDelegates  VisitRecordSignoffDelegate[]
 
-  memberships     OrganizationMembership[]
-  locationAccess  ClinicLocationAccess[]
+  memberships    OrganizationMembership[]
+  locationAccess ClinicLocationAccess[]
 }
 
 model Location {
@@ -86,19 +91,28 @@ model Location {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization  @relation(fields: [organizationId], references: [id])
-  users        User[]
-  appointments Appointment[]
-  appointmentChanges AppointmentChange[]
-  schedulerConfigChanges SchedulerConfigChange[]
-  visits       Visit[]
-  appointmentTypeSettings AppointmentTypeSetting[]
-  schedulerSettings       SchedulerSettings?
-  schedulerSlotTemplates  SchedulerSlotTemplate[]
+  organization                 Organization                  @relation(fields: [organizationId], references: [id])
+  users                        User[]
+  appointments                 Appointment[]
+  appointmentChanges           AppointmentChange[]
+  schedulerConfigChanges       SchedulerConfigChange[]
+  visits                       Visit[]
+  appointmentTypeSettings      AppointmentTypeSetting[]
+  schedulerSettings            SchedulerSettings?
+  schedulerSlotTemplates       SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
-  tasks Task[]
-  conversations MessagingConversation[]
-  clientCommunicationThreads ClientCommunicationThread[]
+  tasks                        Task[]
+  conversations                MessagingConversation[]
+  clientCommunicationThreads   ClientCommunicationThread[]
+  visitTransitions             VisitTransition[]
+  visitWorkItems               VisitWorkItem[]
+  visitExceptions              VisitException[]
+  visitHandoffs                VisitHandoff[]
+  visitRecordSignoffDelegates  VisitRecordSignoffDelegate[]
+
+  // Location-level policy: clinics may allow operational checkout while an
+  // invoice balance remains open. The balance itself stays visible work.
+  allowCheckoutWithOutstandingBalance Boolean @default(false)
 
   locationAccess ClinicLocationAccess[]
 
@@ -120,31 +134,34 @@ enum UserRole {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  organizationId String
-  email          String   @unique
-  phone          String?
-  firstName      String
-  lastName       String
+  id                          String   @id @default(cuid())
+  organizationId              String
+  email                       String   @unique
+  phone                       String?
+  firstName                   String
+  lastName                    String
   // Override for the two-line firstName/lastName default (e.g. "Dr. Priya
   // Shah") — nullable because most users are fine with the computed default.
-  displayName    String?
-  avatarUrl      String?
-  statusEmoji    String?
-  statusText     String?
-  role           UserRole
-  isActive       Boolean  @default(true)
+  displayName                 String?
+  avatarUrl                   String?
+  statusEmoji                 String?
+  statusText                  String?
+  role                        UserRole
+  isActive                    Boolean  @default(true)
   // Sparki owns authorization; WorkOS AuthKit owns authentication (see
   // apps/api/src/auth). Nullable until real sign-in issues this.
-  workosUserId   String?  @unique
+  workosUserId                String?  @unique
   // Explicit per-user grant, independent of Role — Settings > Admin (scheduler
   // settings + dashboard status colors) is deliberately not tied to any
   // Role so any team member can be granted it individually without a role
   // change pulling in that role's other capabilities. See
   // apps/api/src/auth/permissions.ts.
-  canManageAdminSettings Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  canManageAdminSettings      Boolean  @default(false)
+  // Explicit grant for a veterinarian or other legally eligible user who may
+  // be delegated final record signoff when they are not the assigned doctor.
+  canFinalizeRecordsForOthers Boolean  @default(false)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
 
   organization Organization  @relation(fields: [organizationId], references: [id])
   locations    Location[]
@@ -158,10 +175,10 @@ model User {
   organizationMemberships OrganizationMembership[]
   clinicLocationAccess    ClinicLocationAccess[]
 
-  createdAppointments  Appointment[] @relation("AppointmentCreatedBy")
-  providedAppointments Appointment[] @relation("AppointmentProvider")
-  appointmentChanges   AppointmentChange[] @relation("AppointmentChangeActor")
-  schedulerConfigChanges SchedulerConfigChange[] @relation("SchedulerConfigChangeActor")
+  createdAppointments        Appointment[]             @relation("AppointmentCreatedBy")
+  providedAppointments       Appointment[]             @relation("AppointmentProvider")
+  appointmentChanges         AppointmentChange[]       @relation("AppointmentChangeActor")
+  schedulerConfigChanges     SchedulerConfigChange[]   @relation("SchedulerConfigChangeActor")
   appointmentTypeAssignments AppointmentTypeProvider[]
 
   ownedVisits               Visit[] @relation("VisitOwner")
@@ -170,19 +187,33 @@ model User {
   createdVisits             Visit[] @relation("VisitCreatedBy")
   lastUpdatedVisits         Visit[] @relation("VisitLastUpdatedBy")
 
-  authoredSoapNotes SoapNote[] @relation("SoapNoteAuthor")
-  signedSoapNotes   SoapNote[] @relation("SoapNoteVeterinarian")
+  authoredSoapNotes         SoapNote[]                   @relation("SoapNoteAuthor")
+  signedSoapNotes           SoapNote[]                   @relation("SoapNoteVeterinarian")
+  visitTransitions          VisitTransition[]            @relation("VisitTransitionActor")
+  assignedVisitWorkItems    VisitWorkItem[]              @relation("VisitWorkItemAssignee")
+  completedVisitWorkItems   VisitWorkItem[]              @relation("VisitWorkItemCompletedBy")
+  createdVisitExceptions    VisitException[]             @relation("VisitExceptionCreatedBy")
+  ownedVisitExceptions      VisitException[]             @relation("VisitExceptionOwner")
+  resolvedVisitExceptions   VisitException[]             @relation("VisitExceptionResolvedBy")
+  sentVisitHandoffs         VisitHandoff[]               @relation("VisitHandoffFrom")
+  receivedVisitHandoffs     VisitHandoff[]               @relation("VisitHandoffTo")
+  createdVisitHandoffs      VisitHandoff[]               @relation("VisitHandoffCreatedBy")
+  acknowledgedVisitHandoffs VisitHandoff[]               @relation("VisitHandoffAcknowledgedBy")
+  delegatedVisitSignoffs    VisitRecordSignoffDelegate[] @relation("VisitSignoffDelegate")
+  assignedVisitSignoffs     VisitRecordSignoffDelegate[] @relation("VisitSignoffAssignedBy")
+  completedVisitDischarges  VisitDischarge[]             @relation("VisitDischargeCompletedBy")
+  completedVisitCheckouts   VisitCheckout[]              @relation("VisitCheckoutCompletedBy")
 
-  notes        Note[]
-  createdTasks  Task[]
-  assignedTasks Task[] @relation("TaskAssignee")
-  createdConversations MessagingConversation[] @relation("MessagingConversationCreator")
-  conversationMemberships MessagingConversationMember[]
-  sentMessages MessagingMessage[] @relation("MessagingMessageSender")
-  messageReactions MessagingReaction[]
-  messageMentions MessagingMention[]
-  messageEditEvents MessagingMessageEdit[]
-  sentClientCommunicationMessages ClientCommunicationMessage[]
+  notes                              Note[]
+  createdTasks                       Task[]
+  assignedTasks                      Task[]                        @relation("TaskAssignee")
+  createdConversations               MessagingConversation[]       @relation("MessagingConversationCreator")
+  conversationMemberships            MessagingConversationMember[]
+  sentMessages                       MessagingMessage[]            @relation("MessagingMessageSender")
+  messageReactions                   MessagingReaction[]
+  messageMentions                    MessagingMention[]
+  messageEditEvents                  MessagingMessageEdit[]
+  sentClientCommunicationMessages    ClientCommunicationMessage[]
   assignedClientCommunicationThreads ClientCommunicationThread[]
 
   @@index([organizationId])
@@ -302,10 +333,10 @@ model Client {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id])
-  patients     PatientClient[]
-  appointments Appointment[]
-  visits       Visit[]
+  organization         Organization                @relation(fields: [organizationId], references: [id])
+  patients             PatientClient[]
+  appointments         Appointment[]
+  visits               Visit[]
   communicationThreads ClientCommunicationThread[]
   // Fuzzy/substring matching for Patient Search's "search by client name";
   // expression index (not a plain column index) because the searchable name
@@ -357,13 +388,13 @@ model Patient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization  Organization    @relation(fields: [organizationId], references: [id])
-  clients       PatientClient[]
-  appointments  Appointment[]
-  visits        Visit[]
-  medicalRecord MedicalRecord?
-  patientAlerts PatientAlert[]
-  medications   PatientMedication[]
+  organization         Organization                @relation(fields: [organizationId], references: [id])
+  clients              PatientClient[]
+  appointments         Appointment[]
+  visits               Visit[]
+  medicalRecord        MedicalRecord?
+  patientAlerts        PatientAlert[]
+  medications          PatientMedication[]
   communicationThreads ClientCommunicationThread[]
 
   @@index([organizationId])
@@ -526,9 +557,9 @@ model Appointment {
   source AppointmentSource
   state  AppointmentState  @default(Draft)
 
-  scheduledAt             DateTime
-  expectedDurationMinutes Int?
-  colorKey                String?
+  scheduledAt              DateTime
+  expectedDurationMinutes  Int?
+  colorKey                 String?
   appointmentTypeSettingId String?
   schedulerSlotTemplateId  String?
   room                     String?
@@ -536,10 +567,10 @@ model Appointment {
   // Records-request context gathered at booking time for a New Patient
   // (Anna's receptionist workflow) — all optional, since most existing-
   // patient bookings won't need them.
-  primaryCareVetName     String?
-  previousClinicName     String?
-  previousRecordsSource  String?
-  lastSeenAt             DateTime?
+  primaryCareVetName    String?
+  previousClinicName    String?
+  previousRecordsSource String?
+  lastSeenAt            DateTime?
 
   // Tech/assistant records-prep tracking (Anna: "researches available
   // medical records before the appointment") and receptionist-facing
@@ -565,16 +596,16 @@ model Appointment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  location     Location     @relation(fields: [locationId], references: [id])
-  patient      Patient?     @relation(fields: [patientId], references: [id])
-  client       Client?      @relation(fields: [clientId], references: [id])
-  provider     User?        @relation("AppointmentProvider", fields: [providerId], references: [id])
+  organization           Organization            @relation(fields: [organizationId], references: [id])
+  location               Location                @relation(fields: [locationId], references: [id])
+  patient                Patient?                @relation(fields: [patientId], references: [id])
+  client                 Client?                 @relation(fields: [clientId], references: [id])
+  provider               User?                   @relation("AppointmentProvider", fields: [providerId], references: [id])
   appointmentTypeSetting AppointmentTypeSetting? @relation(fields: [appointmentTypeSettingId], references: [id])
-  schedulerSlotTemplate SchedulerSlotTemplate? @relation(fields: [schedulerSlotTemplateId], references: [id], onDelete: SetNull)
-  createdBy    User?        @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
-  visit        Visit?
-  changes      AppointmentChange[]
+  schedulerSlotTemplate  SchedulerSlotTemplate?  @relation(fields: [schedulerSlotTemplateId], references: [id], onDelete: SetNull)
+  createdBy              User?                   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
+  visit                  Visit?
+  changes                AppointmentChange[]
 
   @@index([organizationId])
   @@index([locationId, scheduledAt])
@@ -627,23 +658,23 @@ model SchedulerConfigChange {
 }
 
 model AppointmentTypeSetting {
-  id             String   @id @default(cuid())
-  organizationId String
-  locationId     String
-  appointmentType AppointmentType?
-  name           String
-  description    String?
+  id                     String           @id @default(cuid())
+  organizationId         String
+  locationId             String
+  appointmentType        AppointmentType?
+  name                   String
+  description            String?
   defaultDurationMinutes Int
-  color          String
-  isActive       Boolean  @default(true)
-  sortOrder      Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  color                  String
+  isActive               Boolean          @default(true)
+  sortOrder              Int              @default(0)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  location     Location     @relation(fields: [locationId], references: [id])
-  providers    AppointmentTypeProvider[]
-  appointments Appointment[]
+  organization  Organization                  @relation(fields: [organizationId], references: [id])
+  location      Location                      @relation(fields: [locationId], references: [id])
+  providers     AppointmentTypeProvider[]
+  appointments  Appointment[]
   slotTemplates AppointmentTypeSlotTemplate[]
 
   @@index([locationId, appointmentType])
@@ -654,7 +685,7 @@ model AppointmentTypeSetting {
 model AppointmentTypeProvider {
   appointmentTypeId String
   providerId        String
-  organizationId   String
+  organizationId    String
   createdAt         DateTime @default(now())
 
   appointmentType AppointmentTypeSetting @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
@@ -676,7 +707,7 @@ model AppointmentTypeSlotTemplate {
   createdAt         DateTime @default(now())
 
   appointmentType AppointmentTypeSetting @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
-  slotTemplate    SchedulerSlotTemplate @relation(fields: [slotTemplateId], references: [id], onDelete: Cascade)
+  slotTemplate    SchedulerSlotTemplate  @relation(fields: [slotTemplateId], references: [id], onDelete: Cascade)
 
   @@id([appointmentTypeId, slotTemplateId])
   @@index([slotTemplateId])
@@ -687,22 +718,24 @@ model AppointmentTypeSlotTemplate {
 // rather than reusing AppointmentState/VisitState since it's a display-only
 // concept, not a workflow state.
 model DashboardStatusColorSetting {
-  id             String          @id @default(cuid())
-  organizationId String
-  locationId     String
-  status         String
-  name           String
-  description    String?
-  color          String
-  sortOrder      Int @default(0)
-  isEnabled      Boolean @default(true)
-  isInClinic     Boolean @default(false)
+  id                    String   @id @default(cuid())
+  organizationId        String
+  locationId            String
+  status                String
+  name                  String
+  description           String?
+  color                 String
+  sortOrder             Int      @default(0)
+  isEnabled             Boolean  @default(true)
+  isInClinic            Boolean  @default(false)
   allowedTransitionKeys String[] @default([])
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  lifecyclePhase        VisitPhase @default(Arrived)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   location     Location     @relation(fields: [locationId], references: [id])
+  visits       Visit[]      @relation("VisitWorkflowStep")
 
   @@unique([locationId, status])
   @@index([organizationId])
@@ -836,7 +869,7 @@ model MessagingConversationMember {
 }
 
 model MessagingMessage {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   conversationId String
   senderId       String
@@ -845,14 +878,14 @@ model MessagingMessage {
   replyToId      String?
   editedAt       DateTime?
   deletedAt      DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id])
-  conversation MessagingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User                  @relation("MessagingMessageSender", fields: [senderId], references: [id])
-  replyTo      MessagingMessage?     @relation("MessagingReplies", fields: [replyToId], references: [id])
-  replies      MessagingMessage[]    @relation("MessagingReplies")
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  conversation MessagingConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User                   @relation("MessagingMessageSender", fields: [senderId], references: [id])
+  replyTo      MessagingMessage?      @relation("MessagingReplies", fields: [replyToId], references: [id])
+  replies      MessagingMessage[]     @relation("MessagingReplies")
   reactions    MessagingReaction[]
   mentions     MessagingMention[]
   attachments  MessagingAttachment[]
@@ -892,7 +925,7 @@ model MessagingMention {
 }
 
 model MessagingAttachment {
-  id             String              @id @default(cuid())
+  id             String               @id @default(cuid())
   organizationId String
   messageId      String
   fileName       String?
@@ -904,10 +937,10 @@ model MessagingAttachment {
   previewLabel   String?
   previewDetail  String?
   href           String?
-  createdAt      DateTime            @default(now())
+  createdAt      DateTime             @default(now())
 
-  organization Organization       @relation(fields: [organizationId], references: [id])
-  message      MessagingMessage   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  message      MessagingMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, messageId])
   @@index([organizationId, recordType, recordId])
@@ -1000,26 +1033,26 @@ model SchedulerSettings {
 }
 
 model SchedulerSlotTemplate {
-  id             String   @id @default(cuid())
-  organizationId String
-  locationId     String
-  dayOfWeek      Int
-  startTime      String
-  endTime        String
-  label          String
-  color          String
-  staffId        String?
-  room           String?
-  isActive       Boolean   @default(true)
-  isGeneralAvailability Boolean @default(true)
-  deletedAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  organizationId        String
+  locationId            String
+  dayOfWeek             Int
+  startTime             String
+  endTime               String
+  label                 String
+  color                 String
+  staffId               String?
+  room                  String?
+  isActive              Boolean   @default(true)
+  isGeneralAvailability Boolean   @default(true)
+  deletedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  location     Location     @relation(fields: [locationId], references: [id])
+  organization     Organization                  @relation(fields: [organizationId], references: [id])
+  location         Location                      @relation(fields: [locationId], references: [id])
   appointmentTypes AppointmentTypeSlotTemplate[]
-  appointments Appointment[]
+  appointments     Appointment[]
 
   @@index([organizationId])
   @@index([locationId, dayOfWeek, isActive])
@@ -1093,6 +1126,52 @@ enum VisitState {
   Deferred
 }
 
+enum VisitPhase {
+  Arrived
+  Intake
+  Exam
+  PlanAndApproval
+  CareInProgress
+  Discharge
+  RecordClosure
+  Closed
+}
+
+enum VisitTransitionSource {
+  User
+  System
+  Integration
+  Migration
+}
+
+enum VisitWorkItemType {
+  IntakeCompletion
+  Diagnostic
+  Estimate
+  ClientApproval
+  Treatment
+  Medication
+  ClientCommunication
+  FollowUp
+  Payment
+  RecordSignoff
+}
+
+enum VisitWorkItemStatus {
+  Pending
+  InProgress
+  Completed
+  Declined
+  Deferred
+  Cancelled
+}
+
+enum VisitExceptionSeverity {
+  Info
+  Warning
+  Critical
+}
+
 model Visit {
   id             String  @id @default(cuid())
   organizationId String
@@ -1104,6 +1183,8 @@ model Visit {
   visitType VisitType
   reason    String
   state     VisitState @default(IntentCreated)
+  phase     VisitPhase @default(Arrived)
+  version   Int        @default(1)
 
   // Workflow ownership (whoever's queue this Visit currently sits in) — may
   // differ from the care team below, e.g. a front desk user owns intake
@@ -1117,31 +1198,211 @@ model Visit {
   lastUpdatedById       String?
   nextAction            String?
 
-  archivedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  archivedAt       DateTime?
+  arrivedAt        DateTime?
+  intakeStartedAt  DateTime?
+  examStartedAt    DateTime?
+  dischargeReadyAt DateTime?
+  departedAt       DateTime?
+  closedAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  organization        Organization   @relation(fields: [organizationId], references: [id])
-  location            Location       @relation(fields: [locationId], references: [id])
-  patient             Patient        @relation(fields: [patientId], references: [id])
-  client              Client?        @relation(fields: [clientId], references: [id])
-  appointment         Appointment?   @relation(fields: [appointmentId], references: [id])
-  currentOwner        User?          @relation("VisitOwner", fields: [currentOwnerId], references: [id])
-  primaryVeterinarian User?          @relation("VisitPrimaryVeterinarian", fields: [primaryVeterinarianId], references: [id])
-  assignedTechnician  User?          @relation("VisitAssignedTechnician", fields: [assignedTechnicianId], references: [id])
-  createdBy           User?          @relation("VisitCreatedBy", fields: [createdById], references: [id])
-  lastUpdatedBy       User?          @relation("VisitLastUpdatedBy", fields: [lastUpdatedById], references: [id])
-  medicalRecord       MedicalRecord? @relation(fields: [medicalRecordId], references: [id])
+  organization        Organization                 @relation(fields: [organizationId], references: [id])
+  location            Location                     @relation(fields: [locationId], references: [id])
+  patient             Patient                      @relation(fields: [patientId], references: [id])
+  client              Client?                      @relation(fields: [clientId], references: [id])
+  appointment         Appointment?                 @relation(fields: [appointmentId], references: [id])
+  currentOwner        User?                        @relation("VisitOwner", fields: [currentOwnerId], references: [id])
+  primaryVeterinarian User?                        @relation("VisitPrimaryVeterinarian", fields: [primaryVeterinarianId], references: [id])
+  assignedTechnician  User?                        @relation("VisitAssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  createdBy           User?                        @relation("VisitCreatedBy", fields: [createdById], references: [id])
+  lastUpdatedBy       User?                        @relation("VisitLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+  medicalRecord       MedicalRecord?               @relation(fields: [medicalRecordId], references: [id])
   medicalRecordId     String?
   soapNotes           SoapNote[]
   intake              VisitIntake?
   examFindings        VisitExamFindings?
+  transitions         VisitTransition[]
+  workItems           VisitWorkItem[]
+  exceptions          VisitException[]
+  handoffs            VisitHandoff[]
+  signoffDelegates    VisitRecordSignoffDelegate[]
+  discharge           VisitDischarge?
+  checkout            VisitCheckout?
+  workflowStep        DashboardStatusColorSetting? @relation("VisitWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
+  workflowStepId      String?
 
   @@index([organizationId])
   @@index([patientId])
   @@index([state])
   @@index([primaryVeterinarianId])
   @@index([assignedTechnicianId])
+  @@index([organizationId, locationId, phase])
+  @@index([workflowStepId])
+}
+
+enum VisitBalanceStatus {
+  Unknown
+  Paid
+  Outstanding
+}
+
+model VisitDischarge {
+  id                     String   @id @default(cuid())
+  visitId                String   @unique
+  instructions           String
+  medicationInstructions String?
+  warningSigns           String?
+  followUpPlan           String?
+  followUpRequired       Boolean  @default(false)
+  completedById          String
+  completedAt            DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  visit       Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  completedBy User  @relation("VisitDischargeCompletedBy", fields: [completedById], references: [id])
+}
+
+model VisitCheckout {
+  id                        String             @id @default(cuid())
+  visitId                   String             @unique
+  clientContactConfirmed    Boolean            @default(false)
+  missingAccountInformation String?
+  balanceStatus             VisitBalanceStatus @default(Unknown)
+  outstandingBalanceCents   Int?
+  completedById             String
+  completedAt               DateTime           @default(now())
+  updatedAt                 DateTime           @updatedAt
+
+  visit       Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  completedBy User  @relation("VisitCheckoutCompletedBy", fields: [completedById], references: [id])
+}
+
+model VisitTransition {
+  id             String                @id @default(cuid())
+  organizationId String
+  locationId     String
+  visitId        String
+  actorId        String?
+  source         VisitTransitionSource @default(User)
+  fromPhase      VisitPhase
+  toPhase        VisitPhase
+  fromState      VisitState
+  toState        VisitState
+  reason         String?
+  requestId      String?
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  visit        Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  actor        User?        @relation("VisitTransitionActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([visitId, createdAt])
+  @@index([organizationId, locationId, createdAt])
+}
+
+model VisitWorkItem {
+  id             String              @id @default(cuid())
+  organizationId String
+  locationId     String
+  visitId        String
+  type           VisitWorkItemType
+  status         VisitWorkItemStatus @default(Pending)
+  title          String
+  assigneeId     String?
+  assigneeRole   UserRole?
+  dueAt          DateTime?
+  result         Json?
+  completedById  String?
+  completedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  visit        Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  assignee     User?        @relation("VisitWorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  completedBy  User?        @relation("VisitWorkItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([visitId, status])
+  @@index([organizationId, locationId, assigneeId, status])
+  @@index([organizationId, locationId, assigneeRole, status])
+}
+
+model VisitException {
+  id             String                 @id @default(cuid())
+  organizationId String
+  locationId     String
+  visitId        String
+  type           String
+  severity       VisitExceptionSeverity @default(Warning)
+  reason         String
+  nextAction     String
+  ownerId        String?
+  dueAt          DateTime?
+  createdById    String
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolution     String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+  visit        Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  owner        User?        @relation("VisitExceptionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy    User         @relation("VisitExceptionCreatedBy", fields: [createdById], references: [id])
+  resolvedBy   User?        @relation("VisitExceptionResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([visitId, resolvedAt])
+  @@index([organizationId, locationId, ownerId, resolvedAt])
+}
+
+model VisitHandoff {
+  id               String    @id @default(cuid())
+  organizationId   String
+  locationId       String
+  visitId          String
+  fromUserId       String?
+  toUserId         String?
+  toRole           UserRole?
+  summary          String
+  createdById      String
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+  createdAt        DateTime  @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  location       Location     @relation(fields: [locationId], references: [id])
+  visit          Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  fromUser       User?        @relation("VisitHandoffFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser         User?        @relation("VisitHandoffTo", fields: [toUserId], references: [id], onDelete: SetNull)
+  createdBy      User         @relation("VisitHandoffCreatedBy", fields: [createdById], references: [id])
+  acknowledgedBy User?        @relation("VisitHandoffAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+
+  @@index([visitId, createdAt])
+  @@index([organizationId, locationId, toUserId, acknowledgedAt])
+}
+
+model VisitRecordSignoffDelegate {
+  visitId      String
+  delegateId   String
+  assignedById String
+  assignedAt   DateTime @default(now())
+
+  visit          Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  delegate       User          @relation("VisitSignoffDelegate", fields: [delegateId], references: [id], onDelete: Cascade)
+  assignedBy     User          @relation("VisitSignoffAssignedBy", fields: [assignedById], references: [id])
+  Organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  Location       Location?     @relation(fields: [locationId], references: [id])
+  locationId     String?
+
+  @@id([visitId, delegateId])
+  @@index([delegateId])
 }
 
 enum WeightUnit {
@@ -1153,9 +1414,9 @@ model VisitIntake {
   id      String @id @default(cuid())
   visitId String @unique
 
-  chiefComplaint String?
-  historyNotes   String?
-  weight         Float?
+  chiefComplaint       String?
+  historyNotes         String?
+  weight               Float?
   // Explicit unit, not inferred — clinics use either. Defaults (and, via this
   // migration, backfills every pre-existing row) to LB: the intake UI's
   // label was "Weight (lb)" before this field existed, so that's the only
@@ -1168,9 +1429,23 @@ model VisitIntake {
   crtSeconds           Float?
   gumColor             String?
   appetite             String?
-  vomiting             Boolean @default(false)
-  diarrhea             Boolean @default(false)
+  vomiting             Boolean    @default(false)
+  diarrhea             Boolean    @default(false)
   medicationsAllergies String?
+  vaccinationHistory   String?
+  recentTravel         String?
+  specialDiet          String?
+  supplements          String?
+  attitude             String?
+  appearance           String?
+  allergies            String?
+  sedationIssues       String?
+  pastSurgeries        String?
+  currentMedications   String?
+  sneezing             Boolean    @default(false)
+  systemicConcerns     String?
+  painScore            Float?
+  painScale            String?
 
   completedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -1240,8 +1515,15 @@ model SoapNote {
   assessment String?
   plan       String?
 
-  status   SoapNoteStatus @default(Draft)
-  signedAt DateTime?
+  status           SoapNoteStatus @default(Draft)
+  signedAt         DateTime?
+  lockedAt         DateTime?
+  contentHash      String?
+  version          Int            @default(1)
+  amendsSoapNoteId String?
+  amendmentReason  String?
+  voidedAt         DateTime?
+  voidReason       String?
 
   // Migration/provenance (see schema-level note above). Set only by a future
   // migration workflow; nullable because native (non-imported) records have
@@ -1254,11 +1536,14 @@ model SoapNote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
-  visit         Visit         @relation(fields: [visitId], references: [id])
-  author        User          @relation("SoapNoteAuthor", fields: [authorId], references: [id])
-  veterinarian  User?         @relation("SoapNoteVeterinarian", fields: [veterinarianId], references: [id])
+  medicalRecord  MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  visit          Visit         @relation(fields: [visitId], references: [id])
+  author         User          @relation("SoapNoteAuthor", fields: [authorId], references: [id])
+  veterinarian   User?         @relation("SoapNoteVeterinarian", fields: [veterinarianId], references: [id])
+  amendsSoapNote SoapNote?     @relation("SoapNoteAmendments", fields: [amendsSoapNoteId], references: [id])
+  amendments     SoapNote[]    @relation("SoapNoteAmendments")
 
   @@index([medicalRecordId])
   @@index([visitId])
+  @@index([amendsSoapNoteId])
 }

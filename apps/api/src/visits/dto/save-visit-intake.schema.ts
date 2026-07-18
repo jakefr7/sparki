@@ -16,6 +16,20 @@ export const saveVisitIntakeSchema = z.object({
   vomiting: z.boolean().optional(),
   diarrhea: z.boolean().optional(),
   medicationsAllergies: optionalText,
+  vaccinationHistory: optionalText,
+  recentTravel: optionalText,
+  specialDiet: optionalText,
+  supplements: optionalText,
+  attitude: z.string().trim().max(100).optional().nullable(),
+  appearance: optionalText,
+  allergies: optionalText,
+  sedationIssues: optionalText,
+  pastSurgeries: optionalText,
+  currentMedications: optionalText,
+  sneezing: z.boolean().optional(),
+  systemicConcerns: optionalText,
+  painScore: z.number().min(0).max(10).optional().nullable(),
+  painScale: z.string().trim().max(100).optional().nullable(),
 });
 
 export type SaveVisitIntakeInput = z.infer<typeof saveVisitIntakeSchema>;

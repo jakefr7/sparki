@@ -254,6 +254,7 @@ export class AuthService {
       locationId: locationAccess.clinicLocationId,
       role: membership.role,
       canManageAdminSettings: user.canManageAdminSettings,
+      canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
     };
   }
 }

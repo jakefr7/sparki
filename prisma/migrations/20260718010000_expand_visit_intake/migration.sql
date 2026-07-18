@@ -1,0 +1,15 @@
+ALTER TABLE "VisitIntake"
+  ADD COLUMN "vaccinationHistory" TEXT,
+  ADD COLUMN "recentTravel" TEXT,
+  ADD COLUMN "specialDiet" TEXT,
+  ADD COLUMN "supplements" TEXT,
+  ADD COLUMN "attitude" TEXT,
+  ADD COLUMN "appearance" TEXT,
+  ADD COLUMN "allergies" TEXT,
+  ADD COLUMN "sedationIssues" TEXT,
+  ADD COLUMN "pastSurgeries" TEXT,
+  ADD COLUMN "currentMedications" TEXT,
+  ADD COLUMN "sneezing" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "systemicConcerns" TEXT,
+  ADD COLUMN "painScore" DOUBLE PRECISION,
+  ADD COLUMN "painScale" TEXT;

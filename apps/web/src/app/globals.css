@@ -3217,6 +3217,47 @@ body {
   line-height: 1.22;
 }
 
+.doctor-record-queue { min-height: 260px; }
+.doctor-record-queue > p:not(.eyebrow) { color: var(--color-text-muted); }
+.doctor-record-queue__list { display: grid; gap: .65rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.doctor-record-queue__list a { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: 12px; color: inherit; text-decoration: none; background: var(--color-surface); }
+.doctor-record-queue__list a:hover { border-color: #52aaa4; box-shadow: 0 8px 22px #173d3a12; transform: translateY(-1px); }
+.doctor-record-queue__list span { display: grid; gap: .15rem; }
+.doctor-record-queue__list span:last-child { text-align: right; }
+.doctor-record-queue__list small { color: var(--color-text-muted); }
+
+.visit-record-panel { margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+.visit-record-panel__header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.visit-record-panel__header h2 { margin: .15rem 0 0; }
+.visit-record-status { padding: .35rem .65rem; border-radius: 999px; background: #edf3f3; color: #52666f; font-size: .75rem; font-weight: 800; }
+.visit-record-status--locked { background: #dff1e8; color: #22684d; }
+.visit-record-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; margin-top: 1rem; }
+.visit-record-form label { display: grid; gap: .35rem; color: var(--color-text-muted); font-size: .78rem; font-weight: 800; }
+.visit-record-form textarea { min-height: 8rem; padding: .8rem; border: 1px solid var(--color-border); border-radius: 10px; color: inherit; font: inherit; resize: vertical; }
+.visit-record-form__actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .65rem; }
+.visit-record-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 1rem 0 0; border: 1px solid var(--color-border); border-radius: 12px; overflow: hidden; }
+.visit-record-summary div { padding: .85rem; border-bottom: 1px solid var(--color-border); }
+.visit-record-summary div:nth-child(odd) { border-right: 1px solid var(--color-border); }
+.visit-record-summary dt { color: var(--color-text-muted); font-size: .7rem; font-weight: 850; text-transform: uppercase; }
+.visit-record-summary dd { margin: .3rem 0 0; white-space: pre-wrap; }
+
+.visit-discharge-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 16px; background: var(--color-surface); }
+.visit-discharge-panel > div:first-child, .visit-discharge-panel > .form-error { grid-column: 1 / -1; }
+.visit-discharge-panel h2 { margin: .15rem 0 0; }
+.visit-discharge-form { display: grid; align-content: start; gap: .7rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }
+.visit-discharge-form h3 { margin: 0 0 .2rem; }
+.visit-discharge-form label:not(.visit-discharge-check) { display: grid; gap: .3rem; color: var(--color-text-muted); font-size: .76rem; font-weight: 800; }
+.visit-discharge-form textarea, .visit-discharge-form input, .visit-discharge-form select { width: 100%; padding: .65rem .7rem; border: 1px solid var(--color-border); border-radius: 9px; color: inherit; background: var(--color-surface); font: inherit; }
+.visit-discharge-form textarea { min-height: 4.5rem; resize: vertical; }
+.visit-discharge-check { display: flex; align-items: start; gap: .5rem; font-size: .8rem; }
+.visit-discharge-check input { width: auto; margin-top: .15rem; }
+
+.visit-policy-settings { display: grid; gap: 1rem; }
+.visit-policy-settings__toggle { display: flex; align-items: center; gap: .8rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-muted); }
+.visit-policy-settings__toggle input { width: 1.2rem; height: 1.2rem; accent-color: #1ca79f; }
+.visit-policy-settings__toggle span { display: grid; gap: .2rem; }
+.visit-policy-settings__toggle small { color: var(--color-text-muted); }
+
 .home-widget__header,
 .profile-card__header {
   display: flex;

@@ -300,7 +300,8 @@ function ClinicVisitRow({
   onStatusChanged?: (() => void) | undefined;
   statuses: ConfiguredDashboardStatus[];
 }) {
-  const status = resolveConfiguredStatus(statuses, 'visit', row.state);
+  const status = statuses.find((entry) => entry.status === row.workflowStatusKey)
+    ?? resolveConfiguredStatus(statuses, 'visit', row.state);
   return (
     <div className="clinic-table__row">
       <PatientClientCell
@@ -1011,13 +1012,59 @@ function TechnicianDashboardPlaceholder() {
   );
 }
 
-function VeterinarianDashboardPlaceholder() {
+interface OpenRecordWorkItem {
+  id: string;
+  createdAt: string;
+  dueAt: string | null;
+  visit: {
+    id: string;
+    reason: string;
+    departedAt: string | null;
+    patient: { name: string };
+    primaryVeterinarian: { displayName: string | null; firstName: string; lastName: string } | null;
+    soapNotes: Array<{ status: string; updatedAt: string }>;
+  };
+}
+
+function VeterinarianDashboard() {
+  const [records, setRecords] = useState<OpenRecordWorkItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/visits/records/open/mine', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load open records.');
+        return response.json() as Promise<OpenRecordWorkItem[]>;
+      })
+      .then(setRecords)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not load open records.'))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
-    <RoleDashboardPlaceholder
-      title="Veterinarian dashboard coming next"
-      description="Focused on assigned visits, exams, diagnostics, SOAP notes, and discharges."
-      labels={['Ready for Exam', 'My Active Visits', 'Diagnostics Pending', 'Records to Finish']}
-    />
+    <div className="dashboard-widget-grid">
+      <DashboardCard className="doctor-record-queue" aria-labelledby="doctor-record-queue-heading">
+        <p className="eyebrow">Medical records</p>
+        <h2 id="doctor-record-queue-heading">Records to finish</h2>
+        <p>Open records remain here until a veterinarian finalizes them.</p>
+        {loading ? <p>Loading records…</p> : null}
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        {!loading && !error && records.length === 0 ? <p>All assigned records are complete.</p> : null}
+        {records.length > 0 ? (
+          <ul className="doctor-record-queue__list">
+            {records.map((item) => (
+              <li key={item.id}>
+                <Link href={`/visits/${item.visit.id}`}>
+                  <span><strong>{item.visit.patient.name}</strong><small>{item.visit.reason}</small></span>
+                  <span><strong>{item.visit.soapNotes[0]?.status ?? 'Draft'}</strong><small>{item.visit.departedAt ? 'Patient departed' : 'Visit active'}</small></span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </DashboardCard>
+    </div>
   );
 }
 
@@ -1081,7 +1128,7 @@ function RoleDashboardSwitcher({ role }: { role: DashboardRole }) {
     case 'technician':
       return <TechnicianDashboardPlaceholder />;
     case 'veterinarian':
-      return <VeterinarianDashboardPlaceholder />;
+      return <VeterinarianDashboard />;
     default:
       return <ReceptionistDashboard />;
   }

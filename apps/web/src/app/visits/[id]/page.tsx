@@ -4,6 +4,8 @@ import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { RecordsPrepPanel } from '../../../components/records-prep-panel';
 import { VisitIntakePanel } from '../../../components/visit-intake-panel';
 import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
+import { VisitRecordPanel } from '../../../components/visit-record-panel';
+import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
 import { enumLabel, visitStateLabel } from '../../../lib/format';
@@ -137,13 +139,17 @@ export default async function VisitWorkspacePage({
 
       {visit.appointment && <RecordsPrepPanel appointment={visit.appointment} />}
 
-      <VisitIntakePanel visitId={visit.id} state={visit.state} intake={visit.intake} />
+      <VisitIntakePanel visitId={visit.id} visitType={visit.visitType} state={visit.state} intake={visit.intake} />
 
       <ExamFindingsPanel
         visitId={visit.id}
         state={visit.state}
         examFindings={visit.examFindings}
       />
+
+      <VisitRecordPanel visit={visit} />
+
+      <VisitDischargePanel visit={visit} />
 
       <details className="visit-context-details">
         <summary>Appointment &amp; assignment details</summary>

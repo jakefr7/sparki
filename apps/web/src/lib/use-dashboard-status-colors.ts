@@ -14,6 +14,7 @@ export interface DashboardStatusColor {
   isEnabled: boolean;
   isInClinic: boolean;
   allowedTransitionKeys: string[];
+  lifecyclePhase: 'Arrived' | 'Intake' | 'Exam' | 'PlanAndApproval' | 'CareInProgress' | 'Discharge' | 'RecordClosure';
 }
 
 interface StatusConfig { colors: DashboardStatusColor[]; canManage: boolean }

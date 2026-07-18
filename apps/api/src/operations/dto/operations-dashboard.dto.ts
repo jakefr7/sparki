@@ -55,6 +55,7 @@ export interface DashboardVisitSummary {
   assignedTechnician: DashboardPersonSummary | null;
   currentOwner: DashboardPersonSummary | null;
   intakeSummaryAvailable: boolean;
+  workflowStatusKey: string | null;
 }
 
 export interface DashboardStateCount {

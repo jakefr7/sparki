@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, prisma, type UserRole } from '@sparki/db';
 import type { ListStaffQuery } from './dto/list-staff.schema';
+import type { AuthenticatedUser } from '../auth/types';
+import { ConflictException } from '@nestjs/common';
 
 /** Clinic staff excludes CLIENT — that role identifies patient owners, not
  *  people who can be assigned as a provider/technician. */
@@ -55,6 +57,31 @@ export class StaffService {
     }
     return toStaffSummary(staff);
   }
+
+  async updateRecordSignoffPermission(id: string, actor: AuthenticatedUser, allowed: boolean) {
+    const existing = await prisma.user.findFirst({
+      where: { id, organizationId: actor.organizationId, isActive: true, role: { in: ['VETERINARIAN', 'OWNER'] } },
+    });
+    if (!existing) throw new ConflictException('Only an active veterinarian or clinical owner may receive record signoff permission.');
+    const updated = await prisma.user.update({
+      where: { id: existing.id },
+      data: { canFinalizeRecordsForOthers: allowed },
+      ...staffWithProfile,
+    });
+    await prisma.schedulerConfigChange.create({
+      data: {
+        organizationId: actor.organizationId,
+        locationId: actor.locationId,
+        actorId: actor.id,
+        entityType: 'RecordSignoffPermission',
+        entityId: existing.id,
+        action: allowed ? 'Granted' : 'Revoked',
+        before: { canFinalizeRecordsForOthers: existing.canFinalizeRecordsForOthers },
+        after: { canFinalizeRecordsForOthers: allowed },
+      },
+    });
+    return toStaffSummary(updated);
+  }
 }
 
 function toStaffSummary(user: StaffWithProfile) {
@@ -68,6 +95,7 @@ function toStaffSummary(user: StaffWithProfile) {
     licenseNumber: user.staffProfile?.licenseNumber ?? null,
     canReceiveAppointments: user.staffProfile?.canReceiveAppointments ?? false,
     canOwnVisits: user.staffProfile?.canOwnVisits ?? false,
+    canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
     color: user.staffProfile?.color ?? null,
   };
 }

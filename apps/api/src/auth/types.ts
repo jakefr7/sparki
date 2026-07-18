@@ -15,4 +15,7 @@ export interface AuthenticatedUser {
   /** Standalone per-user grant (User.canManageAdminSettings), deliberately
    *  not derived from role — see permissions.ts. */
   canManageAdminSettings: boolean;
+  /** Per-user grant allowing explicit assignment to finalize another
+   * veterinarian's visit record. The actual signer is always recorded. */
+  canFinalizeRecordsForOthers: boolean;
 }

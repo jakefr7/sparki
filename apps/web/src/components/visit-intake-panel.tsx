@@ -44,6 +44,20 @@ interface IntakePayload {
   vomiting?: boolean;
   diarrhea?: boolean;
   medicationsAllergies?: string | null;
+  vaccinationHistory?: string | null;
+  recentTravel?: string | null;
+  specialDiet?: string | null;
+  supplements?: string | null;
+  attitude?: string | null;
+  appearance?: string | null;
+  allergies?: string | null;
+  sedationIssues?: string | null;
+  pastSurgeries?: string | null;
+  currentMedications?: string | null;
+  sneezing?: boolean;
+  systemicConcerns?: string | null;
+  painScore?: number | null;
+  painScale?: string | null;
 }
 
 function numberOrNull(formData: FormData, key: string): number | null {
@@ -78,6 +92,20 @@ function intakePayload(formData: FormData): IntakePayload {
     vomiting: yesNo(formData, 'vomiting'),
     diarrhea: yesNo(formData, 'diarrhea'),
     medicationsAllergies: textOrNull(formData, 'medicationsAllergies'),
+    vaccinationHistory: textOrNull(formData, 'vaccinationHistory'),
+    recentTravel: textOrNull(formData, 'recentTravel'),
+    specialDiet: textOrNull(formData, 'specialDiet'),
+    supplements: textOrNull(formData, 'supplements'),
+    attitude: textOrNull(formData, 'attitude'),
+    appearance: textOrNull(formData, 'appearance'),
+    allergies: textOrNull(formData, 'allergies'),
+    sedationIssues: textOrNull(formData, 'sedationIssues'),
+    pastSurgeries: textOrNull(formData, 'pastSurgeries'),
+    currentMedications: textOrNull(formData, 'currentMedications'),
+    sneezing: yesNo(formData, 'sneezing'),
+    systemicConcerns: textOrNull(formData, 'systemicConcerns'),
+    painScore: numberOrNull(formData, 'painScore'),
+    painScale: textOrNull(formData, 'painScale'),
   };
 }
 
@@ -154,10 +182,12 @@ function IntakeSummary({ intake }: { intake: VisitIntake }) {
 
 export function VisitIntakePanel({
   visitId,
+  visitType,
   state,
   intake,
 }: {
   visitId: string;
+  visitType: string;
   state: string;
   intake: VisitDetail['intake'];
 }) {
@@ -166,6 +196,30 @@ export function VisitIntakePanel({
   const [error, setError] = useState<string | null>(null);
   const { user } = useCurrentUser();
   const canManageIntake = user?.role === 'TECHNICIAN' || user?.role === 'ASSISTANT';
+  const canDeferEmergency = visitType === 'Emergency' && ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? '');
+  const isDeferredEmergencyIntake = visitType === 'Emergency' && state === 'TreatmentPending' && !intake?.completedAt;
+  const canEditIntake = canManageIntake && (state === 'IntakeInProgress' || isDeferredEmergencyIntake);
+
+  async function deferForEmergency() {
+    const reason = window.prompt('Briefly describe why stabilization must begin before intake is complete.');
+    if (!reason?.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/visits/${visitId}/intake/defer-emergency`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) throw new Error(payload.message ?? 'Could not defer intake.');
+      router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not defer intake.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function startIntake() {
     setSubmitting(true);
@@ -232,19 +286,28 @@ export function VisitIntakePanel({
           <p className="eyebrow">Intake</p>
           <h2 id="visit-intake-heading">Intake Details</h2>
         </div>
-        {canManageIntake && STARTABLE_STATES.has(state) && (
-          <button
-            type="button"
-            className="button-primary"
-            onClick={startIntake}
-            disabled={submitting}
-          >
-            {submitting ? 'Starting...' : 'Begin Intake'}
-          </button>
+        {(canManageIntake || canDeferEmergency) && STARTABLE_STATES.has(state) && (
+          <div className="visit-intake-panel__header-actions">
+            {canDeferEmergency ? (
+              <button type="button" className="button-secondary" onClick={() => void deferForEmergency()} disabled={submitting}>
+                Begin emergency care
+              </button>
+            ) : null}
+            {canManageIntake ? (
+              <button
+                type="button"
+                className="button-primary"
+                onClick={startIntake}
+                disabled={submitting}
+              >
+                {submitting ? 'Starting...' : 'Begin Intake'}
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
 
-      {canManageIntake && state === 'IntakeInProgress' && (
+      {canEditIntake && (
         <form className="visit-intake-form" onSubmit={handleSave}>
           <fieldset className="visit-intake-group">
             <legend>Reason for Visit</legend>
@@ -319,6 +382,24 @@ export function VisitIntakePanel({
                   ))}
                 </select>
               </label>
+              <label>
+                Attitude / mentation
+                <select name="attitude" defaultValue={intake?.attitude ?? ''}>
+                  <option value="">Not assessed</option>
+                  <option value="BAR">BAR — bright, alert, responsive</option>
+                  <option value="QAR">QAR — quiet, alert, responsive</option>
+                  <option value="Depressed">Depressed</option>
+                  <option value="Obtunded">Obtunded</option>
+                </select>
+              </label>
+              <label>
+                Pain score (0–10)
+                <input name="painScore" type="number" min="0" max="10" step="0.5" defaultValue={intake?.painScore ?? ''} />
+              </label>
+              <label>
+                Pain scale
+                <input name="painScale" placeholder="e.g. Glasgow CMPS-SF" defaultValue={intake?.painScale ?? ''} />
+              </label>
             </div>
           </fieldset>
 
@@ -338,6 +419,7 @@ export function VisitIntakePanel({
               </label>
               <YesNoToggle name="vomiting" label="Vomiting" defaultValue={intake?.vomiting ?? false} />
               <YesNoToggle name="diarrhea" label="Diarrhea" defaultValue={intake?.diarrhea ?? false} />
+              <YesNoToggle name="sneezing" label="Sneezing" defaultValue={intake?.sneezing ?? false} />
             </div>
           </fieldset>
 
@@ -350,13 +432,25 @@ export function VisitIntakePanel({
           </fieldset>
 
           <fieldset className="visit-intake-group">
-            <legend>Medications &amp; Allergies</legend>
-            <textarea
-              name="medicationsAllergies"
-              aria-label="Medications and allergies"
-              placeholder="Current medications, known allergies, or adverse reactions"
-              defaultValue={intake?.medicationsAllergies ?? ''}
-            />
+            <legend>Current health and appearance</legend>
+            <label>General appearance<textarea name="appearance" defaultValue={intake?.appearance ?? ''} placeholder="Describe appearance or enter Normal" /></label>
+            <label>Systemic concerns<textarea name="systemicConcerns" defaultValue={intake?.systemicConcerns ?? ''} placeholder="Other symptoms or body-system concerns" /></label>
+          </fieldset>
+
+          <fieldset className="visit-intake-group">
+            <legend>Medication and safety history</legend>
+            <label>Current medications<textarea name="currentMedications" defaultValue={intake?.currentMedications ?? ''} placeholder="List medications or enter None" /></label>
+            <label>Allergies<textarea name="allergies" defaultValue={intake?.allergies ?? ''} placeholder="List allergies or enter None known" /></label>
+            <label>Sedation problems<textarea name="sedationIssues" defaultValue={intake?.sedationIssues ?? ''} placeholder="Prior reactions or enter None known" /></label>
+            <label>Past surgeries<textarea name="pastSurgeries" defaultValue={intake?.pastSurgeries ?? ''} placeholder="Prior surgeries or enter None" /></label>
+          </fieldset>
+
+          <fieldset className="visit-intake-group">
+            <legend>Preventive and lifestyle history</legend>
+            <label>Vaccines<textarea name="vaccinationHistory" defaultValue={intake?.vaccinationHistory ?? ''} /></label>
+            <label>Recent travel<textarea name="recentTravel" defaultValue={intake?.recentTravel ?? ''} placeholder="Locations and dates, or None" /></label>
+            <label>Special diet<textarea name="specialDiet" defaultValue={intake?.specialDiet ?? ''} placeholder="Diet details or None" /></label>
+            <label>Supplements<textarea name="supplements" defaultValue={intake?.supplements ?? ''} placeholder="Supplements or None" /></label>
           </fieldset>
 
           {error && (
@@ -383,13 +477,13 @@ export function VisitIntakePanel({
         </form>
       )}
 
-      {!canManageIntake && (STARTABLE_STATES.has(state) || state === 'IntakeInProgress') && (
+      {!canManageIntake && (STARTABLE_STATES.has(state) || state === 'IntakeInProgress' || isDeferredEmergencyIntake) && (
         <p className="visit-intake-panel__status">
           Intake actions are available to technicians and assistants.
         </p>
       )}
 
-      {state !== 'IntakeInProgress' && !STARTABLE_STATES.has(state) && (
+      {!canEditIntake && state !== 'IntakeInProgress' && !STARTABLE_STATES.has(state) && !isDeferredEmergencyIntake && (
         <p className="visit-intake-panel__status">
           Intake details are not editable while this visit is in {state}.
         </p>

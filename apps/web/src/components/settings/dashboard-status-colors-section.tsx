@@ -3,7 +3,17 @@
 import { Fragment, useState, type CSSProperties, type FormEvent } from 'react';
 import { useDashboardStatusColors, type DashboardStatusColor } from '../../lib/use-dashboard-status-colors';
 
-const EMPTY_STATUS: DashboardStatusColor = { id: '', status: '', name: '', description: '', color: '#1FA9A0', sortOrder: 100, isEnabled: true, isInClinic: false, allowedTransitionKeys: [] };
+const EMPTY_STATUS: DashboardStatusColor = { id: '', status: '', name: '', description: '', color: '#1FA9A0', sortOrder: 100, isEnabled: true, isInClinic: false, allowedTransitionKeys: [], lifecyclePhase: 'Arrived' };
+
+const LIFECYCLE_PHASES: Array<{ value: DashboardStatusColor['lifecyclePhase']; label: string }> = [
+  { value: 'Arrived', label: 'Arrival / waiting' },
+  { value: 'Intake', label: 'Intake' },
+  { value: 'Exam', label: 'Veterinarian exam' },
+  { value: 'PlanAndApproval', label: 'Plan and client approval' },
+  { value: 'CareInProgress', label: 'Diagnostics / treatment' },
+  { value: 'Discharge', label: 'Discharge / checkout' },
+  { value: 'RecordClosure', label: 'Medical record closure' },
+];
 
 function PlusIcon() { return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>; }
 function PencilIcon() { return <svg viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true"><path d="M13.4 3.6a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2L7.5 15.5l-3.3.8.8-3.3L13.4 3.6Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>; }
@@ -23,10 +33,13 @@ export function DashboardStatusColorsSection() {
     setSaving(true);
     const response = await fetch('/api/dashboard-status-colors', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: draft.id || undefined, name: draft.name, description: draft.description, color: draft.color, sortOrder: draft.sortOrder, isEnabled: draft.isEnabled, isInClinic: draft.isInClinic, allowedTransitionKeys: draft.allowedTransitionKeys }),
+      body: JSON.stringify({ id: draft.id || undefined, name: draft.name, description: draft.description, color: draft.color, sortOrder: draft.sortOrder, isEnabled: draft.isEnabled, isInClinic: draft.isInClinic, allowedTransitionKeys: draft.allowedTransitionKeys, lifecyclePhase: draft.lifecyclePhase }),
     });
     if (response.ok) { await reload(); setDraft(null); setMessage('Status saved.'); }
-    else setMessage('Could not save status.');
+    else {
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      setMessage(body?.message ?? 'Could not save status.');
+    }
     setSaving(false);
   }
 
@@ -34,7 +47,10 @@ export function DashboardStatusColorsSection() {
     if (!window.confirm(`Delete “${entry.name}”?`)) return;
     const response = await fetch(`/api/dashboard-status-colors/${entry.id}`, { method: 'DELETE' });
     if (response.ok) { await reload(); setMessage('Status deleted.'); }
-    else setMessage('Could not delete status.');
+    else {
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      setMessage(body?.message ?? 'Could not delete status.');
+    }
   }
 
   function openEditor(entry: DashboardStatusColor) {
@@ -73,6 +89,7 @@ export function DashboardStatusColorsSection() {
     <div className="status-editor__details">
       <label className="status-editor__name"><span>Status name</span><input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} required /></label>
       <label className="status-editor__description"><span>Description</span><input value={draft.description ?? ''} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="Explain when this status is used" /></label>
+      <label className="status-editor__phase"><span>Protected visit phase</span><select value={draft.lifecyclePhase} onChange={(event) => setDraft({ ...draft, lifecyclePhase: event.target.value as DashboardStatusColor['lifecyclePhase'] })}>{LIFECYCLE_PHASES.map((phase) => <option key={phase.value} value={phase.value}>{phase.label}</option>)}</select></label>
       <label className="status-editor__order"><span>Position in status workflow</span><select value={positionValue} onChange={(event) => placeDraftAfter(event.target.value)}><option value="__first__">Before {positionStatuses[0]?.name ?? 'all statuses'}</option>{positionStatuses.map((entry) => <option key={entry.status} value={entry.status}>After {entry.name}</option>)}</select></label>
       <label className="status-editor__color"><span>Color</span><span className="status-editor__color-control"><input type="color" value={draft.color} onChange={(event) => setDraft({ ...draft, color: event.target.value })} /><strong>{draft.color.toUpperCase()}</strong></span></label>
     </div>

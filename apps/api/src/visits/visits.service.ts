@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { prisma, type AppointmentType, type VisitState, type VisitType } from '@sparki/db';
+import { prisma, type AppointmentType, type UserRole, type VisitState, type VisitType } from '@sparki/db';
 import { workflowStatusKey } from '@sparki/config';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
@@ -13,6 +13,8 @@ import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
 import type { SetDashboardStatusInput } from './dto/set-dashboard-status.schema';
+import { VISIT_LIFECYCLE_INCLUDE, VisitLifecycleService } from './visit-lifecycle.service';
+import { VisitRecordsService } from './visit-records.service';
 import {
   CHECKOUT_READY_STATE,
   EXAM_IN_PROGRESS_STATE,
@@ -35,33 +37,7 @@ import {
  * Checkout intentionally maps to a visible payment/checkout workflow state;
  * dashboard status changes never archive the medical record.
  */
-const DASHBOARD_TRANSITIONS: Record<string, VisitState> = {
-  'CheckIn->BeginIntake': INTAKE_IN_PROGRESS_STATE,
-  'BeginIntake->CheckIn': 'Arrived',
-  'BeginIntake->ReadyForVeterinarian': EXAM_READY_STATE,
-  'ReadyForVeterinarian->BeginIntake': INTAKE_IN_PROGRESS_STATE,
-  'ReadyForVeterinarian->Exam': EXAM_IN_PROGRESS_STATE,
-  'Exam->ReadyForVeterinarian': EXAM_READY_STATE,
-  'Exam->Treatment': TREATMENT_READY_STATE,
-  'Treatment->Exam': EXAM_IN_PROGRESS_STATE,
-  'Treatment->Discharge': CHECKOUT_READY_STATE,
-  'Discharge->Treatment': TREATMENT_READY_STATE,
-  // Dashboard Checkout remains visible in Today's flow. Archival belongs to
-  // the explicit visit-closing workflow, not a reception status selection.
-  'Discharge->Checkout': 'PaymentComplete',
-  'Checkout->Discharge': CHECKOUT_READY_STATE,
-};
-
-const visitInclude = {
-  patient: true,
-  client: true,
-  appointment: true,
-  primaryVeterinarian: true,
-  assignedTechnician: true,
-  currentOwner: true,
-  intake: true,
-  examFindings: true,
-};
+const visitInclude = VISIT_LIFECYCLE_INCLUDE;
 
 /**
  * Default Visit type per Appointment type when the caller doesn't override
@@ -89,6 +65,8 @@ export class VisitsService {
   constructor(
     private readonly patients: PatientsService,
     private readonly appointments: AppointmentsService,
+    private readonly lifecycle: VisitLifecycleService,
+    private readonly records: VisitRecordsService,
   ) {}
 
   /**
@@ -189,7 +167,7 @@ export class VisitsService {
         });
       }
 
-      return tx.visit.create({
+      const created = await tx.visit.create({
         data: {
           organizationId,
           locationId,
@@ -199,6 +177,10 @@ export class VisitsService {
           visitType,
           reason,
           state: 'Arrived',
+          phase: 'Arrived',
+          arrivedAt: new Date(),
+          currentOwnerId: createdById,
+          nextAction: 'Begin intake',
           primaryVeterinarianId,
           assignedTechnicianId: input.assignedTechnicianId ?? null,
           createdById,
@@ -206,12 +188,40 @@ export class VisitsService {
         },
         include: visitInclude,
       });
+
+      await tx.visitTransition.create({
+        data: {
+          organizationId,
+          locationId,
+          visitId: created.id,
+          actorId: createdById,
+          source: 'User',
+          fromPhase: 'Arrived',
+          toPhase: 'Arrived',
+          fromState: 'Arrived',
+          toState: 'Arrived',
+          reason: appointmentId ? 'Created from arrived appointment' : 'Created as walk-in visit',
+          metadata: { action: 'VisitCreated', appointmentId },
+        },
+      });
+      await tx.visitWorkItem.create({
+        data: {
+          organizationId,
+          locationId,
+          visitId: created.id,
+          type: 'IntakeCompletion',
+          title: 'Complete patient intake',
+          assigneeRole: 'TECHNICIAN',
+        },
+      });
+
+      return tx.visit.findUniqueOrThrow({ where: { id: created.id }, include: visitInclude });
     });
   }
 
-  async findById(id: string, organizationId: string) {
+  async findById(id: string, organizationId: string, locationId: string) {
     const visit = await prisma.visit.findFirst({
-      where: { id, organizationId },
+      where: { id, organizationId, locationId },
       include: visitInclude,
     });
     if (!visit) {
@@ -222,9 +232,9 @@ export class VisitsService {
 
   /** All non-terminal Visits for the organization — the Command Center's
    *  live floor view. */
-  async listActiveForOrganization(organizationId: string) {
+  async listActiveForOrganization(organizationId: string, locationId: string) {
     return prisma.visit.findMany({
-      where: { organizationId, state: { notIn: TERMINAL_VISIT_STATES } },
+      where: { organizationId, locationId, state: { notIn: TERMINAL_VISIT_STATES } },
       include: visitInclude,
       orderBy: { createdAt: 'asc' },
     });
@@ -237,8 +247,8 @@ export class VisitsService {
    * forced through a transition the caller didn't ask for, and a terminal
    * Visit is rejected outright rather than silently reactivated.
    */
-  async start(id: string, organizationId: string, lastUpdatedById: string) {
-    const visit = await this.findById(id, organizationId);
+  async start(id: string, organizationId: string, locationId: string, lastUpdatedById: string, actorRole: UserRole) {
+    const visit = await this.findById(id, organizationId, locationId);
 
     if (TERMINAL_VISIT_STATES.includes(visit.state)) {
       throw new ConflictException(
@@ -250,20 +260,30 @@ export class VisitsService {
       return visit;
     }
 
-    return prisma.visit.update({
-      where: { id },
-      data: { state: INTAKE_IN_PROGRESS_STATE, lastUpdatedById },
-      include: visitInclude,
+    return this.lifecycle.transition({
+      visitId: id,
+      organizationId,
+      locationId,
+      actorId: lastUpdatedById,
+      actorRole,
+      expectedStates: [visit.state],
+      toState: INTAKE_IN_PROGRESS_STATE,
+      toPhase: 'Intake',
+      currentOwnerId: lastUpdatedById,
+      nextAction: 'Complete intake',
+      timestamps: { intakeStartedAt: new Date() },
+      createWorkItems: [{ type: 'IntakeCompletion', title: 'Complete patient intake', assigneeId: lastUpdatedById }],
     });
   }
 
   async saveIntake(
     id: string,
     organizationId: string,
+    locationId: string,
     lastUpdatedById: string,
     input: SaveVisitIntakeInput,
   ) {
-    await this.findById(id, organizationId);
+    await this.findById(id, organizationId, locationId);
 
     await prisma.visitIntake.upsert({
       where: { visitId: id },
@@ -281,8 +301,8 @@ export class VisitsService {
     });
   }
 
-  async completeIntake(id: string, organizationId: string, lastUpdatedById: string) {
-    const visit = await this.findById(id, organizationId);
+  async completeIntake(id: string, organizationId: string, locationId: string, lastUpdatedById: string, actorRole: UserRole) {
+    const visit = await this.findById(id, organizationId, locationId);
 
     if (TERMINAL_VISIT_STATES.includes(visit.state)) {
       throw new ConflictException(
@@ -290,31 +310,83 @@ export class VisitsService {
       );
     }
 
-    if (visit.state !== INTAKE_IN_PROGRESS_STATE) {
+    const completingDeferredEmergency = visit.visitType === 'Emergency'
+      && visit.state === 'TreatmentPending'
+      && visit.exceptions.some((exception) => exception.type === 'EmergencyIntakeDeferred');
+
+    if (visit.state !== INTAKE_IN_PROGRESS_STATE && !completingDeferredEmergency) {
       return visit;
     }
 
-    const completedAt = new Date();
-    return prisma.$transaction(async (tx) => {
-      await tx.visitIntake.upsert({
-        where: { visitId: id },
-        create: { visitId: id, completedAt },
-        update: { completedAt },
-      });
+    assertIntakeReadyForCompletion(visit.intake);
 
-      return tx.visit.update({
-        where: { id },
-        data: {
-          state: EXAM_READY_STATE,
-          lastUpdatedById,
-        },
-        include: visitInclude,
-      });
+    const completedAt = new Date();
+    await prisma.visitIntake.upsert({
+      where: { visitId: id },
+      create: { visitId: id, completedAt },
+      update: { completedAt },
+    });
+
+    return this.lifecycle.transition({
+        visitId: id,
+        organizationId,
+        locationId,
+        actorId: lastUpdatedById,
+        actorRole,
+        expectedStates: [visit.state],
+        toState: completingDeferredEmergency ? 'TreatmentPending' : EXAM_READY_STATE,
+        toPhase: completingDeferredEmergency ? 'CareInProgress' : 'Exam',
+        currentOwnerId: completingDeferredEmergency ? (visit.primaryVeterinarianId ?? lastUpdatedById) : visit.primaryVeterinarianId,
+        nextAction: completingDeferredEmergency ? 'Continue emergency care' : 'Start veterinarian exam',
+        completeWorkItemTypes: ['IntakeCompletion'],
+        resolveExceptionTypes: completingDeferredEmergency ? ['EmergencyIntakeDeferred'] : [],
+        ...(!completingDeferredEmergency ? { handoff: {
+          toUserId: visit.primaryVeterinarianId,
+          toRole: 'VETERINARIAN',
+          summary: visit.intake?.chiefComplaint ?? visit.reason,
+        } } : {}),
     });
   }
 
-  async startExam(id: string, organizationId: string, lastUpdatedById: string) {
-    const visit = await this.findById(id, organizationId);
+  async deferEmergencyIntake(
+    id: string,
+    organizationId: string,
+    locationId: string,
+    actorId: string,
+    actorRole: UserRole,
+    reason: string,
+  ) {
+    const visit = await this.findById(id, organizationId, locationId);
+    if (visit.visitType !== 'Emergency') {
+      throw new ConflictException('Intake may only be deferred for a life-threatening emergency.');
+    }
+    if (!['Arrived', 'IntakeInProgress'].includes(visit.state)) {
+      throw new ConflictException('Emergency intake cannot be deferred from the current visit step.');
+    }
+    return this.lifecycle.transition({
+      visitId: id,
+      organizationId,
+      locationId,
+      actorId,
+      actorRole,
+      expectedStates: [visit.state],
+      toState: 'TreatmentPending',
+      toPhase: 'CareInProgress',
+      currentOwnerId: visit.primaryVeterinarianId ?? actorId,
+      nextAction: 'Stabilize patient; complete intake when stable',
+      reason,
+      createException: {
+        type: 'EmergencyIntakeDeferred',
+        severity: 'Critical',
+        reason,
+        nextAction: 'Complete structured intake after stabilization',
+        ownerId: visit.assignedTechnicianId ?? actorId,
+      },
+    });
+  }
+
+  async startExam(id: string, organizationId: string, locationId: string, lastUpdatedById: string, actorRole: UserRole) {
+    const visit = await this.findById(id, organizationId, locationId);
 
     if (TERMINAL_VISIT_STATES.includes(visit.state)) {
       throw new ConflictException(
@@ -326,20 +398,29 @@ export class VisitsService {
       return visit;
     }
 
-    return prisma.visit.update({
-      where: { id },
-      data: { state: EXAM_IN_PROGRESS_STATE, lastUpdatedById },
-      include: visitInclude,
+    return this.lifecycle.transition({
+      visitId: id,
+      organizationId,
+      locationId,
+      actorId: lastUpdatedById,
+      actorRole,
+      expectedStates: [visit.state],
+      toState: EXAM_IN_PROGRESS_STATE,
+      toPhase: 'Exam',
+      currentOwnerId: lastUpdatedById,
+      nextAction: 'Complete veterinarian exam',
+      timestamps: { examStartedAt: new Date() },
     });
   }
 
   async saveExamFindings(
     id: string,
     organizationId: string,
+    locationId: string,
     lastUpdatedById: string,
     input: SaveExamFindingsInput,
   ) {
-    await this.findById(id, organizationId);
+    await this.findById(id, organizationId, locationId);
 
     await prisma.visitExamFindings.upsert({
       where: { visitId: id },
@@ -357,8 +438,8 @@ export class VisitsService {
     });
   }
 
-  async completeExam(id: string, organizationId: string, lastUpdatedById: string) {
-    const visit = await this.findById(id, organizationId);
+  async completeExam(id: string, organizationId: string, locationId: string, lastUpdatedById: string, actorRole: UserRole) {
+    const visit = await this.findById(id, organizationId, locationId);
 
     if (TERMINAL_VISIT_STATES.includes(visit.state)) {
       throw new ConflictException(
@@ -371,21 +452,28 @@ export class VisitsService {
     }
 
     const completedAt = new Date();
-    return prisma.$transaction(async (tx) => {
-      await tx.visitExamFindings.upsert({
-        where: { visitId: id },
-        create: { visitId: id, completedAt },
-        update: { completedAt },
-      });
+    await prisma.visitExamFindings.upsert({
+      where: { visitId: id },
+      create: { visitId: id, completedAt },
+      update: { completedAt },
+    });
 
-      return tx.visit.update({
-        where: { id },
-        data: {
-          state: TREATMENT_READY_STATE,
-          lastUpdatedById,
-        },
-        include: visitInclude,
-      });
+    await this.records.ensureDraftForVisit(id, organizationId, locationId, lastUpdatedById);
+
+    return this.lifecycle.transition({
+        visitId: id,
+        organizationId,
+        locationId,
+        actorId: lastUpdatedById,
+        actorRole,
+        expectedStates: [visit.state],
+        toState: 'PlanDrafted',
+        toPhase: 'PlanAndApproval',
+        currentOwnerId: lastUpdatedById,
+        nextAction: 'Review and approve care plan',
+        createWorkItems: [
+          { type: 'RecordSignoff', title: 'Finalize medical record', assigneeId: visit.primaryVeterinarianId ?? lastUpdatedById },
+        ],
     });
   }
 
@@ -399,10 +487,12 @@ export class VisitsService {
   async setDashboardStatus(
     id: string,
     organizationId: string,
+    locationId: string,
     lastUpdatedById: string,
+    actorRole: UserRole,
     target: SetDashboardStatusInput['statusKey'],
   ) {
-    const visit = await this.findById(id, organizationId);
+    const visit = await this.findById(id, organizationId, locationId);
 
     if (TERMINAL_VISIT_STATES.includes(visit.state)) {
       throw new ConflictException(
@@ -410,7 +500,7 @@ export class VisitsService {
       );
     }
 
-    const current = workflowStatusKey('visit', visit.state);
+    const current = visit.workflowStep?.status ?? workflowStatusKey('visit', visit.state);
     if (!current) {
       throw new ConflictException(`Visit ${id} has no configured dashboard status for state ${visit.state}`);
     }
@@ -423,20 +513,46 @@ export class VisitsService {
     if (!configured || !configured.allowedTransitionKeys.includes(normalizedTarget)) {
       throw new ConflictException(`Visit ${id} cannot transition from its configured status to "${normalizedTarget}"`);
     }
-    const nextState = DASHBOARD_TRANSITIONS[`${current}->${normalizedTarget}`];
+    const targetStep = await prisma.dashboardStatusColorSetting.findFirst({
+      where: { organizationId, locationId: visit.locationId, status: normalizedTarget, isEnabled: true },
+    });
+    if (!targetStep) throw new ConflictException(`The requested workflow step is not available at this location.`);
+    const nextState = representativeStateForPhase(targetStep.lifecyclePhase, visit.state);
 
-    if (!nextState) {
-      throw new ConflictException(
-        `Visit ${id} cannot move from dashboard status "${current}" directly to "${normalizedTarget}" — only one configured step is allowed`,
-      );
-    }
-
-    return prisma.visit.update({
-      where: { id },
-      data: { state: nextState, lastUpdatedById },
-      include: visitInclude,
+    return this.lifecycle.transition({
+      visitId: id,
+      organizationId,
+      locationId,
+      actorId: lastUpdatedById,
+      actorRole,
+      expectedStates: [visit.state],
+      toState: nextState,
+      toPhase: targetStep.lifecyclePhase,
+      workflowStepId: targetStep.id,
+      currentOwnerId: lastUpdatedById,
+      nextAction: nextActionForState(nextState),
     });
   }
+}
+
+function representativeStateForPhase(phase: string, current: VisitState): VisitState {
+  if (phase === 'Arrived') return 'Waiting';
+  if (phase === 'Intake') return INTAKE_IN_PROGRESS_STATE;
+  if (phase === 'Exam') return current === EXAM_IN_PROGRESS_STATE ? EXAM_IN_PROGRESS_STATE : EXAM_READY_STATE;
+  if (phase === 'PlanAndApproval') return 'PlanDrafted';
+  if (phase === 'CareInProgress') return TREATMENT_READY_STATE;
+  if (phase === 'Discharge') return CHECKOUT_READY_STATE;
+  if (phase === 'RecordClosure') return 'RecordCompletionPending';
+  throw new ConflictException('Closed visits must use an explicit completion, cancellation, or no-show action.');
+}
+
+function nextActionForState(state: VisitState) {
+  if (state === 'IntakeInProgress') return 'Complete intake';
+  if (state === 'VeterinarianExamReady') return 'Start veterinarian exam';
+  if (state === 'VeterinarianExamInProgress') return 'Complete veterinarian exam';
+  if (state === 'CheckoutReady') return 'Begin discharge and checkout';
+  if (state === 'PaymentComplete') return 'Finalize medical record';
+  return null;
 }
 
 function normalizeIntakeInput(input: SaveVisitIntakeInput) {
@@ -457,7 +573,56 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
     vomiting: input.vomiting ?? false,
     diarrhea: input.diarrhea ?? false,
     medicationsAllergies: input.medicationsAllergies ?? null,
+    vaccinationHistory: input.vaccinationHistory ?? null,
+    recentTravel: input.recentTravel ?? null,
+    specialDiet: input.specialDiet ?? null,
+    supplements: input.supplements ?? null,
+    attitude: input.attitude ?? null,
+    appearance: input.appearance ?? null,
+    allergies: input.allergies ?? null,
+    sedationIssues: input.sedationIssues ?? null,
+    pastSurgeries: input.pastSurgeries ?? null,
+    currentMedications: input.currentMedications ?? null,
+    sneezing: input.sneezing ?? false,
+    systemicConcerns: input.systemicConcerns ?? null,
+    painScore: input.painScore ?? null,
+    painScale: input.painScale ?? null,
   };
+}
+
+function assertIntakeReadyForCompletion(intake: {
+  chiefComplaint: string | null;
+  historyNotes: string | null;
+  weight: number | null;
+  temperature: number | null;
+  heartRate: number | null;
+  respiratoryRate: number | null;
+  crtSeconds: number | null;
+  gumColor: string | null;
+  attitude: string | null;
+  appearance: string | null;
+  allergies: string | null;
+  currentMedications: string | null;
+} | null) {
+  const missing = [
+    ['reason for visit', intake?.chiefComplaint],
+    ['medical history', intake?.historyNotes],
+    ['weight', intake?.weight],
+    ['temperature', intake?.temperature],
+    ['heart rate', intake?.heartRate],
+    ['respiratory rate', intake?.respiratoryRate],
+    ['capillary refill time', intake?.crtSeconds],
+    ['gum color', intake?.gumColor],
+    ['attitude', intake?.attitude],
+    ['appearance', intake?.appearance],
+    ['allergies', intake?.allergies],
+    ['current medications', intake?.currentMedications],
+  ].filter(([, value]) => value === null || value === undefined || value === '');
+  if (missing.length) {
+    throw new ConflictException(
+      `Complete intake before handoff. Missing: ${missing.map(([label]) => label).join(', ')}.`,
+    );
+  }
 }
 
 function normalizeExamFindingsInput(input: SaveExamFindingsInput) {

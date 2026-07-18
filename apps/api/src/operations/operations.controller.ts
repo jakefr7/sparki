@@ -9,6 +9,6 @@ export class OperationsController {
 
   @Get('dashboard')
   getDashboard(@CurrentUser() user: AuthenticatedUser) {
-    return this.operations.getDashboard(user.organizationId);
+    return this.operations.getDashboard(user.organizationId, user.locationId);
   }
 }

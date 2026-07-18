@@ -258,6 +258,7 @@ export interface DashboardVisitSummary {
   assignedTechnician: DashboardPersonSummary | null;
   currentOwner: DashboardPersonSummary | null;
   intakeSummaryAvailable: boolean;
+  workflowStatusKey: string | null;
 }
 
 export interface OperationsDashboard {
@@ -349,6 +350,8 @@ export interface VisitDetail {
   visitType: string;
   reason: string;
   state: string;
+  phase: string;
+  nextAction: string | null;
   createdAt: string;
   patient: {
     id: string;
@@ -389,6 +392,20 @@ export interface VisitDetail {
     vomiting: boolean;
     diarrhea: boolean;
     medicationsAllergies: string | null;
+    vaccinationHistory: string | null;
+    recentTravel: string | null;
+    specialDiet: string | null;
+    supplements: string | null;
+    attitude: string | null;
+    appearance: string | null;
+    allergies: string | null;
+    sedationIssues: string | null;
+    pastSurgeries: string | null;
+    currentMedications: string | null;
+    sneezing: boolean;
+    systemicConcerns: string | null;
+    painScore: number | null;
+    painScale: string | null;
     completedAt: string | null;
   } | null;
   examFindings: {
@@ -398,6 +415,43 @@ export interface VisitDetail {
     assessment: string | null;
     plan: string | null;
     completedAt: string | null;
+  } | null;
+  soapNotes: Array<{
+    id: string;
+    subjective: string | null;
+    objective: string | null;
+    assessment: string | null;
+    plan: string | null;
+    status: string;
+    version: number;
+    signedAt: string | null;
+    lockedAt: string | null;
+    amendmentReason: string | null;
+  }>;
+  signoffDelegates: Array<{
+    delegateId: string;
+    delegate: {
+      id: string;
+      displayName: string | null;
+      firstName: string;
+      lastName: string;
+      role: string;
+    };
+  }>;
+  discharge: {
+    instructions: string;
+    medicationInstructions: string | null;
+    warningSigns: string | null;
+    followUpPlan: string | null;
+    followUpRequired: boolean;
+    completedAt: string;
+  } | null;
+  checkout: {
+    clientContactConfirmed: boolean;
+    missingAccountInformation: string | null;
+    balanceStatus: string;
+    outstandingBalanceCents: number | null;
+    completedAt: string;
   } | null;
   primaryVeterinarian: {
     id: string;
@@ -432,6 +486,7 @@ export interface StaffMember {
   jobTitle: string | null;
   canReceiveAppointments: boolean;
   canOwnVisits: boolean;
+  canFinalizeRecordsForOthers: boolean;
 }
 
 /** Mirrors Clinic Provisioning v1's default species list (Dog, Cat); "Other"

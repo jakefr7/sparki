@@ -19,6 +19,8 @@ historical operation whose count cannot be reconstructed safely.
 | Executed at (UTC) | Operator | Environment | Change ID | Inserted | Updated | Deleted | Result | Verification / notes |
 |---|---|---|---|---:|---:|---:|---|---|
 | 2026-07-18T04:46:00Z | Codex, requested by Jake Franco | local development | `20260717213000_link_appointment_styles_to_schedule_blocks` through `20260717235500_audit_scheduler_configuration` | 0 | 20 | 0 | Completed | Conservatively linked 20 of 94 previously unassigned appointments to provable schedule blocks. Twenty-four future appointments remained unlinked and were surfaced as `Needs review`; no appointments were moved, reassigned, or deleted. |
+| 2026-07-18T21:10:19Z | Codex, requested by Jake Franco | local development | `20260718003000_visit_lifecycle_foundation` through `20260718020000_visit_discharge_checkout` | 0 | 35 | 0 | Completed | Added lifecycle, expanded intake, immutable SOAP record, discharge, and checkout structures. Backfilled phase and lifecycle timestamps on all 35 existing visits; verified 35 visit rows remained and no rows were deleted. |
+| 2026-07-18T21:16:46Z | Codex, requested by Jake Franco | local development | `20260718023000_link_admin_steps_to_visit_phases` | 0 | 43 | 0 | Completed | Assigned protected lifecycle phases to 8 configured status rows and linked all 35 existing visits to their exact admin-defined workflow step. Verified 35 of 35 visits were linked; no rows were deleted. |
 
 ## Entry template
 
@@ -41,4 +43,3 @@ Copy this row immediately after running and verifying a data-changing operation:
    back to the original change.
 6. Keep one row per environment because the same migration can affect different
    numbers of rows in local, staging, and production.
-

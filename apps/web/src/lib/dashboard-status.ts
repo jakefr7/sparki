@@ -43,6 +43,7 @@ export interface ClinicDisplayRow {
   kind: StatusSubjectKind;
   statusDetail?: string | undefined;
   href?: string;
+  workflowStatusKey?: string | null;
 }
 
 export interface ScheduleDisplayRow {
@@ -193,6 +194,7 @@ export function visitToClinicRow(visit: DashboardVisitSummary): ClinicDisplayRow
     location: visitLocation(visit),
     status: visitReceptionStatus(visit),
     state: visit.state,
+    workflowStatusKey: visit.workflowStatusKey,
     kind: 'visit',
     statusDetail: roomLabelFromLocation(visitLocation(visit)),
     href: `/visits/${visit.id}`,

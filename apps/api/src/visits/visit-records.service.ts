@@ -64,6 +64,29 @@ export class VisitRecordsService {
         ],
       },
       include: {
+        assignee: true,
+        visit: {
+          include: {
+            patient: true,
+            primaryVeterinarian: true,
+            soapNotes: { orderBy: { createdAt: 'desc' }, take: 1 },
+          },
+        },
+      },
+      orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async listOpenForLocation(organizationId: string, locationId: string) {
+    return prisma.visitWorkItem.findMany({
+      where: {
+        organizationId,
+        locationId,
+        type: 'RecordSignoff',
+        status: { in: ['Pending', 'InProgress'] },
+      },
+      include: {
+        assignee: true,
         visit: {
           include: {
             patient: true,

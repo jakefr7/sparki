@@ -1533,9 +1533,6 @@ function SchedulerAppointmentCard({
           {STATUS_LABELS[appointment.state] ?? appointment.state}
         </small>
       )}
-      {appointment.schedulingIssue ? (
-        <small className="scheduler-appointment-card__issue" title={appointment.schedulingIssue}>Needs review</small>
-      ) : null}
     </button>
   );
 }

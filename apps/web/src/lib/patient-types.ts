@@ -219,6 +219,27 @@ export interface DashboardClientSummary {
   id: string;
   firstName: string;
   lastName: string;
+  contactReady?: boolean;
+}
+
+export interface DashboardWorkItemSummary {
+  id: string;
+  type: string;
+  status: string;
+  title: string;
+  assignee: DashboardPersonSummary | null;
+  assigneeRole: string | null;
+  dueAt: string | null;
+  updatedAt: string;
+}
+
+export interface DashboardExceptionSummary {
+  id: string;
+  severity: string;
+  reason: string;
+  nextAction: string | null;
+  owner: DashboardPersonSummary | null;
+  dueAt: string | null;
 }
 
 export interface DashboardAppointmentSummary {
@@ -249,7 +270,9 @@ export interface DashboardVisitSummary {
   visitType: string;
   reason: string;
   state: string;
+  phase: string;
   createdAt: string;
+  updatedAt: string;
   elapsedMinutes: number;
   patient: DashboardPatientSummary;
   client: DashboardClientSummary | null;
@@ -259,6 +282,12 @@ export interface DashboardVisitSummary {
   currentOwner: DashboardPersonSummary | null;
   intakeSummaryAvailable: boolean;
   workflowStatusKey: string | null;
+  nextAction: string | null;
+  dischargeReadyAt: string | null;
+  departedAt: string | null;
+  recordStatus: string | null;
+  openWorkItems: DashboardWorkItemSummary[];
+  openExceptions: DashboardExceptionSummary[];
 }
 
 export interface OperationsDashboard {

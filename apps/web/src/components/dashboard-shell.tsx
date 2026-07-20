@@ -327,7 +327,7 @@ export function DashboardShell({
   }, []);
   useEffect(() => { let cancelled = false; const load = () => void fetch('/api/auth/profile', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((body: HeaderProfile | null) => { if (!cancelled && body) { setProfile(body); try { window.sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(body)); } catch { /* Ignore unavailable browser storage. */ } } }); load(); const refresh = () => load(); window.addEventListener('sparki:profile-updated', refresh); return () => { cancelled = true; window.removeEventListener('sparki:profile-updated', refresh); }; }, []);
 
-  const resolvedUserName = (userName ?? profile?.displayName ?? currentUser?.name)?.trim().split(/\s+/)[0];
+  const resolvedUserName = (userName ?? profile?.displayName ?? currentUser?.name)?.trim();
   const resolvedRoleLabel =
     roleLabel ?? (currentUser ? (ROLE_DISPLAY_LABELS[currentUser.role] ?? currentUser.role) : undefined);
   const updateStatus = async (statusEmoji: string | null, statusText: string | null) => {

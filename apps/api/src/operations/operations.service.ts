@@ -3,6 +3,7 @@ import { Prisma } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { VisitsService } from '../visits/visits.service';
 import { ARRIVED_OR_WAITING_STATES } from '../visits/visit-states';
+import { VISIT_LIFECYCLE_INCLUDE } from '../visits/visit-lifecycle.service';
 import type {
   DashboardAppointmentSummary,
   DashboardClientSummary,
@@ -21,16 +22,7 @@ const appointmentWithContext = Prisma.validator<Prisma.AppointmentDefaultArgs>()
 type AppointmentWithContext = Prisma.AppointmentGetPayload<typeof appointmentWithContext>;
 
 const visitWithContext = Prisma.validator<Prisma.VisitDefaultArgs>()({
-  include: {
-    patient: true,
-    client: true,
-    appointment: true,
-    primaryVeterinarian: true,
-    assignedTechnician: true,
-    currentOwner: true,
-    intake: true,
-    workflowStep: true,
-  },
+  include: VISIT_LIFECYCLE_INCLUDE,
 });
 type VisitWithContext = Prisma.VisitGetPayload<typeof visitWithContext>;
 
@@ -111,10 +103,10 @@ function toPatientSummary(patient: { id: string; name: string; species: string; 
 }
 
 function toClientSummary(
-  client: { id: string; firstName: string; lastName: string } | null,
+  client: { id: string; firstName: string; lastName: string; email: string | null; phone: string | null } | null,
 ): DashboardClientSummary | null {
   if (!client) return null;
-  return { id: client.id, firstName: client.firstName, lastName: client.lastName };
+  return { id: client.id, firstName: client.firstName, lastName: client.lastName, contactReady: Boolean(client.email && client.phone) };
 }
 
 function toDashboardAppointment(appointment: AppointmentWithContext): DashboardAppointmentSummary {
@@ -148,7 +140,9 @@ function toDashboardVisit(visit: VisitWithContext, now: Date): DashboardVisitSum
     visitType: visit.visitType,
     reason: visit.reason,
     state: visit.state,
+    phase: visit.phase,
     createdAt: visit.createdAt,
+    updatedAt: visit.updatedAt,
     elapsedMinutes: Math.max(0, Math.round((now.getTime() - visit.createdAt.getTime()) / 60_000)),
     patient: toPatientSummary(visit.patient) as DashboardPatientSummary,
     client: toClientSummary(visit.client),
@@ -164,6 +158,30 @@ function toDashboardVisit(visit: VisitWithContext, now: Date): DashboardVisitSum
     currentOwner: toPersonSummary(visit.currentOwner),
     intakeSummaryAvailable: Boolean(visit.intake?.completedAt),
     workflowStatusKey: visit.workflowStep?.status ?? null,
+    nextAction: visit.nextAction,
+    dischargeReadyAt: visit.dischargeReadyAt,
+    departedAt: visit.departedAt,
+    recordStatus: [...visit.soapNotes].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0]?.status ?? null,
+    openWorkItems: visit.workItems
+      .filter((item) => ['Pending', 'InProgress'].includes(item.status))
+      .map((item) => ({
+        id: item.id,
+        type: item.type,
+        status: item.status,
+        title: item.title,
+        assignee: toPersonSummary(item.assignee),
+        assigneeRole: item.assigneeRole,
+        dueAt: item.dueAt,
+        updatedAt: item.updatedAt,
+      })),
+    openExceptions: visit.exceptions.map((exception) => ({
+      id: exception.id,
+      severity: exception.severity,
+      reason: exception.reason,
+      nextAction: exception.nextAction,
+      owner: toPersonSummary(exception.owner),
+      dueAt: exception.dueAt,
+    })),
   };
 }
 

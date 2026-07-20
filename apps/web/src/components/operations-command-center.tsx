@@ -23,6 +23,7 @@ import {
   DASHBOARD_ROLE_LABELS,
   DASHBOARD_ROLE_STORAGE_KEY,
   DEFAULT_DASHBOARD_ROLE,
+  dashboardRoleForUserRole,
   isDashboardRole,
   type DashboardRole,
 } from '../lib/dashboard-role';
@@ -37,11 +38,13 @@ import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import { useCurrentUser } from '../lib/use-current-user';
 import { useDashboardStatusColors } from '../lib/use-dashboard-status-colors';
 import type { DashboardAppointmentSummary, DashboardVisitSummary, StaffMember } from '../lib/patient-types';
+import { RoleOperationsDashboard } from './role-operations-dashboard';
 
 const ROLE_SUBTITLES: Record<DashboardRole, string> = {
   receptionist: "Here's what's happening at Sparki Clinic today.",
   technician: "Here's what needs clinical attention at Sparki Clinic today.",
   veterinarian: "Here's what needs medical review at Sparki Clinic today.",
+  manager: "Here's where the clinic needs your attention today.",
 };
 
 const ENABLE_DEV_ROLE_PREVIEW = process.env.NODE_ENV !== 'production';
@@ -977,97 +980,6 @@ function TaskCreateDialog({
   );
 }
 
-function RoleDashboardPlaceholder({
-  title,
-  description,
-  labels,
-}: {
-  title: string;
-  description: string;
-  labels: string[];
-}) {
-  return (
-    <div className="dashboard-widget-grid">
-      <DashboardCard className="role-placeholder-card" aria-labelledby="role-placeholder-heading">
-        <p className="eyebrow">Role dashboard</p>
-        <h2 id="role-placeholder-heading">{title}</h2>
-        <p>{description}</p>
-        <div className="role-placeholder-preview" aria-label="Preview focus areas">
-          {labels.map((label) => (
-            <span key={label}>{label}</span>
-          ))}
-        </div>
-      </DashboardCard>
-    </div>
-  );
-}
-
-function TechnicianDashboardPlaceholder() {
-  return (
-    <RoleDashboardPlaceholder
-      title="Technician dashboard coming next"
-      description="Focused on visit prep, vitals, treatment handoffs, and doctor-ready patients."
-      labels={['Visit Prep', 'Vitals Pending', 'Doctor Ready', 'In Treatment']}
-    />
-  );
-}
-
-interface OpenRecordWorkItem {
-  id: string;
-  createdAt: string;
-  dueAt: string | null;
-  visit: {
-    id: string;
-    reason: string;
-    departedAt: string | null;
-    patient: { name: string };
-    primaryVeterinarian: { displayName: string | null; firstName: string; lastName: string } | null;
-    soapNotes: Array<{ status: string; updatedAt: string }>;
-  };
-}
-
-function VeterinarianDashboard() {
-  const [records, setRecords] = useState<OpenRecordWorkItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch('/api/visits/records/open/mine', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Could not load open records.');
-        return response.json() as Promise<OpenRecordWorkItem[]>;
-      })
-      .then(setRecords)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not load open records.'))
-      .finally(() => setLoading(false));
-  }, []);
-
-  return (
-    <div className="dashboard-widget-grid">
-      <DashboardCard className="doctor-record-queue" aria-labelledby="doctor-record-queue-heading">
-        <p className="eyebrow">Medical records</p>
-        <h2 id="doctor-record-queue-heading">Records to finish</h2>
-        <p>Open records remain here until a veterinarian finalizes them.</p>
-        {loading ? <p>Loading records…</p> : null}
-        {error ? <p className="form-error" role="alert">{error}</p> : null}
-        {!loading && !error && records.length === 0 ? <p>All assigned records are complete.</p> : null}
-        {records.length > 0 ? (
-          <ul className="doctor-record-queue__list">
-            {records.map((item) => (
-              <li key={item.id}>
-                <Link href={`/visits/${item.visit.id}`}>
-                  <span><strong>{item.visit.patient.name}</strong><small>{item.visit.reason}</small></span>
-                  <span><strong>{item.visit.soapNotes[0]?.status ?? 'Draft'}</strong><small>{item.visit.departedAt ? 'Patient departed' : 'Visit active'}</small></span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </DashboardCard>
-    </div>
-  );
-}
-
 function ReceptionistDashboard() {
   const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
   const { colors } = useDashboardStatusColors();
@@ -1126,9 +1038,9 @@ function ReceptionistDashboard() {
 function RoleDashboardSwitcher({ role }: { role: DashboardRole }) {
   switch (role) {
     case 'technician':
-      return <TechnicianDashboardPlaceholder />;
     case 'veterinarian':
-      return <VeterinarianDashboard />;
+    case 'manager':
+      return <RoleOperationsDashboard role={role} />;
     default:
       return <ReceptionistDashboard />;
   }
@@ -1143,19 +1055,22 @@ export function OperationsCommandCenter({
   title?: string;
 }) {
   const { user: currentUser } = useCurrentUser();
-  const firstName = currentUser?.name?.split(' ')[0];
+  const displayName = currentUser?.name?.trim() || undefined;
   const [selectedRole, setSelectedRole] = useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
-  const greeting = useMemo(() => greetingForDate(new Date(), firstName), [firstName]);
+  const greeting = useMemo(() => greetingForDate(new Date(), displayName), [displayName]);
 
   useEffect(() => {
+    const actualRole = dashboardRoleForUserRole(currentUser?.role);
     if (!ENABLE_DEV_ROLE_PREVIEW) {
-      setSelectedRole(DEFAULT_DASHBOARD_ROLE);
+      setSelectedRole(actualRole);
       return;
     }
 
     const storedRole = window.localStorage.getItem(DASHBOARD_ROLE_STORAGE_KEY);
     if (isDashboardRole(storedRole)) {
       setSelectedRole(storedRole);
+    } else {
+      setSelectedRole(actualRole);
     }
 
     const handleStorage = (event: StorageEvent) => {
@@ -1174,7 +1089,7 @@ export function OperationsCommandCenter({
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener(DASHBOARD_ROLE_CHANGE_EVENT, handleRoleChange);
     };
-  }, []);
+  }, [currentUser?.role]);
 
   return (
     <DashboardShell
@@ -1182,7 +1097,7 @@ export function OperationsCommandCenter({
       eyebrow={eyebrow}
       title={greeting}
       subtitle={ROLE_SUBTITLES[selectedRole]}
-      userName={firstName}
+      userName={displayName}
       roleLabel={DASHBOARD_ROLE_LABELS[selectedRole]}
     >
       <RoleDashboardSwitcher role={selectedRole} />

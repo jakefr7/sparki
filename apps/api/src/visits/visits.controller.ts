@@ -131,6 +131,12 @@ export class VisitsController {
     return this.records.listOpenForUser(user.organizationId, user.locationId, user.id);
   }
 
+  @Get('records/open')
+  openLocationRecords(@CurrentUser() user: AuthenticatedUser) {
+    requireRole(user, ['PRACTICE_MANAGER', 'OWNER']);
+    return this.records.listOpenForLocation(user.organizationId, user.locationId);
+  }
+
   @Put(':id/record/draft')
   saveRecordDraft(
     @CurrentUser() user: AuthenticatedUser,

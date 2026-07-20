@@ -529,7 +529,7 @@ export class AppointmentsService {
         patient: true,
         client: true,
         provider: true,
-        appointmentTypeSetting: { include: { providers: true } },
+        appointmentTypeSetting: { include: { providers: true, slotTemplates: true } },
       },
       orderBy: { scheduledAt: 'asc' },
     });
@@ -552,7 +552,7 @@ export class AppointmentsService {
         patient: true,
         client: true,
         provider: true,
-        appointmentTypeSetting: { include: { providers: true } },
+        appointmentTypeSetting: { include: { providers: true, slotTemplates: true } },
       },
       orderBy: { scheduledAt: 'asc' },
     });
@@ -708,12 +708,16 @@ function appointmentChangeSnapshot(appointment: {
   };
 }
 
-function schedulingIssueFor(appointment: {
+export function schedulingIssueFor(appointment: {
   scheduledAt: Date;
   state: string;
   providerId: string | null;
   schedulerSlotTemplateId: string | null;
-  appointmentTypeSetting: { isActive: boolean; providers: Array<{ providerId: string }> } | null;
+  appointmentTypeSetting: {
+    isActive: boolean;
+    providers: Array<{ providerId: string }>;
+    slotTemplates: Array<{ slotTemplateId: string }>;
+  } | null;
 }): string | null {
   if (appointment.scheduledAt < new Date()) return null;
   if (!['Scheduled', 'PreVisitPending', 'Confirmed', 'Arrived', 'VisitCreated'].includes(appointment.state)) return null;
@@ -722,7 +726,19 @@ function schedulingIssueFor(appointment: {
   if (!appointment.appointmentTypeSetting.providers.some(({ providerId }) => providerId === appointment.providerId)) {
     return 'Provider is not eligible for this appointment style';
   }
-  if (!appointment.schedulerSlotTemplateId) return 'Schedule block is not assigned';
+  const eligibleBlockIds = appointment.appointmentTypeSetting.slotTemplates.map(
+    ({ slotTemplateId }) => slotTemplateId,
+  );
+  if (eligibleBlockIds.length > 0 && !appointment.schedulerSlotTemplateId) {
+    return 'This appointment style requires an assigned schedule block';
+  }
+  if (
+    appointment.schedulerSlotTemplateId &&
+    eligibleBlockIds.length > 0 &&
+    !eligibleBlockIds.includes(appointment.schedulerSlotTemplateId)
+  ) {
+    return 'Appointment is assigned to a block that does not allow this style';
+  }
   return null;
 }
 

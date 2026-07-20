@@ -4,19 +4,9 @@ import { prisma } from '@sparki/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
-import { DEV_LOCATION_ID, DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
+import { DEV_LOCATION_ID, DEV_ORGANIZATION_ID, DEV_USER_ID } from '../src/auth/development-user.service';
 
-// Rows from scripts/seed-local-clinic-demo-data.mjs are tagged with this
-// sourceSystem and must survive this file's shared-org cleanup — see that
-// script's header comment for why the data is protected and persistent.
-const PROTECTED_SOURCE_SYSTEM = 'sparki-local-demo';
-// `{ sourceSystem: { not: X } }` alone would exclude NULL rows too
-// (SQL three-valued logic), and this file's own fixtures have
-// sourceSystem = null — so the null branch below is required or this
-// filter silently matches nothing.
-const NOT_PROTECTED = {
-  OR: [{ sourceSystem: null }, { sourceSystem: { not: PROTECTED_SOURCE_SYSTEM } }],
-};
+const TEST_SOURCE_SYSTEM = 'sparki-operations-e2e';
 
 describe('Operations (e2e)', () => {
   let app: INestApplication;
@@ -37,30 +27,18 @@ describe('Operations (e2e)', () => {
     // DEV_ORGANIZATION_ID; do it here so fixtures below can reference it.
     await request(app.getHttpServer()).get(`/patients/${DEV_ORGANIZATION_ID}`);
 
-    // Other e2e spec files share this same organization and reset its
-    // Appointment/Visit rows in their own afterAll hooks; reset here too so
-    // the dashboard's counts reflect only the fixtures this file creates,
-    // regardless of file execution order. Excludes protected local demo data
-    // (scripts/seed-local-clinic-demo-data.mjs) — never wipe that.
-    await prisma.visit.deleteMany({
-      where: { organizationId: DEV_ORGANIZATION_ID, patient: NOT_PROTECTED },
-    });
-    await prisma.appointment.deleteMany({
-      where: { organizationId: DEV_ORGANIZATION_ID, ...NOT_PROTECTED },
-    });
-
     const otherOrganization = await prisma.organization.create({
       data: { name: 'Operations E2E Org (other)' },
     });
     otherOrganizationId = otherOrganization.id;
 
     const client = await prisma.client.create({
-      data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Ops', lastName: 'Owner' },
+      data: { organizationId: DEV_ORGANIZATION_ID, firstName: 'Ops', lastName: 'Owner', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     clientId = client.id;
 
     const patient = await prisma.patient.create({
-      data: { organizationId: DEV_ORGANIZATION_ID, name: 'Ops Patient', species: 'Canine' },
+      data: { organizationId: DEV_ORGANIZATION_ID, name: 'Ops Patient', species: 'Canine', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     patientId = patient.id;
 
@@ -100,6 +78,7 @@ describe('Operations (e2e)', () => {
         state: 'Scheduled',
         scheduledAt: new Date(),
         providerId: vetId,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     todayAppointmentId = todayAppointment.id;
@@ -121,6 +100,7 @@ describe('Operations (e2e)', () => {
         // that top-10 regardless of what else is upcoming.
         scheduledAt: new Date(Date.now() + 5 * 60 * 1000),
         providerId: vetId,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
 
@@ -135,6 +115,7 @@ describe('Operations (e2e)', () => {
         source: 'Phone',
         state: 'Completed',
         scheduledAt: new Date(),
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
 
@@ -152,6 +133,38 @@ describe('Operations (e2e)', () => {
       },
     });
     activeVisitId = activeVisit.id;
+    await prisma.visitWorkItem.create({
+      data: {
+        organizationId: DEV_ORGANIZATION_ID,
+        locationId: DEV_LOCATION_ID,
+        visitId: activeVisit.id,
+        type: 'Treatment',
+        title: 'Administer fluids',
+        assigneeId: techId,
+      },
+    });
+    await prisma.visitWorkItem.create({
+      data: {
+        organizationId: DEV_ORGANIZATION_ID,
+        locationId: DEV_LOCATION_ID,
+        visitId: activeVisit.id,
+        type: 'RecordSignoff',
+        title: 'Finalize medical record',
+        assigneeId: vetId,
+      },
+    });
+    await prisma.visitException.create({
+      data: {
+        organizationId: DEV_ORGANIZATION_ID,
+        locationId: DEV_LOCATION_ID,
+        visitId: activeVisit.id,
+        type: 'OperationsTestDelay',
+        severity: 'Warning',
+        reason: 'Waiting on client approval',
+        nextAction: 'Call client',
+        createdById: DEV_USER_ID,
+      },
+    });
 
     await prisma.visit.create({
       data: {
@@ -170,10 +183,10 @@ describe('Operations (e2e)', () => {
       data: { organizationId: otherOrganizationId, name: 'Other Org Location' },
     });
     const otherClient = await prisma.client.create({
-      data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Client' },
+      data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Client', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     const otherPatient = await prisma.patient.create({
-      data: { organizationId: otherOrganizationId, name: 'Other Org Patient', species: 'Feline' },
+      data: { organizationId: otherOrganizationId, name: 'Other Org Patient', species: 'Feline', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     await prisma.visit.create({
       data: {
@@ -192,33 +205,32 @@ describe('Operations (e2e)', () => {
     await prisma.visit.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        patient: NOT_PROTECTED,
+        patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
     });
     await prisma.appointment.deleteMany({
       where: {
-        organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        OR: [
+          { sourceSystem: TEST_SOURCE_SYSTEM },
+          { patient: { sourceSystem: TEST_SOURCE_SYSTEM } },
+        ],
       },
     });
     await prisma.patientClient.deleteMany({
       where: {
-        patient: {
-          organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-          ...NOT_PROTECTED,
-        },
+        patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
     });
     await prisma.patient.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     await prisma.client.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
-        ...NOT_PROTECTED,
+        sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
     await prisma.staffProfile.deleteMany({ where: { userId: { in: [vetId, techId] } } });
@@ -253,7 +265,7 @@ describe('Operations (e2e)', () => {
       expect(todayAppointment).toMatchObject({
         state: 'Scheduled',
         patient: { id: patientId, name: 'Ops Patient' },
-        client: { id: clientId, firstName: 'Ops', lastName: 'Owner' },
+        client: { id: clientId, firstName: 'Ops', lastName: 'Owner', contactReady: false },
         provider: { id: vetId, role: 'VETERINARIAN' },
       });
     });
@@ -281,6 +293,15 @@ describe('Operations (e2e)', () => {
       });
       expect(typeof visit.elapsedMinutes).toBe('number');
       expect(visit.elapsedMinutes).toBeGreaterThanOrEqual(0);
+      expect(visit.openWorkItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Administer fluids',
+          assignee: expect.objectContaining({ id: techId }),
+        }),
+      ]));
+      expect(visit.openExceptions).toEqual(expect.arrayContaining([
+        expect.objectContaining({ reason: 'Waiting on client approval', nextAction: 'Call client' }),
+      ]));
     });
 
     it('excludes terminal visits (Archived) from activeVisits', async () => {
@@ -318,6 +339,22 @@ describe('Operations (e2e)', () => {
         ...response.body.arrivedOrWaiting.map((v: { reason: string }) => v.reason),
       ];
       expect(allVisitReasons).not.toContain('Should not leak');
+    });
+  });
+
+  describe('GET /visits/records/open', () => {
+    it('returns location-wide open record signoffs for owner oversight', async () => {
+      const response = await request(app.getHttpServer()).get('/visits/records/open');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'RecordSignoff',
+          assignee: expect.objectContaining({ id: vetId }),
+          visit: expect.objectContaining({ id: activeVisitId }),
+        }),
+      ]));
+      expect(response.body.every((item: { visit: { reason: string } }) => item.visit.reason !== 'Should not leak')).toBe(true);
     });
   });
 });

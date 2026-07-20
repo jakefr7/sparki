@@ -15,6 +15,27 @@ export interface DashboardClientSummary {
   id: string;
   firstName: string;
   lastName: string;
+  contactReady?: boolean;
+}
+
+export interface DashboardWorkItemSummary {
+  id: string;
+  type: string;
+  status: string;
+  title: string;
+  assignee: DashboardPersonSummary | null;
+  assigneeRole: string | null;
+  dueAt: Date | null;
+  updatedAt: Date;
+}
+
+export interface DashboardExceptionSummary {
+  id: string;
+  severity: string;
+  reason: string;
+  nextAction: string;
+  owner: DashboardPersonSummary | null;
+  dueAt: Date | null;
 }
 
 export interface DashboardAppointmentSummary {
@@ -45,7 +66,9 @@ export interface DashboardVisitSummary {
   visitType: string;
   reason: string;
   state: string;
+  phase: string;
   createdAt: Date;
+  updatedAt: Date;
   /** Minutes since the Visit was created — the Command Center's wait/elapsed clock. */
   elapsedMinutes: number;
   patient: DashboardPatientSummary;
@@ -56,6 +79,12 @@ export interface DashboardVisitSummary {
   currentOwner: DashboardPersonSummary | null;
   intakeSummaryAvailable: boolean;
   workflowStatusKey: string | null;
+  nextAction: string | null;
+  dischargeReadyAt: Date | null;
+  departedAt: Date | null;
+  recordStatus: string | null;
+  openWorkItems: DashboardWorkItemSummary[];
+  openExceptions: DashboardExceptionSummary[];
 }
 
 export interface DashboardStateCount {

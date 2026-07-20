@@ -13,8 +13,8 @@ import type {
   OperationsDashboard,
 } from './patient-types';
 
-const REFRESH_INTERVAL_MS = 45_000;
-const STALE_AFTER_MS = 60_000;
+const REFRESH_INTERVAL_MS = 60_000;
+const STALE_AFTER_MS = 90_000;
 
 export interface OperationsDashboardGroups {
   waitingVisits: DashboardVisitSummary[];
@@ -27,7 +27,7 @@ export interface OperationsDashboardGroups {
 
 /**
  * Ages every visit's elapsedMinutes forward by the time since the last
- * successful fetch, so wait times visibly tick up between the 45s polls
+ * successful fetch, so wait times visibly tick up between the one-minute polls
  * instead of sitting frozen at a stale snapshot value. Purely a display
  * correction — the server value is still what's persisted after refresh.
  */

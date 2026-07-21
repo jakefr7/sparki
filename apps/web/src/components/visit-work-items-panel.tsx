@@ -54,8 +54,8 @@ export function VisitWorkItemsPanel({ visit }: { visit: VisitDetail }) {
   }
 
   return (
-    <section className="visit-work-panel" aria-labelledby="visit-work-heading">
-      <div><p className="eyebrow">Care plan</p><h2 id="visit-work-heading">Clinical Work</h2><p>Track every diagnostic, approval, treatment, medication, and client communication before discharge.</p></div>
+    <section id="visit-care-plan" className="visit-work-panel" aria-labelledby="visit-work-heading">
+      <div><p className="eyebrow">Step 2 · Care decisions</p><h2 id="visit-work-heading">Plan for today</h2><p>Add what the team needs to carry out, then resolve each item before preparing the client handoff.</p></div>
       {!closed && availableTypes.length > 0 ? (
         <form className="visit-work-create" onSubmit={create}>
           <label>Type<select name="type">{availableTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -66,7 +66,7 @@ export function VisitWorkItemsPanel({ visit }: { visit: VisitDetail }) {
       <div className="visit-work-list">
         {clinicalItems.length === 0 ? <p>No clinical work has been added.</p> : clinicalItems.map((item) => (
           <article key={item.id} className="visit-work-item">
-            <div><span>{WORK_TYPES.find(([type]) => type === item.type)?.[1] ?? item.type}</span><strong>{item.title}</strong><small>{item.status}</small></div>
+            <div><div className="visit-work-item__meta"><span>{WORK_TYPES.find(([type]) => type === item.type)?.[1] ?? item.type}</span><small className={`visit-work-item__status visit-work-item__status--${item.status.toLowerCase()}`}>{item.status}</small></div><strong>{item.title}</strong></div>
             {!closed ? <details>
               <summary>Update</summary>
               <form onSubmit={(event) => void update(event, item.id)}>

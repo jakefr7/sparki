@@ -1,20 +1,12 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
-import { RecordsPrepPanel } from '../../../components/records-prep-panel';
-import { VisitIntakePanel } from '../../../components/visit-intake-panel';
-import { VisitWorkflowProgress } from '../../../components/visit-workflow-progress';
-import { VisitRecordPanel } from '../../../components/visit-record-panel';
+import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace';
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
-import { MessageStaffButton } from '../../../components/message-staff-button';
+import { PostExamReview } from '../../../components/post-exam-review';
+import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
-import { enumLabel, visitStateLabel } from '../../../lib/format';
-import {
-  appointmentTypeLabel,
-  clientDisplayName,
-  type VisitDetail,
-} from '../../../lib/patient-types';
+import { clientDisplayName, type VisitDetail } from '../../../lib/patient-types';
 
 async function getVisit(id: string): Promise<VisitDetail | null> {
   const response = await fetch(new URL(`/visits/${id}`, env.API_URL), { cache: 'no-store' });
@@ -36,8 +28,7 @@ function personLabel(
   } | null,
 ): string {
   if (!person) return 'Unassigned';
-  const name = person.displayName ?? `${person.firstName} ${person.lastName}`;
-  return `${name} · ${enumLabel(person.role)}`;
+  return person.displayName ?? `${person.firstName} ${person.lastName}`;
 }
 
 function examStatusForState(state: string): { label: string; detail: string } | null {
@@ -71,102 +62,56 @@ export default async function VisitWorkspacePage({
   }
 
   const openedFromCommandCenter = from === 'command-center';
-  const backHref = openedFromCommandCenter ? '/' : `/patients/${visit.patient.id}`;
-  const backLabel = openedFromCommandCenter
-    ? 'Back to Command Center'
-    : `Back to ${visit.patient.name}`;
-  const appointmentContext = visit.appointment
-    ? `${appointmentTypeLabel(visit.appointment.type)} · ${new Date(
-        visit.appointment.scheduledAt,
-      ).toLocaleString()}`
-    : 'Walk-in / no appointment';
+  const backHref = openedFromCommandCenter ? '/' : '/today';
   const examStatus = examStatusForState(visit.state);
+  // Care-plan execution begins only after the veterinarian completes the
+  // exam. Showing it during ExamInProgress competes with exam documentation
+  // and implies downstream work should be ordered before the exam is done.
+  const showClinicalWork = Boolean(visit.examFindings?.completedAt);
+  const showDischarge = Boolean(visit.examFindings?.completedAt);
 
   return (
-    <main className="page page--wide">
-      <Link href={backHref} className="back-link">
-        ← {backLabel}
-      </Link>
+    <DashboardShell
+      activeHref="/today"
+      eyebrow="Visit workspace"
+      title={visit.patient.name}
+      workspace
+    >
+      <div className="visit-workspace">
+        <VisitIntakeWorkspace
+          visitId={visit.id}
+          visitType={visit.visitType}
+          state={visit.state}
+          intake={visit.intake}
+          patientAlerts={visit.patient.patientAlerts}
+          patientMedications={visit.patient.medications}
+          assignedTechnician={personLabel(visit.assignedTechnician)}
+          primaryVeterinarian={personLabel(visit.primaryVeterinarian)}
+          room={visit.appointment?.room ?? null}
+          appointment={visit.appointment}
+          patient={{
+            name: visit.patient.name,
+            species: visit.patient.species,
+            breed: visit.patient.breed,
+            sex: visit.patient.sex,
+            imageUrl: visit.patient.imageUrl,
+            estimatedAge: visit.patient.estimatedAge,
+            weight: visit.patient.weight,
+          }}
+          clientName={visit.client ? clientDisplayName(visit.client) : null}
+          reason={visit.reason}
+          backHref={backHref}
+          examStatusNote={examStatus?.label ?? null}
+          headerOnly={Boolean(visit.examFindings?.completedAt)}
+        />
 
-      <header className="patient-header patient-header--command">
-        <div>
-          <p className="eyebrow">Visit Workspace</p>
-          <h1>{visit.patient.name}</h1>
-          <p className="patient-header__subtitle">
-            {visit.patient.species}
-            {visit.patient.breed ? ` · ${visit.patient.breed}` : ''} · {visit.reason}
-          </p>
-        </div>
-        <div className="patient-header__status">
-          <MessageStaffButton context={{ recordType: 'VISIT', recordId: visit.id, label: visit.patient.name, detail: visit.reason }} />
-          <span className="patient-status">{visitStateLabel(visit.state)}</span>
-          <span className="source-label">
-            Opened {openedFromCommandCenter ? 'from Command Center' : 'from patient workspace'}
-          </span>
-        </div>
-      </header>
+        {visit.state === 'VeterinarianExamInProgress' ? <ExamFindingsPanel visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
-      <VisitWorkflowProgress state={visit.state} compact />
+        {showClinicalWork ? <PostExamReview visit={visit} /> : null}
 
-      {examStatus && (
-        <section className="visit-exam-status" aria-label="Exam status">
-          <span>{examStatus.label}</span>
-          <p>{examStatus.detail}</p>
-        </section>
-      )}
-
-      <ul className="visit-summary-line" aria-label="Visit context summary">
-        <li>
-          <span className="visit-summary-line__label">Patient</span>
-          {visit.patient.name}
-        </li>
-        <li>
-          <span className="visit-summary-line__label">Client</span>
-          {visit.client ? clientDisplayName(visit.client) : 'No client linked'}
-        </li>
-        <li>
-          <span className="visit-summary-line__label">Reason</span>
-          {visit.reason}
-        </li>
-        <li>
-          <span className="visit-summary-line__label">Provider</span>
-          {personLabel(visit.primaryVeterinarian)}
-        </li>
-        <li>
-          <span className="visit-summary-line__label">Technician</span>
-          {personLabel(visit.assignedTechnician)}
-        </li>
-      </ul>
-
-      {visit.appointment && <RecordsPrepPanel appointment={visit.appointment} />}
-
-      <VisitIntakePanel visitId={visit.id} visitType={visit.visitType} state={visit.state} intake={visit.intake} />
-
-      <ExamFindingsPanel
-        visitId={visit.id}
-        state={visit.state}
-        examFindings={visit.examFindings}
-      />
-
-      <VisitWorkItemsPanel visit={visit} />
-
-      <VisitRecordPanel visit={visit} />
-
-      <VisitDischargePanel visit={visit} />
-
-      <details className="visit-context-details">
-        <summary>Appointment &amp; assignment details</summary>
-        <div className="visit-context-details__body">
-          <div>
-            <span className="visit-context-details__label">Appointment</span>
-            <p>{appointmentContext}</p>
-          </div>
-          <div>
-            <span className="visit-context-details__label">Current owner</span>
-            <p>{personLabel(visit.currentOwner)}</p>
-          </div>
-        </div>
-      </details>
-    </main>
+        {showClinicalWork ? <VisitWorkItemsPanel visit={visit} /> : null}
+        {showDischarge ? <VisitDischargePanel visit={visit} /> : null}
+      </div>
+    </DashboardShell>
   );
 }

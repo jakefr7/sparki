@@ -211,7 +211,4 @@ export function assertVisitReadyForDischarge(visit: {
   if (visit.exceptions.some((exception) => exception.type === 'EmergencyIntakeDeferred')) {
     throw new ConflictException('Complete the deferred emergency intake before preparing discharge.');
   }
-  if (visit.workItems.length > 0) {
-    throw new ConflictException(`Complete or defer required care before discharge: ${visit.workItems.map((item) => item.title).join(', ')}.`);
-  }
 }

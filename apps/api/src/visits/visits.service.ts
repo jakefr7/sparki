@@ -557,7 +557,7 @@ function assertRoleCanMoveToPhase(role: UserRole, phase: string) {
   const allowed: Partial<Record<UserRole, string[]>> = {
     PRACTICE_MANAGER: ['Arrived', 'Intake', 'Discharge', 'RecordClosure'],
     RECEPTIONIST: ['Arrived', 'Intake', 'Discharge', 'RecordClosure'],
-    VETERINARIAN: ['Exam', 'PlanAndApproval', 'CareInProgress', 'Discharge', 'RecordClosure'],
+    VETERINARIAN: ['Intake', 'Exam', 'PlanAndApproval', 'CareInProgress', 'Discharge', 'RecordClosure'],
     TECHNICIAN: ['Intake', 'CareInProgress', 'Discharge'],
     ASSISTANT: ['Intake', 'CareInProgress', 'Discharge'],
   };
@@ -644,7 +644,6 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
 }
 
 function assertIntakeReadyForCompletion(intake: {
-  chiefComplaint: string | null;
   historyNotes: string | null;
   weight: number | null;
   temperature: number | null;
@@ -652,13 +651,8 @@ function assertIntakeReadyForCompletion(intake: {
   respiratoryRate: number | null;
   crtSeconds: number | null;
   gumColor: string | null;
-  attitude: string | null;
-  appearance: string | null;
-  allergies: string | null;
-  currentMedications: string | null;
 } | null) {
   const missing = [
-    ['reason for visit', intake?.chiefComplaint],
     ['medical history', intake?.historyNotes],
     ['weight', intake?.weight],
     ['temperature', intake?.temperature],
@@ -666,10 +660,6 @@ function assertIntakeReadyForCompletion(intake: {
     ['respiratory rate', intake?.respiratoryRate],
     ['capillary refill time', intake?.crtSeconds],
     ['gum color', intake?.gumColor],
-    ['attitude', intake?.attitude],
-    ['appearance', intake?.appearance],
-    ['allergies', intake?.allergies],
-    ['current medications', intake?.currentMedications],
   ].filter(([, value]) => value === null || value === undefined || value === '');
   if (missing.length) {
     throw new ConflictException(

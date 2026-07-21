@@ -52,7 +52,7 @@ export class VisitsController {
 
   @Post(':id/start')
   start(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.start(id, user.organizationId, user.locationId, user.id, user.role);
   }
 
@@ -72,13 +72,13 @@ export class VisitsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(saveVisitIntakeSchema)) body: SaveVisitIntakeInput,
   ) {
-    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.saveIntake(id, user.organizationId, user.locationId, user.id, body);
   }
 
   @Post(':id/intake/complete')
   completeIntake(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireRole(user, ['OWNER', 'TECHNICIAN', 'ASSISTANT']);
+    requireRole(user, ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
     return this.visits.completeIntake(id, user.organizationId, user.locationId, user.id, user.role);
   }
 

@@ -5,9 +5,9 @@
  * this, it just buckets the existing `visit.state` string.
  */
 export const VISIT_WORKFLOW_STAGES = [
-  'Checked In',
-  'Arrived',
-  'Intake',
+  'Check In',
+  'Begin Intake',
+  'Ready for Veterinarian',
   'Exam',
   'Treatment',
   'Checkout',
@@ -17,9 +17,9 @@ export type VisitWorkflowStage = (typeof VISIT_WORKFLOW_STAGES)[number];
 
 /** Display labels for the compact workflow progress bar. */
 const STAGE_DISPLAY_LABELS: Record<VisitWorkflowStage, string> = {
-  'Checked In': 'Checked In',
-  Arrived: 'Arrived',
-  Intake: 'Intake',
+  'Check In': 'Check In',
+  'Begin Intake': 'Begin Intake',
+  'Ready for Veterinarian': 'Ready for Veterinarian',
   Exam: 'Exam',
   Treatment: 'Treatment',
   Checkout: 'Checkout',
@@ -29,18 +29,18 @@ export function visitWorkflowStageLabel(stage: VisitWorkflowStage): string {
   return STAGE_DISPLAY_LABELS[stage];
 }
 
-const STAGE_STATES: Record<Exclude<VisitWorkflowStage, 'Checked In'>, string[]> = {
-  Arrived: [
+const STAGE_STATES: Record<Exclude<VisitWorkflowStage, 'Check In'>, string[]> = {
+  'Begin Intake': [
     'Arrived',
     'CheckInInProgress',
     'ArrivedWithExceptions',
     'Triaged',
     'Waiting',
     'ReadyForIntake',
+    'IntakeInProgress',
   ],
-  Intake: ['IntakeInProgress'],
+  'Ready for Veterinarian': ['VeterinarianExamReady'],
   Exam: [
-    'VeterinarianExamReady',
     'VeterinarianExamInProgress',
     'PlanDrafted',
     'EstimateNeeded',
@@ -85,11 +85,11 @@ const STAGE_STATES: Record<Exclude<VisitWorkflowStage, 'Checked In'>, string[]> 
 };
 
 /** Index into VISIT_WORKFLOW_STAGES for the given Visit state. A Visit row
- *  only ever exists once the patient has arrived, so "Checked In" is never
+ *  only ever exists once the patient has arrived, so "Check In" is never
  *  the current stage — it's shown as already-done groundwork. */
 export function visitWorkflowStageIndex(state: string): number {
   for (let i = VISIT_WORKFLOW_STAGES.length - 1; i >= 1; i--) {
-    const stage = VISIT_WORKFLOW_STAGES[i] as Exclude<VisitWorkflowStage, 'Checked In'>;
+    const stage = VISIT_WORKFLOW_STAGES[i] as Exclude<VisitWorkflowStage, 'Check In'>;
     if (STAGE_STATES[stage].includes(state)) return i;
   }
   return 0;
@@ -126,15 +126,15 @@ export function nextActionForState(state: string): VisitNextAction {
   }
 
   switch (VISIT_WORKFLOW_STAGES[stageIndex]) {
-    case 'Arrived':
-      return {
-        headline: 'Get the patient into a room.',
-        steps: ['Room the patient.', 'Confirm visit details.', 'Begin Intake.'],
-      };
-    case 'Intake':
+    case 'Begin Intake':
       return {
         headline: 'Complete the intake details.',
         steps: ['Capture vitals and history.', 'Review findings.', 'Send patient to veterinarian.'],
+      };
+    case 'Ready for Veterinarian':
+      return {
+        headline: 'Waiting for the veterinarian.',
+        steps: ['Intake is complete.', 'The patient is ready for the exam.'],
       };
     case 'Exam':
       return {

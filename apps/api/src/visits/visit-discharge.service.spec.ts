@@ -31,13 +31,13 @@ describe('visit discharge readiness', () => {
     })).toThrow(ConflictException);
   });
 
-  it('blocks discharge while required care remains open', () => {
+  it('allows the client handoff to be prepared while care remains open', () => {
     expect(() => assertVisitReadyForDischarge({
       visitType: 'Scheduled',
       intake: complete,
       examFindings: complete,
       exceptions: [],
       workItems: [{ title: 'Review diagnostic results' }],
-    })).toThrow(ConflictException);
+    })).not.toThrow();
   });
 });

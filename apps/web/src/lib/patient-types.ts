@@ -387,6 +387,14 @@ export interface VisitDetail {
     name: string;
     species: string;
     breed: string | null;
+    imageUrl: string | null;
+    sex: string | null;
+    dateOfBirth: string | null;
+    estimatedAge: string | null;
+    weight: number | null;
+    alerts: string | null;
+    patientAlerts: PatientAlertSummary[];
+    medications: PatientMedicationSummary[];
   };
   client: {
     id: string;
@@ -405,6 +413,7 @@ export interface VisitDetail {
     lastSeenAt: string | null;
     recordsPrepStatus: string;
     confirmationStatus: string;
+    room: string | null;
   } | null;
   intake: {
     id: string;

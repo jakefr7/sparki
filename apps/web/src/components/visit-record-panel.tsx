@@ -5,6 +5,23 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { StaffMember, VisitDetail } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
 
+function readableObjective(value: string | null | undefined): string {
+  if (!value) return '';
+  try {
+    const parsed = JSON.parse(value) as {
+      kind?: string;
+      general?: { painScore?: string; bodyConditionScore?: string };
+      systems?: Record<string, { status?: string; notes?: string }>;
+      additionalNotes?: string;
+    };
+    if (parsed.kind !== 'sparki-small-animal-exam') return value;
+    const labels: Record<string, string> = { eyes: 'Eyes', ears: 'Ears', noseThroat: 'Nose/throat', oralDental: 'Oral/dental', cardiovascular: 'Cardiovascular', respiratory: 'Respiratory', abdomen: 'Abdomen/GI', urogenital: 'Urogenital', musculoskeletal: 'Musculoskeletal', neurologic: 'Neurologic', skinCoat: 'Skin/coat', lymphNodes: 'Peripheral lymph nodes' };
+    const general = [parsed.general?.painScore && `Pain: ${parsed.general.painScore}`, parsed.general?.bodyConditionScore && `BCS: ${parsed.general.bodyConditionScore}/9`].filter(Boolean).join('; ');
+    const systems = Object.entries(parsed.systems ?? {}).map(([key, finding]) => `${labels[key] ?? key}: ${finding.status ?? 'Not examined'}${finding.notes ? ` — ${finding.notes}` : ''}`);
+    return [general, ...systems, parsed.additionalNotes].filter(Boolean).join('\n');
+  } catch { return value; }
+}
+
 export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
   const router = useRouter();
   const { user } = useCurrentUser();
@@ -21,6 +38,7 @@ export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
   const [amending, setAmending] = useState(false);
   const lockedNote = visit.soapNotes.find((entry) => entry.status === 'Locked');
   const canAmend = Boolean(user && lockedNote && (user.id === visit.primaryVeterinarian?.id || user.id === lockedNote.veterinarianId || isAssignedTechnician));
+  const objectiveText = readableObjective(note?.objective);
 
   useEffect(() => {
     if (!canDelegate) return;
@@ -104,7 +122,7 @@ export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
   return (
     <section className="visit-record-panel" aria-labelledby="visit-record-heading">
       <div className="visit-record-panel__header">
-        <div><p className="eyebrow">Medical record</p><h2 id="visit-record-heading">SOAP Note</h2></div>
+        <div><p className="eyebrow">Step 4 · Record signoff</p><h2 id="visit-record-heading">Medical record</h2></div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{note.status}</span>
       </div>
       {canDelegate ? (
@@ -123,7 +141,7 @@ export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
       {canEdit ? (
         <form onSubmit={save} className="visit-record-form">
           <label>Subjective<textarea name="subjective" defaultValue={note.subjective ?? ''} /></label>
-          <label>Objective<textarea name="objective" defaultValue={note.objective ?? ''} /></label>
+          <label>Objective<textarea name="objective" defaultValue={objectiveText} /></label>
           <label>Assessment<textarea name="assessment" defaultValue={note.assessment ?? ''} /></label>
           <label>Plan<textarea name="plan" defaultValue={note.plan ?? ''} /></label>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -135,7 +153,7 @@ export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
       ) : (
         <dl className="visit-record-summary">
           <div><dt>Subjective</dt><dd>{note.subjective || 'Not recorded'}</dd></div>
-          <div><dt>Objective</dt><dd>{note.objective || 'Not recorded'}</dd></div>
+          <div><dt>Objective</dt><dd>{objectiveText || 'Not recorded'}</dd></div>
           <div><dt>Assessment</dt><dd>{note.assessment || 'Not recorded'}</dd></div>
           <div><dt>Plan</dt><dd>{note.plan || 'Not recorded'}</dd></div>
         </dl>

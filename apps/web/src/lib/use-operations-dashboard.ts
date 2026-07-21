@@ -102,7 +102,11 @@ export function useOperationsDashboard() {
       if (mode === 'initial') setDashboard(null);
       setError(caught instanceof Error ? caught.message : 'Dashboard failed to load.');
     } finally {
-      if (isMountedRef.current) {
+      // A superseded/aborted request must not clear loading while its
+      // replacement is still in flight (notably during React Strict Mode's
+      // development remount cycle). Only the active controller owns these
+      // lifecycle flags.
+      if (isMountedRef.current && controllerRef.current === controller) {
         setLoading(false);
         setRefreshing(false);
       }

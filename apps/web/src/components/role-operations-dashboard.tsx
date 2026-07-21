@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { dashboardRoleForUserRole, type DashboardRole } from '../lib/dashboard-role';
 import type { DashboardVisitSummary, OperationsDashboard } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
@@ -183,8 +184,9 @@ function metricData(
   role: DashboardRole,
   dashboard: OperationsDashboard,
   records: OpenRecordWorkItem[],
+  roleQueue: DashboardVisitSummary[],
 ) {
-  const visits = dashboard.activeVisits;
+  const visits = role === 'veterinarian' ? roleQueue : dashboard.activeVisits;
   if (role === 'receptionist')
     return [
       {
@@ -263,16 +265,38 @@ function metricData(
 }
 
 function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: DashboardRole }) {
+  const router = useRouter();
+  const [startingExam, setStartingExam] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const critical = exceptionsFor(visit).some((exception) => exception.severity === 'Critical');
   const workItems = workItemsFor(visit);
   const overdue = workItems.some(
     (item) => item.dueAt && new Date(item.dueAt).getTime() < Date.now(),
   );
+
+  async function openVisit(event: MouseEvent<HTMLAnchorElement>) {
+    if (role !== 'veterinarian' || visit.state !== 'VeterinarianExamReady') return;
+    event.preventDefault();
+    setStartingExam(true);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/visits/${visit.id}/exam/start`, { method: 'POST' });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) throw new Error(payload.message ?? 'Could not start exam.');
+      router.push(`/visits/${visit.id}?from=command-center`);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'Could not start exam.');
+      setStartingExam(false);
+    }
+  }
+
   return (
     <Link
-      href={`/visits/${visit.id}`}
+      href={`/visits/${visit.id}?from=command-center`}
       className="role-queue-row"
       data-critical={critical || undefined}
+      aria-disabled={startingExam || undefined}
+      onClick={(event) => void openVisit(event)}
     >
       <PetPhotoPlaceholder
         name={visit.patient.name}
@@ -290,7 +314,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
       <span className="role-queue-row__stage">
         <strong>{stageLabel(visit)}</strong>
         <small>
-          {visit.nextAction ?? `${workItems.length} open task${workItems.length === 1 ? '' : 's'}`}
+          {actionError ?? visit.nextAction ?? `${workItems.length} open task${workItems.length === 1 ? '' : 's'}`}
         </small>
       </span>
       <span className="role-queue-row__signals">
@@ -303,7 +327,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
         <small>in clinic</small>
       </span>
       <span className="role-queue-row__action">
-        {actionLabel(visit, role)} <b aria-hidden="true">→</b>
+        {startingExam ? 'Starting exam…' : actionLabel(visit, role)} <b aria-hidden="true">→</b>
       </span>
     </Link>
   );
@@ -416,7 +440,7 @@ export function RoleOperationsDashboard({ role }: { role: DashboardRole }) {
     () => roleVisits(role, dashboard?.activeVisits ?? [], queueUserId),
     [dashboard, role, queueUserId],
   );
-  const metrics = dashboard ? metricData(role, dashboard, records) : [];
+  const metrics = dashboard ? metricData(role, dashboard, records, queue) : [];
   const copy = ROLE_COPY[role];
 
   if (loading)

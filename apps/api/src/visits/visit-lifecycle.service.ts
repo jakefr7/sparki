@@ -11,7 +11,12 @@ import {
 import { workflowStatusKey } from '@sparki/config';
 
 export const VISIT_LIFECYCLE_INCLUDE = {
-  patient: true,
+  patient: {
+    include: {
+      patientAlerts: { where: { isActive: true, archivedAt: null }, orderBy: { createdAt: 'desc' as const } },
+      medications: { where: { status: 'Active' as const }, orderBy: { createdAt: 'desc' as const } },
+    },
+  },
   client: true,
   appointment: true,
   primaryVeterinarian: true,

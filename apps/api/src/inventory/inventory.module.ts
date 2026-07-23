@@ -8,9 +8,31 @@ import { ControlledController } from './controlled.controller';
 import { ControlledService } from './controlled.service';
 import { ControlledCloseoutController } from './controlled-closeout.controller';
 import { ControlledCloseoutService } from './controlled-closeout.service';
+import { UsageController } from './usage.controller';
+import { UsageService } from './usage.service';
 @Module({
-  controllers: [InventoryController, CountsController, ControlledController, ControlledCloseoutController],
-  providers: [InventoryService, PurchasingService, CountsService, ControlledService, ControlledCloseoutService],
-  exports: [InventoryService, PurchasingService, CountsService, ControlledService, ControlledCloseoutService],
+  controllers: [
+    InventoryController,
+    CountsController,
+    ControlledController,
+    ControlledCloseoutController,
+    UsageController,
+  ],
+  providers: [
+    InventoryService,
+    PurchasingService,
+    CountsService,
+    ControlledService,
+    ControlledCloseoutService,
+    UsageService,
+  ],
+  exports: [
+    InventoryService,
+    PurchasingService,
+    CountsService,
+    ControlledService,
+    ControlledCloseoutService,
+    UsageService,
+  ],
 })
 export class InventoryModule {}

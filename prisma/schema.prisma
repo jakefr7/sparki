@@ -1618,6 +1618,97 @@ enum InventoryTransactionType {
   CONTROLLED_WASTE
   CONTROLLED_DISPOSAL
   CONTROLLED_CORRECTION
+  CLINICAL_USAGE
+  RETAIL_SALE
+  USAGE_REVERSAL
+}
+
+enum InventoryUsageSourceType {
+  MEDICATION
+  VACCINE
+  LAB_TEST
+  PROCEDURE
+  SURGERY
+  TREATMENT
+  RETAIL_SALE
+  SERVICE
+  BUNDLE
+  OTHER
+}
+
+enum InventoryQuantityRule {
+  FIXED
+  PER_DOSE
+  PER_UNIT
+  PER_PATIENT_WEIGHT
+  USER_CONFIRMED
+  FORMULA
+}
+
+enum InventoryReservationBehavior {
+  OFF
+  WHEN_ORDERED
+  WHEN_APPROVED
+  WHEN_PREPARED
+  MANUAL
+}
+
+enum InventoryLotSelectionPolicy {
+  FEFO
+  FIFO
+  MANUAL
+  LOCATION_PRIORITY
+}
+
+enum InventoryFallbackBehavior {
+  NONE
+  LOCATION_PRIORITY
+  REQUIRE_CONFIRMATION
+}
+
+enum InventoryReservationStatus {
+  ACTIVE
+  PARTIALLY_CONSUMED
+  CONSUMED
+  RELEASED
+  EXPIRED
+  CANCELLED
+}
+
+enum InventoryUsageEventStatus {
+  PENDING
+  RESERVED
+  POSTED
+  PARTIALLY_POSTED
+  REVERSED
+  CANCELLED
+  NEEDS_REVIEW
+  FAILED
+}
+
+enum InventoryUsageEventType {
+  MEDICATION_ADMINISTERED
+  MEDICATION_WASTE
+  PRESCRIPTION_DISPENSED
+  VACCINE_ADMINISTERED
+  LAB_TEST_STARTED
+  LAB_TEST_COMPLETED
+  PROCEDURE_COMPLETED
+  SURGERY_COMPLETED
+  TREATMENT_COMPLETED
+  RETAIL_SALE_FINALIZED
+  RETAIL_RETURN
+  CLINICAL_REVERSAL
+  FINANCIAL_REVERSAL
+  MANUAL_USAGE
+}
+
+enum InventoryReturnDisposition {
+  RETURNED_NOT_RESTOCKABLE
+  RETURNED_QUARANTINED
+  RETURNED_TO_STOCK
+  SENT_FOR_DISPOSAL
+  FINANCIAL_ONLY
 }
 
 enum ControlledRegistrationType {
@@ -2952,4 +3043,212 @@ model InventoryEvent {
   createdAt        DateTime           @default(now())
 
   @@index([organizationId, clinicLocationId, createdAt])
+}
+
+model InventoryUsageMapping {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  organizationId      String
+  clinicLocationId    String?
+  sourceType          InventoryUsageSourceType
+  sourceReference     String
+  sourceCatalogItemId String?                      @db.Uuid
+  version             Int                          @default(1)
+  isActive            Boolean                      @default(false)
+  effectiveFrom       DateTime                     @default(now())
+  archivedAt          DateTime?
+  reservationBehavior InventoryReservationBehavior @default(OFF)
+  deductionEvent      InventoryUsageEventType
+  lotSelectionPolicy  InventoryLotSelectionPolicy  @default(FEFO)
+  createdById         String
+  updatedById         String
+  notes               String?
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+  components          InventoryUsageComponent[]
+  usageEvents         InventoryUsageEvent[]
+
+  @@unique([organizationId, clinicLocationId, sourceType, sourceReference, version])
+  @@index([organizationId, clinicLocationId, sourceType, sourceReference, isActive])
+}
+
+model InventoryUsageComponent {
+  id                        String                    @id @default(uuid()) @db.Uuid
+  mappingId                 String                    @db.Uuid
+  itemId                    String                    @db.Uuid
+  quantityRule              InventoryQuantityRule
+  fixedQuantity             Decimal?                  @db.Decimal(20, 8)
+  quantityUnit              String
+  doseMultiplier            Decimal?                  @db.Decimal(20, 8)
+  weightMultiplier          Decimal?                  @db.Decimal(20, 8)
+  weightUnit                String?
+  formulaConfiguration      Json?
+  optional                  Boolean                   @default(false)
+  staffConfirmationRequired Boolean                   @default(false)
+  lotSelectionRequired      Boolean                   @default(false)
+  preferredStockLocationId  String?                   @db.Uuid
+  fallbackBehavior          InventoryFallbackBehavior @default(NONE)
+  wasteAllowance            Decimal                   @default(0) @db.Decimal(20, 8)
+  substitutionGroup         String?
+  physicalKit               Boolean                   @default(false)
+  deductComponents          Boolean                   @default(true)
+  sequence                  Int                       @default(0)
+  notes                     String?
+  mapping                   InventoryUsageMapping     @relation(fields: [mappingId], references: [id], onDelete: Cascade)
+
+  @@index([mappingId, sequence])
+  @@index([itemId])
+}
+
+model InventoryReservation {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  organizationId        String
+  clinicLocationId      String
+  itemId                String                     @db.Uuid
+  lotId                 String?                    @db.Uuid
+  controlledContainerId String?                    @db.Uuid
+  stockLocationId       String                     @db.Uuid
+  sourceEventType       InventoryUsageEventType
+  sourceEventId         String
+  patientId             String?
+  visitId               String?
+  appointmentId         String?
+  invoiceId             String?
+  quantity              Decimal                    @db.Decimal(20, 6)
+  consumedQuantity      Decimal                    @default(0) @db.Decimal(20, 6)
+  baseUnitSnapshot      String
+  status                InventoryReservationStatus @default(ACTIVE)
+  reservedById          String
+  reservedAt            DateTime                   @default(now())
+  expiresAt             DateTime?
+  releasedAt            DateTime?
+  consumedAt            DateTime?
+  cancellationReason    String?
+  idempotencyKey        String
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  usageLines            InventoryUsageEventLine[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, clinicLocationId, status, expiresAt])
+  @@index([sourceEventType, sourceEventId])
+  @@index([itemId, stockLocationId, lotId])
+}
+
+model InventoryUsageEvent {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  organizationId     String
+  clinicLocationId   String
+  eventType          InventoryUsageEventType
+  sourceRecordType   String
+  sourceRecordId     String
+  sourceEventVersion Int                       @default(1)
+  patientId          String?
+  clientId           String?
+  visitId            String?
+  appointmentId      String?
+  invoiceId          String?
+  invoiceLineId      String?
+  medicationOrderId  String?
+  administrationId   String?
+  prescriptionId     String?
+  dispensingRecordId String?
+  vaccineRecordId    String?
+  laboratoryRecordId String?
+  procedureRecordId  String?
+  mappingId          String?                   @db.Uuid
+  mappingVersion     Int?
+  mappingSnapshot    Json?
+  status             InventoryUsageEventStatus @default(PENDING)
+  failureCode        String?
+  failureMessage     String?
+  occurredAt         DateTime
+  postedAt           DateTime?
+  postedById         String?
+  reversedEventId    String?                   @unique @db.Uuid
+  notes              String?
+  idempotencyKey     String
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  mapping            InventoryUsageMapping?    @relation(fields: [mappingId], references: [id])
+  reversedEvent      InventoryUsageEvent?      @relation("UsageReversal", fields: [reversedEventId], references: [id])
+  reversalEvent      InventoryUsageEvent?      @relation("UsageReversal")
+  lines              InventoryUsageEventLine[]
+  traces             PatientInventoryTrace[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@unique([clinicLocationId, sourceRecordType, sourceRecordId, eventType, sourceEventVersion])
+  @@index([organizationId, clinicLocationId, status, occurredAt])
+  @@index([patientId, occurredAt])
+}
+
+model InventoryUsageEventLine {
+  id                      String                @id @default(uuid()) @db.Uuid
+  usageEventId            String                @db.Uuid
+  componentSnapshot       Json
+  itemId                  String                @db.Uuid
+  lotId                   String?               @db.Uuid
+  controlledContainerId   String?               @db.Uuid
+  stockLocationId         String                @db.Uuid
+  calculatedQuantity      Decimal               @db.Decimal(20, 6)
+  confirmedQuantity       Decimal               @db.Decimal(20, 6)
+  wastedQuantity          Decimal               @default(0) @db.Decimal(20, 6)
+  unitSnapshot            String
+  precisionSnapshot       Int
+  sourceBalance           Decimal?              @db.Decimal(20, 6)
+  resultingBalance        Decimal?              @db.Decimal(20, 6)
+  inventoryTransactionId  String?               @unique @db.Uuid
+  controlledLedgerEntryId String?               @unique @db.Uuid
+  reservationId           String?               @db.Uuid
+  reservationConsumed     Decimal               @default(0) @db.Decimal(20, 6)
+  substitutionItemId      String?               @db.Uuid
+  reason                  String?
+  notes                   String?
+  usageEvent              InventoryUsageEvent   @relation(fields: [usageEventId], references: [id], onDelete: Cascade)
+  reservation             InventoryReservation? @relation(fields: [reservationId], references: [id])
+
+  @@index([usageEventId])
+  @@index([itemId, lotId])
+}
+
+model PatientInventoryTrace {
+  id                           String              @id @default(uuid()) @db.Uuid
+  organizationId               String
+  clinicLocationId             String
+  patientId                    String
+  visitId                      String?
+  usageEventId                 String              @db.Uuid
+  itemId                       String              @db.Uuid
+  itemNameSnapshot             String
+  manufacturerSnapshot         String?
+  lotNumberSnapshot            String?
+  expirationSnapshot           DateTime?           @db.Date
+  controlledContainerReference String?
+  quantity                     Decimal             @db.Decimal(20, 6)
+  unitSnapshot                 String
+  route                        String?
+  performedById                String
+  authorizingVeterinarianId    String?
+  occurredAt                   DateTime
+  reversedAt                   DateTime?
+  replacementTraceId           String?             @db.Uuid
+  usageEvent                   InventoryUsageEvent @relation(fields: [usageEventId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, patientId, occurredAt])
+  @@index([organizationId, itemId, lotNumberSnapshot])
+  @@index([usageEventId])
+}
+
+model InventoryUsageExportAudit {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  lotId            String   @db.Uuid
+  generatedById    String
+  rowCount         Int
+  format           String
+  filters          Json?
+  checksum         String
+  createdAt        DateTime @default(now())
+
+  @@index([organizationId, clinicLocationId, lotId, createdAt])
 }

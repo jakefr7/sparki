@@ -230,9 +230,50 @@ type ControlledAuthorization = {
   authorizationType: string;
   status: string;
 };
+type UsageMapping = {
+  id: string;
+  sourceType: string;
+  sourceReference: string;
+  version: number;
+  isActive: boolean;
+  deductionEvent: string;
+  reservationBehavior: string;
+  lotSelectionPolicy: string;
+  components: Array<{
+    id: string;
+    itemId: string;
+    quantityRule: string;
+    fixedQuantity: string | null;
+    quantityUnit: string;
+  }>;
+};
+type UsageEvent = {
+  id: string;
+  eventType: string;
+  sourceRecordType: string;
+  sourceRecordId: string;
+  status: string;
+  failureCode: string | null;
+  failureMessage: string | null;
+  occurredAt: string;
+  patientId: string | null;
+  lines: Array<{ id: string; itemId: string; confirmedQuantity: string; unitSnapshot: string }>;
+};
+type UsageReservation = {
+  id: string;
+  itemId: string;
+  quantity: string;
+  consumedQuantity: string;
+  baseUnitSnapshot: string;
+  status: string;
+  sourceEventType: string;
+  expiresAt: string | null;
+};
+type UsageMetrics = Record<string, number>;
 const tabs = [
   'Overview',
   'Items',
+  'Usage',
   'Orders',
   'Counts',
   'Controlled',
@@ -265,6 +306,10 @@ export function InventoryWorkspace() {
   const [controlledAuthorizations, setControlledAuthorizations] = useState<
     ControlledAuthorization[]
   >([]);
+  const [usageMappings, setUsageMappings] = useState<UsageMapping[]>([]);
+  const [usageEvents, setUsageEvents] = useState<UsageEvent[]>([]);
+  const [usageReservations, setUsageReservations] = useState<UsageReservation[]>([]);
+  const [usageMetrics, setUsageMetrics] = useState<UsageMetrics>({});
   const [overview, setOverview] = useState<{
     metrics: Record<string, number>;
     attention: Array<{ itemId: string; itemName: string; message: string }>;
@@ -289,24 +334,29 @@ export function InventoryWorkspace() {
   const load = useCallback(async () => {
     const q = new URLSearchParams();
     if (search) q.set('search', search);
-    const [i, o, l, a, v, p, c, co, cp, cl, cd, cr, cc, cx, cw, ca] = await Promise.all([
-      fetch(`/api/inventory/items?${q}`),
-      fetch('/api/inventory/overview'),
-      fetch('/api/inventory/locations'),
-      fetch('/api/inventory/activity'),
-      fetch('/api/inventory/vendors'),
-      fetch('/api/inventory/orders'),
-      fetch('/api/inventory/counts'),
-      fetch('/api/inventory/controlled/overview'),
-      fetch('/api/inventory/controlled/profiles'),
-      fetch('/api/inventory/controlled/ledger'),
-      fetch('/api/inventory/controlled/discrepancies'),
-      fetch('/api/inventory/controlled/reports'),
-      fetch('/api/inventory/controlled/counts'),
-      fetch('/api/inventory/controlled/corrections'),
-      fetch('/api/inventory/controlled/disposals'),
-      fetch('/api/inventory/controlled/authorizations'),
-    ]);
+    const [i, o, l, a, v, p, c, co, cp, cl, cd, cr, cc, cx, cw, ca, um, ue, ur, ux] =
+      await Promise.all([
+        fetch(`/api/inventory/items?${q}`),
+        fetch('/api/inventory/overview'),
+        fetch('/api/inventory/locations'),
+        fetch('/api/inventory/activity'),
+        fetch('/api/inventory/vendors'),
+        fetch('/api/inventory/orders'),
+        fetch('/api/inventory/counts'),
+        fetch('/api/inventory/controlled/overview'),
+        fetch('/api/inventory/controlled/profiles'),
+        fetch('/api/inventory/controlled/ledger'),
+        fetch('/api/inventory/controlled/discrepancies'),
+        fetch('/api/inventory/controlled/reports'),
+        fetch('/api/inventory/controlled/counts'),
+        fetch('/api/inventory/controlled/corrections'),
+        fetch('/api/inventory/controlled/disposals'),
+        fetch('/api/inventory/controlled/authorizations'),
+        fetch('/api/inventory/usage/mappings'),
+        fetch('/api/inventory/usage/events'),
+        fetch('/api/inventory/usage/reservations'),
+        fetch('/api/inventory/usage/metrics'),
+      ]);
     if (i.ok) {
       const next: Item[] = await i.json();
       setItems(next);
@@ -329,6 +379,10 @@ export function InventoryWorkspace() {
     if (cx.ok) setControlledCorrections(await cx.json());
     if (cw.ok) setControlledDisposals(await cw.json());
     if (ca.ok) setControlledAuthorizations(await ca.json());
+    if (um.ok) setUsageMappings(await um.json());
+    if (ue.ok) setUsageEvents(await ue.json());
+    if (ur.ok) setUsageReservations(await ur.json());
+    if (ux.ok) setUsageMetrics(await ux.json());
   }, [search]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 180);
@@ -433,6 +487,16 @@ export function InventoryWorkspace() {
         </>
       )}
       {tab === 'Items' && <ItemsTable items={items} onSelect={setSelected} />}
+      {tab === 'Usage' && (
+        <UsagePanel
+          mappings={usageMappings}
+          events={usageEvents}
+          reservations={usageReservations}
+          metrics={usageMetrics}
+          items={items}
+          onSaved={load}
+        />
+      )}
       {tab === 'Vendors' && <VendorsPanel vendors={vendors} onAdd={() => setModal('vendor')} />}
       {tab === 'Orders' && (
         <OrdersPanel
@@ -733,6 +797,325 @@ function ActivityTable({ rows }: { rows: Activity[] }) {
     </section>
   );
 }
+function UsagePanel({
+  mappings,
+  events,
+  reservations,
+  metrics,
+  items,
+  onSaved,
+}: {
+  mappings: UsageMapping[];
+  events: UsageEvent[];
+  reservations: UsageReservation[];
+  metrics: UsageMetrics;
+  items: Item[];
+  onSaved: () => Promise<void>;
+}) {
+  const [view, setView] = useState<'Review Queue' | 'Mappings' | 'Reservations' | 'History'>(
+    'Review Queue',
+  );
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <section className="inventory__panel">
+      <div className="inventory__section-heading">
+        <div>
+          <h2>Clinical & Retail Usage</h2>
+          <p>One source event, one deduction, with reservation and patient-lot traceability.</p>
+        </div>
+        <button className="button-primary" onClick={() => setCreating(true)}>
+          Create Usage Mapping
+        </button>
+      </div>
+      <div className="inventory__metrics">
+        <Metric label="Usage Events Today" value={metrics.usageEventsToday} />
+        <Metric label="Pending Usage Review" value={metrics.pendingUsageReview} />
+        <Metric label="Failed Deductions" value={metrics.failedDeductions} />
+        <Metric label="Active Reservations" value={metrics.activeReservations} />
+        <Metric label="Reservations Expiring" value={metrics.reservationsExpiring} />
+        <Metric label="Unmapped Clinical Items" value={metrics.unmappedClinicalItems} />
+        <Metric label="Recent Reversals" value={metrics.recentReversals} />
+      </div>
+      <div className="inventory__views">
+        {(['Review Queue', 'Mappings', 'Reservations', 'History'] as const).map((name) => (
+          <button
+            key={name}
+            className={view === name ? 'is-active' : ''}
+            onClick={() => setView(name)}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+      {error && <div className="inventory__error">{error}</div>}
+      {view === 'Review Queue' &&
+        events
+          .filter((event) => ['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(event.status))
+          .map((event) => (
+            <article className="lot" key={event.id}>
+              <strong>
+                {event.eventType.replaceAll('_', ' ')} · {event.status.replaceAll('_', ' ')}
+              </strong>
+              <span>
+                {event.sourceRecordType} · {event.sourceRecordId}
+              </span>
+              <small>
+                {event.failureCode?.replaceAll('_', ' ') ?? 'Pending'} —{' '}
+                {event.failureMessage ?? 'Awaiting posting'}
+              </small>
+              <button
+                className="button-secondary"
+                onClick={async () => {
+                  const response = await fetch(`/api/inventory/usage/events/${event.id}/retry`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), lines: [] }),
+                  });
+                  if (!response.ok)
+                    setError((await response.json()).message ?? 'Unable to retry usage');
+                  else await onSaved();
+                }}
+              >
+                Retry Posting
+              </button>
+            </article>
+          ))}
+      {view === 'Mappings' &&
+        mappings.map((mapping) => (
+          <article className="lot" key={mapping.id}>
+            <strong>
+              {mapping.sourceReference} · v{mapping.version}
+            </strong>
+            <span>
+              {mapping.sourceType.replaceAll('_', ' ')} →{' '}
+              {mapping.deductionEvent.replaceAll('_', ' ')}
+            </span>
+            <small>
+              {mapping.components.length} component(s) · {mapping.lotSelectionPolicy} ·{' '}
+              {mapping.reservationBehavior.replaceAll('_', ' ')} ·{' '}
+              {mapping.isActive ? 'Active' : 'Archived'}
+            </small>
+            <div className="inventory__actions">
+              <button
+                onClick={async () => {
+                  await fetch(`/api/inventory/usage/mappings/${mapping.id}/duplicate`, {
+                    method: 'POST',
+                  });
+                  await onSaved();
+                }}
+              >
+                Duplicate
+              </button>
+              {mapping.isActive && (
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/inventory/usage/mappings/${mapping.id}/archive`, {
+                      method: 'POST',
+                    });
+                    await onSaved();
+                  }}
+                >
+                  Archive
+                </button>
+              )}
+            </div>
+          </article>
+        ))}
+      {view === 'Reservations' &&
+        reservations.map((reservation) => {
+          const item = items.find((candidate) => candidate.id === reservation.itemId);
+          return (
+            <article className="lot" key={reservation.id}>
+              <strong>
+                {item?.name ?? reservation.itemId} · {reservation.status.replaceAll('_', ' ')}
+              </strong>
+              <span>
+                {fmt(reservation.consumedQuantity)} / {fmt(reservation.quantity)}{' '}
+                {reservation.baseUnitSnapshot}
+              </span>
+              <small>
+                {reservation.sourceEventType.replaceAll('_', ' ')}
+                {reservation.expiresAt
+                  ? ` · expires ${new Date(reservation.expiresAt).toLocaleString()}`
+                  : ''}
+              </small>
+              {['ACTIVE', 'PARTIALLY_CONSUMED'].includes(reservation.status) && (
+                <button
+                  onClick={async () => {
+                    const response = await fetch(
+                      `/api/inventory/usage/reservations/${reservation.id}/release`,
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          reason: 'Released from usage workspace',
+                          idempotencyKey: crypto.randomUUID(),
+                        }),
+                      },
+                    );
+                    if (response.ok) await onSaved();
+                  }}
+                >
+                  Release
+                </button>
+              )}
+            </article>
+          );
+        })}
+      {view === 'History' && (
+        <div className="inventory__table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Occurred</th>
+                <th>Source</th>
+                <th>Event</th>
+                <th>Status</th>
+                <th>Components</th>
+                <th>Patient</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr key={event.id}>
+                  <td>{new Date(event.occurredAt).toLocaleString()}</td>
+                  <td>
+                    {event.sourceRecordType} · {event.sourceRecordId}
+                  </td>
+                  <td>{event.eventType.replaceAll('_', ' ')}</td>
+                  <td>{event.status.replaceAll('_', ' ')}</td>
+                  <td>{event.lines.length}</td>
+                  <td>{event.patientId ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {creating && (
+        <Modal title="Create usage mapping" onClose={() => setCreating(false)}>
+          <form
+            className="inventory__form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              const item = items.find((candidate) => candidate.id === form.get('itemId'));
+              const response = await fetch('/api/inventory/usage/mappings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sourceType: form.get('sourceType'),
+                  sourceReference: form.get('sourceReference'),
+                  organizationWide: false,
+                  reservationBehavior: form.get('reservationBehavior'),
+                  deductionEvent: form.get('deductionEvent'),
+                  lotSelectionPolicy: form.get('lotSelectionPolicy'),
+                  activate: true,
+                  components: [
+                    {
+                      itemId: form.get('itemId'),
+                      quantityRule: 'FIXED',
+                      fixedQuantity: form.get('quantity'),
+                      quantityUnit: item?.conversions.find((conversion) => conversion.isActive)
+                        ?.stockUnit,
+                      optional: false,
+                      staffConfirmationRequired: false,
+                      lotSelectionRequired: item?.lotTracking ?? false,
+                      fallbackBehavior: 'NONE',
+                      wasteAllowance: '0',
+                      physicalKit: false,
+                      deductComponents: true,
+                      sequence: 0,
+                    },
+                  ],
+                }),
+              });
+              if (!response.ok)
+                return setError((await response.json()).message ?? 'Unable to create mapping');
+              setCreating(false);
+              await onSaved();
+            }}
+          >
+            <label>
+              Source action
+              <input name="sourceReference" placeholder="e.g. SNAP 4Dx Plus" required />
+            </label>
+            <label>
+              Source type
+              <select name="sourceType">
+                {[
+                  'MEDICATION',
+                  'VACCINE',
+                  'LAB_TEST',
+                  'PROCEDURE',
+                  'SURGERY',
+                  'TREATMENT',
+                  'RETAIL_SALE',
+                  'SERVICE',
+                  'BUNDLE',
+                ].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Physical component
+              <select name="itemId" required>
+                {items
+                  .filter((item) => item.inventoryTracked && item.status === 'ACTIVE')
+                  .map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Quantity
+              <input name="quantity" type="number" min="0.000001" step="any" required />
+            </label>
+            <label>
+              Deduction event
+              <select name="deductionEvent">
+                <option value="MEDICATION_ADMINISTERED">Medication administered</option>
+                <option value="PRESCRIPTION_DISPENSED">Prescription dispensed</option>
+                <option value="VACCINE_ADMINISTERED">Vaccine administered</option>
+                <option value="LAB_TEST_COMPLETED">Laboratory test completed</option>
+                <option value="PROCEDURE_COMPLETED">Procedure completed</option>
+                <option value="RETAIL_SALE_FINALIZED">Retail sale finalized</option>
+              </select>
+            </label>
+            <details>
+              <summary>Reservation and lot selection</summary>
+              <label>
+                Reservation behavior
+                <select name="reservationBehavior">
+                  <option value="OFF">Off</option>
+                  <option value="WHEN_ORDERED">When ordered</option>
+                  <option value="WHEN_APPROVED">When approved</option>
+                  <option value="WHEN_PREPARED">When prepared</option>
+                  <option value="MANUAL">Manual</option>
+                </select>
+              </label>
+              <label>
+                Lot selection
+                <select name="lotSelectionPolicy">
+                  <option value="FEFO">First expiring, first out</option>
+                  <option value="FIFO">First received, first out</option>
+                  <option value="MANUAL">Manual</option>
+                  <option value="LOCATION_PRIORITY">Location priority</option>
+                </select>
+              </label>
+            </details>
+            <button className="button-primary">Review & Activate</button>
+          </form>
+        </Modal>
+      )}
+    </section>
+  );
+}
+
 function ControlledPanel({
   overview,
   profiles,

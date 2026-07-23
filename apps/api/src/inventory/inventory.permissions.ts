@@ -29,7 +29,16 @@ export type InventoryCapability =
   | 'POST_COUNTS'
   | 'MANAGE_COUNT_TEMPLATES'
   | 'CANCEL_COUNTS'
-  | 'VIEW_COUNT_COST';
+  | 'VIEW_COUNT_COST'
+  | 'VIEW_USAGE_MAPPINGS'
+  | 'MANAGE_USAGE_MAPPINGS'
+  | 'CREATE_RESERVATIONS'
+  | 'POST_USAGE'
+  | 'RELEASE_RESERVATIONS'
+  | 'RESOLVE_USAGE_FAILURES'
+  | 'REVERSE_USAGE'
+  | 'VIEW_PATIENT_LOT_TRACE'
+  | 'EXPORT_LOT_PATIENTS';
 const staff = new Set([
   'OWNER',
   'PRACTICE_MANAGER',
@@ -41,6 +50,18 @@ const staff = new Set([
 const managers = new Set(['OWNER', 'PRACTICE_MANAGER']);
 export function canInventory(user: AuthenticatedUser, capability: InventoryCapability) {
   if (capability === 'VIEW') return staff.has(user.role);
+  if (['VIEW_USAGE_MAPPINGS', 'VIEW_PATIENT_LOT_TRACE'].includes(capability))
+    return staff.has(user.role) && user.role !== 'RECEPTIONIST';
+  if (capability === 'CREATE_RESERVATIONS') return staff.has(user.role);
+  if (capability === 'POST_USAGE') return staff.has(user.role);
+  if (capability === 'RELEASE_RESERVATIONS')
+    return managers.has(user.role) || ['VETERINARIAN', 'TECHNICIAN'].includes(user.role);
+  if (capability === 'RESOLVE_USAGE_FAILURES')
+    return managers.has(user.role) || ['VETERINARIAN', 'TECHNICIAN'].includes(user.role);
+  if (capability === 'REVERSE_USAGE')
+    return managers.has(user.role) || user.role === 'VETERINARIAN';
+  if (['MANAGE_USAGE_MAPPINGS', 'EXPORT_LOT_PATIENTS'].includes(capability))
+    return managers.has(user.role);
   if (['VIEW_VENDORS', 'VIEW_PO'].includes(capability))
     return staff.has(user.role) && user.role !== 'RECEPTIONIST';
   if (capability === 'RECEIVE')

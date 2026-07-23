@@ -637,8 +637,8 @@ export class InventoryService {
       nextExpiration: next ?? null,
       primaryLocation: item.balances[0]?.stockLocation.name ?? null,
       attention,
-      countHistory: item.countLines,
-      lastCount: item.countLines[0] ?? null,
+      countHistory: item.countLines ?? [],
+      lastCount: item.countLines?.[0] ?? null,
       permissions: {
         canEdit: canInventory(user, 'EDIT_ITEMS'),
         canArchive: canInventory(user, 'ARCHIVE'),

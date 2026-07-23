@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 type Item = {
   id: string;
@@ -257,6 +258,9 @@ type UsageEvent = {
   failureMessage: string | null;
   occurredAt: string;
   patientId: string | null;
+  mappingSnapshot: {
+    components?: Array<{ itemId: string }>;
+  } | null;
   lines: Array<{ id: string; itemId: string; confirmedQuantity: string; unitSnapshot: string }>;
 };
 type UsageReservation = {
@@ -274,15 +278,64 @@ const tabs = [
   'Overview',
   'Items',
   'Usage',
-  'Orders',
+  'Purchasing',
   'Counts',
   'Controlled',
-  'Vendors',
   'Activity',
 ] as const;
 const later = new Set<string>();
 const fmt = (n: string | null) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 });
+const humanize = (value: string) => {
+  const labels: Record<string, string> = {
+    SUPPLY: 'Medical supply',
+    FULL: 'Full inventory',
+    LOCATION: 'Location count',
+    CATEGORY: 'Category count',
+    CYCLE: 'Cycle count',
+    LOT: 'Lot count',
+    FEFO: 'First expiring, first out',
+    FIFO: 'First received, first out',
+  };
+  return (
+    labels[value] ??
+    value
+      .toLowerCase()
+      .replaceAll('_', ' ')
+      .replace(/^\w/, (letter) => letter.toUpperCase())
+  );
+};
+function InventoryStatus({ value }: { value: string }) {
+  const state = /failed|rejected|out_of_stock|cancelled/i.test(value)
+    ? 'critical'
+    : /pending|review|partial|recount|expir/i.test(value)
+      ? 'warning'
+      : /active|approved|posted|complete|ordered/i.test(value)
+        ? 'positive'
+        : 'neutral';
+  return (
+    <span className="inventory-status" data-state={state}>
+      {humanize(value)}
+    </span>
+  );
+}
+function EmptyState({
+  title,
+  detail,
+  action,
+}: {
+  title: string;
+  detail: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="inventory-empty">
+      <strong>{title}</strong>
+      <span>{detail}</span>
+      {action}
+    </div>
+  );
+}
 
 export function InventoryWorkspace() {
   const [tab, setTab] = useState<(typeof tabs)[number]>('Overview');
@@ -315,6 +368,9 @@ export function InventoryWorkspace() {
     attention: Array<{ itemId: string; itemName: string; message: string }>;
   } | null>(null);
   const [search, setSearch] = useState('');
+  const [sectionSearch, setSectionSearch] = useState('');
+  const [itemReviewNotice, setItemReviewNotice] = useState('');
+  const [purchasingView, setPurchasingView] = useState<'Orders' | 'Vendors'>('Orders');
   const [selected, setSelected] = useState<Item | null>(null);
   const [modal, setModal] = useState<
     | 'add'
@@ -404,36 +460,110 @@ export function InventoryWorkspace() {
             </button>
           ))}
       </nav>
-      <div className="inventory__toolbar">
-        <label className="inventory__search">
-          <span>Search</span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name, SKU, or barcode"
-          />
-        </label>
-        <select aria-label="Clinic location">
-          <option>Current clinic</option>
-        </select>
-        <button
-          onClick={() =>
-            activeCount
-              ? document.querySelector<HTMLInputElement>('[data-count-scan]')?.focus()
-              : setModal('scan')
-          }
-        >
-          Scan Item
-        </button>
-        <button className="button-primary" onClick={() => setModal('add')}>
-          Add Item
-        </button>
-        <button className="button-primary" onClick={() => setModal('adjust')}>
-          Adjust Stock
-        </button>
-        <button onClick={() => setModal('order')}>New Purchase Order</button>
-        <button onClick={() => setModal('receive')}>Receive Inventory</button>
-        <button onClick={() => setModal('transfer')}>Transfer Stock</button>
+      {tab === 'Purchasing' && (
+        <nav className="inventory__subnav" aria-label="Purchasing sections">
+          {(['Orders', 'Vendors'] as const).map((name) => (
+            <button
+              key={name}
+              className={purchasingView === name ? 'is-active' : ''}
+              onClick={() => setPurchasingView(name)}
+            >
+              {name}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="inventory-command" aria-label={`${tab} commands`}>
+        {tab === 'Items' && (
+          <label className="inventory__search">
+            <span className="sr-only">Search items</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, SKU, or barcode"
+            />
+          </label>
+        )}
+        {['Purchasing', 'Activity'].includes(tab) && (
+          <label className="inventory__search">
+            <span className="sr-only">Search {tab.toLowerCase()}</span>
+            <input
+              value={sectionSearch}
+              onChange={(e) => setSectionSearch(e.target.value)}
+              placeholder={tab === 'Purchasing' ? 'Search orders or vendors' : 'Search activity'}
+            />
+          </label>
+        )}
+        <div className="inventory-command__actions">
+          {tab === 'Overview' && (
+            <button
+              className="button-primary"
+              onClick={() => document.querySelector('#inventory-attention')?.scrollIntoView()}
+            >
+              View attention
+            </button>
+          )}
+          {tab === 'Items' && (
+            <button className="button-primary" onClick={() => setModal('add')}>
+              Add item
+            </button>
+          )}
+          {tab === 'Purchasing' && purchasingView === 'Orders' && (
+            <button className="button-primary" onClick={() => setModal('order')}>
+              New purchase order
+            </button>
+          )}
+          {tab === 'Purchasing' && purchasingView === 'Vendors' && (
+            <button className="button-primary" onClick={() => setModal('vendor')}>
+              Add vendor
+            </button>
+          )}
+          {tab === 'Counts' && !activeCount && (
+            <button className="button-primary" onClick={() => setModal('count')}>
+              Start count
+            </button>
+          )}
+          {tab === 'Activity' && (
+            <button
+              className="button-primary"
+              onClick={() => exportActivity(activity, sectionSearch)}
+            >
+              Export activity
+            </button>
+          )}
+          {['Overview', 'Items', 'Counts'].includes(tab) && (
+            <button
+              onClick={() =>
+                activeCount
+                  ? document.querySelector<HTMLInputElement>('[data-count-scan]')?.focus()
+                  : setModal('scan')
+              }
+            >
+              Scan item
+            </button>
+          )}
+          {tab === 'Purchasing' && purchasingView === 'Orders' && (
+            <button onClick={() => setModal('receive')}>Receive inventory</button>
+          )}
+          <details className="inventory-command__menu">
+            <summary role="button">Actions</summary>
+            <div>
+              <button onClick={() => setModal('adjust')}>Adjust stock</button>
+              <button onClick={() => setModal('transfer')}>Transfer stock</button>
+              {tab !== 'Items' && <button onClick={() => setModal('add')}>Add item</button>}
+              {tab !== 'Purchasing' && (
+                <button
+                  onClick={() => {
+                    setTab('Purchasing');
+                    setPurchasingView('Orders');
+                  }}
+                >
+                  View purchasing
+                </button>
+              )}
+            </div>
+          </details>
+        </div>
       </div>
       {error && <div className="inventory__error">{error}</div>}
       {later.has(tab) && (
@@ -444,23 +574,30 @@ export function InventoryWorkspace() {
       )}
       {tab === 'Overview' && (
         <>
-          <div className="inventory__metrics">
+          <div className="inventory__metrics inventory__metrics--primary">
             <Metric label="Needs Attention" value={metrics?.needsAttention} />
             <Metric label="Low or Out of Stock" value={metrics?.lowOrOut} />
             <Metric label="Expiring Soon" value={metrics?.expiringSoon} />
             <Metric label="Total Active Items" value={metrics?.totalActiveItems} />
-            <Metric label="Recent Adjustments" value={metrics?.recentAdjustments} />
-            <Metric label="Open Orders" value={metrics?.openOrders} />
-            <Metric label="Pending Approval" value={metrics?.pendingApproval} />
-            <Metric label="Partially Received" value={metrics?.partiallyReceived} />
-            <Metric label="Overdue Deliveries" value={metrics?.overdueDeliveries} />
-            <Metric label="Receipt Issues" value={metrics?.receiptIssues} />
-            <Metric label="Active Counts" value={metrics?.activeCounts} />
-            <Metric label="Awaiting Review" value={metrics?.countsAwaitingReview} />
-            <Metric label="Recounts Required" value={metrics?.recountsRequired} />
-            <Metric label="Unresolved Variances" value={metrics?.unresolvedVariances} />
           </div>
-          <section className="inventory__panel">
+          <div className="inventory__operational">
+            <section>
+              <h3>Purchasing</h3>
+              <Metric label="Open orders" value={metrics?.openOrders} />
+              <Metric label="Overdue deliveries" value={metrics?.overdueDeliveries} />
+            </section>
+            <section>
+              <h3>Counts</h3>
+              <Metric label="Active counts" value={metrics?.activeCounts} />
+              <Metric label="Awaiting review" value={metrics?.countsAwaitingReview} />
+            </section>
+            <section>
+              <h3>Recent operations</h3>
+              <Metric label="Recent Adjustments" value={metrics?.recentAdjustments} />
+              <Metric label="Receipt Issues" value={metrics?.receiptIssues} />
+            </section>
+          </div>
+          <section className="inventory__panel" id="inventory-attention">
             <h2>Needs Attention</h2>
             {overview?.attention.length ? (
               <div className="attention-list">
@@ -486,7 +623,24 @@ export function InventoryWorkspace() {
           </section>
         </>
       )}
-      {tab === 'Items' && <ItemsTable items={items} onSelect={setSelected} />}
+      {tab === 'Items' && (
+        <>
+          {itemReviewNotice && (
+            <div className="inventory-context">
+              <span>{itemReviewNotice}</span>
+              <button
+                onClick={() => {
+                  setItemReviewNotice('');
+                  setSearch('');
+                }}
+              >
+                Show all items
+              </button>
+            </div>
+          )}
+          <ItemsTable items={items} onSelect={setSelected} />
+        </>
+      )}
       {tab === 'Usage' && (
         <UsagePanel
           mappings={usageMappings}
@@ -495,18 +649,43 @@ export function InventoryWorkspace() {
           metrics={usageMetrics}
           items={items}
           onSaved={load}
+          onReviewInventory={(itemId) => {
+            const item = items.find((candidate) => candidate.id === itemId);
+            setSearch(item?.name ?? '');
+            setItemReviewNotice(
+              item
+                ? `Reviewing stock for ${item.name} because a clinical deduction could not post.`
+                : 'Reviewing items that may need stock before the clinical deduction can post.',
+            );
+            setTab('Items');
+          }}
         />
       )}
-      {tab === 'Vendors' && <VendorsPanel vendors={vendors} onAdd={() => setModal('vendor')} />}
-      {tab === 'Orders' && (
-        <OrdersPanel
-          orders={orders}
-          onReceive={(order) => {
-            setActiveOrder(order);
-            setModal('receive');
-          }}
-          onChanged={load}
-        />
+      {tab === 'Purchasing' && (
+        <>
+          {purchasingView === 'Vendors' ? (
+            <VendorsPanel
+              vendors={vendors.filter((vendor) =>
+                `${vendor.name} ${vendor.contactName ?? ''} ${vendor.email ?? ''}`
+                  .toLowerCase()
+                  .includes(sectionSearch.toLowerCase()),
+              )}
+            />
+          ) : (
+            <OrdersPanel
+              orders={orders.filter((order) =>
+                `${order.number} ${order.vendor.name} ${order.status}`
+                  .toLowerCase()
+                  .includes(sectionSearch.toLowerCase()),
+              )}
+              onReceive={(order) => {
+                setActiveOrder(order);
+                setModal('receive');
+              }}
+              onChanged={load}
+            />
+          )}
+        </>
       )}
       {tab === 'Counts' &&
         (activeCount ? (
@@ -522,7 +701,6 @@ export function InventoryWorkspace() {
         ) : (
           <CountsPanel
             counts={counts}
-            onStart={() => setModal('count')}
             onOpen={async (c) => {
               const r = await fetch(`/api/inventory/counts/${c.id}`);
               if (r.ok) setActiveCount(await r.json());
@@ -544,7 +722,7 @@ export function InventoryWorkspace() {
           onSaved={load}
         />
       )}
-      {tab === 'Activity' && <ActivityTable rows={activity} />}
+      {tab === 'Activity' && <ActivityTable rows={activity} search={sectionSearch} />}
       {selected && (
         <ItemDrawer
           item={selected}
@@ -728,16 +906,23 @@ function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) =>
           </thead>
           <tbody>
             {shown.map((i) => (
-              <tr key={i.id} onClick={() => onSelect(i)}>
+              <tr
+                key={i.id}
+                tabIndex={0}
+                onClick={() => onSelect(i)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onSelect(i);
+                }}
+              >
                 <td>
                   <strong>{i.name}</strong>
                   <small>{i.sku || 'No SKU'}</small>
                 </td>
-                <td>{i.primaryType}</td>
-                <td>{fmt(i.available)}</td>
-                <td>{fmt(i.onHand)}</td>
+                <td>{humanize(i.primaryType)}</td>
+                <td className="inventory-number">{fmt(i.available)}</td>
+                <td className="inventory-number">{fmt(i.onHand)}</td>
                 <td>
-                  <span className={`status status--${i.status.toLowerCase()}`}>{i.status}</span>
+                  <InventoryStatus value={i.status} />
                 </td>
                 <td>{i.nextExpiration ? new Date(i.nextExpiration).toLocaleDateString() : '—'}</td>
                 <td>{i.primaryLocation || '—'}</td>
@@ -745,13 +930,69 @@ function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) =>
                 <td>{i.attention[0] || '—'}</td>
               </tr>
             ))}
+            {!shown.length && (
+              <tr>
+                <td colSpan={9}>
+                  <EmptyState
+                    title="No items in this view"
+                    detail="Try another saved view or clear the item search."
+                  />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
     </section>
   );
 }
-function ActivityTable({ rows }: { rows: Activity[] }) {
+function exportActivity(rows: Activity[], search: string) {
+  const filtered = rows.filter((row) =>
+    `${row.item.name} ${row.transactionType} ${row.reason} ${row.stockLocation.name}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
+  const csv = [
+    [
+      'Timestamp',
+      'Item',
+      'Type',
+      'Previous',
+      'Change',
+      'Result',
+      'Location',
+      'Lot',
+      'User',
+      'Reason',
+    ],
+    ...filtered.map((row) => [
+      row.createdAt,
+      row.item.name,
+      humanize(row.transactionType),
+      row.previousBalance,
+      row.quantityDelta,
+      row.resultingBalance,
+      row.stockLocation.name,
+      row.lot?.lotNumber ?? '',
+      `${row.user.firstName} ${row.user.lastName}`,
+      humanize(row.reason),
+    ]),
+  ]
+    .map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `inventory-activity-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+function ActivityTable({ rows, search = '' }: { rows: Activity[]; search?: string }) {
+  const shown = rows.filter((row) =>
+    `${row.item.name} ${row.transactionType} ${row.reason} ${row.stockLocation.name}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
+  );
   return (
     <section className="inventory__panel">
       <h2>Inventory Activity</h2>
@@ -772,25 +1013,35 @@ function ActivityTable({ rows }: { rows: Activity[] }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <tr key={r.id}>
                 <td>{new Date(r.createdAt).toLocaleString()}</td>
                 <td>{r.item.name}</td>
-                <td>{r.transactionType.replaceAll('_', ' ')}</td>
-                <td>{fmt(r.previousBalance)}</td>
-                <td>
+                <td>{humanize(r.transactionType)}</td>
+                <td className="inventory-number">{fmt(r.previousBalance)}</td>
+                <td className="inventory-number">
                   {Number(r.quantityDelta) > 0 ? '+' : ''}
                   {fmt(r.quantityDelta)}
                 </td>
-                <td>{fmt(r.resultingBalance)}</td>
+                <td className="inventory-number">{fmt(r.resultingBalance)}</td>
                 <td>{r.stockLocation.name}</td>
                 <td>{r.lot?.lotNumber || '—'}</td>
                 <td>
                   {r.user.firstName} {r.user.lastName}
                 </td>
-                <td>{r.reason}</td>
+                <td>{humanize(r.reason)}</td>
               </tr>
             ))}
+            {!shown.length && (
+              <tr>
+                <td colSpan={10}>
+                  <EmptyState
+                    title="No activity found"
+                    detail="Clear the search or choose a broader activity filter."
+                  />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -804,6 +1055,7 @@ function UsagePanel({
   metrics,
   items,
   onSaved,
+  onReviewInventory,
 }: {
   mappings: UsageMapping[];
   events: UsageEvent[];
@@ -811,11 +1063,17 @@ function UsagePanel({
   metrics: UsageMetrics;
   items: Item[];
   onSaved: () => Promise<void>;
+  onReviewInventory: (itemId?: string) => void;
 }) {
-  const [view, setView] = useState<'Review Queue' | 'Mappings' | 'Reservations' | 'History'>(
-    'Review Queue',
+  const [view, setView] = useState<
+    'Needs Review' | 'Mappings' | 'Reservations' | 'Usage History' | 'Lot Traceability'
+  >(
+    events.some((event) => ['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(event.status))
+      ? 'Needs Review'
+      : 'Mappings',
   );
   const [creating, setCreating] = useState(false);
+  const [mappingSource, setMappingSource] = useState<UsageEvent | null>(null);
   const [error, setError] = useState('');
   return (
     <section className="inventory__panel">
@@ -838,7 +1096,9 @@ function UsagePanel({
         <Metric label="Recent Reversals" value={metrics.recentReversals} />
       </div>
       <div className="inventory__views">
-        {(['Review Queue', 'Mappings', 'Reservations', 'History'] as const).map((name) => (
+        {(
+          ['Needs Review', 'Mappings', 'Reservations', 'Usage History', 'Lot Traceability'] as const
+        ).map((name) => (
           <button
             key={name}
             className={view === name ? 'is-active' : ''}
@@ -849,38 +1109,80 @@ function UsagePanel({
         ))}
       </div>
       {error && <div className="inventory__error">{error}</div>}
-      {view === 'Review Queue' &&
+      {view === 'Needs Review' &&
         events
           .filter((event) => ['NEEDS_REVIEW', 'FAILED', 'PENDING'].includes(event.status))
-          .map((event) => (
-            <article className="lot" key={event.id}>
-              <strong>
-                {event.eventType.replaceAll('_', ' ')} · {event.status.replaceAll('_', ' ')}
-              </strong>
-              <span>
-                {event.sourceRecordType} · {event.sourceRecordId}
-              </span>
-              <small>
-                {event.failureCode?.replaceAll('_', ' ') ?? 'Pending'} —{' '}
-                {event.failureMessage ?? 'Awaiting posting'}
-              </small>
-              <button
-                className="button-secondary"
-                onClick={async () => {
-                  const response = await fetch(`/api/inventory/usage/events/${event.id}/retry`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ idempotencyKey: crypto.randomUUID(), lines: [] }),
-                  });
-                  if (!response.ok)
-                    setError((await response.json()).message ?? 'Unable to retry usage');
-                  else await onSaved();
-                }}
-              >
-                Retry Posting
-              </button>
-            </article>
-          ))}
+          .map((event) => {
+            const missingMapping = event.failureCode === 'NO_USAGE_MAPPING';
+            const insufficientStock = event.failureCode === 'INSUFFICIENT_STOCK';
+            const sourceType = event.sourceRecordType
+              .replace(/^fixture/i, '')
+              .replace(/record$/i, '');
+            return (
+              <article className="lot usage-review-card" key={event.id}>
+                <div className="usage-review-card__heading">
+                  <strong>{humanize(event.eventType)}</strong>
+                  <InventoryStatus value={event.status} />
+                </div>
+                <span>
+                  {humanize(sourceType || 'Clinical')} record
+                  {!event.sourceRecordId.toLowerCase().startsWith('fixture-')
+                    ? ` · ${event.sourceRecordId}`
+                    : ''}
+                </span>
+                <small>
+                  <strong>{humanize(event.failureCode ?? 'Pending')}</strong> —{' '}
+                  {event.failureMessage ?? 'Awaiting posting'}
+                </small>
+                <div className="usage-review-card__actions">
+                  {missingMapping && (
+                    <button
+                      className="button-primary"
+                      onClick={() => {
+                        setMappingSource(event);
+                        setCreating(true);
+                      }}
+                    >
+                      Create usage mapping
+                    </button>
+                  )}
+                  {insufficientStock && (
+                    <button
+                      className="button-primary"
+                      onClick={() =>
+                        onReviewInventory(event.mappingSnapshot?.components?.[0]?.itemId)
+                      }
+                    >
+                      Review inventory
+                    </button>
+                  )}
+                  {!missingMapping && !insufficientStock && (
+                    <button
+                      className="button-secondary"
+                      onClick={async () => {
+                        const response = await fetch(
+                          `/api/inventory/usage/events/${event.id}/retry`,
+                          {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              idempotencyKey: crypto.randomUUID(),
+                              lines: [],
+                            }),
+                          },
+                        );
+                        if (!response.ok)
+                          setError((await response.json()).message ?? 'Unable to retry usage');
+                        else await onSaved();
+                      }}
+                    >
+                      Retry posting
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
       {view === 'Mappings' &&
         mappings.map((mapping) => (
           <article className="lot" key={mapping.id}>
@@ -963,7 +1265,7 @@ function UsagePanel({
             </article>
           );
         })}
-      {view === 'History' && (
+      {view === 'Usage History' && (
         <div className="inventory__table-wrap">
           <table>
             <thead>
@@ -983,8 +1285,10 @@ function UsagePanel({
                   <td>
                     {event.sourceRecordType} · {event.sourceRecordId}
                   </td>
-                  <td>{event.eventType.replaceAll('_', ' ')}</td>
-                  <td>{event.status.replaceAll('_', ' ')}</td>
+                  <td>{humanize(event.eventType)}</td>
+                  <td>
+                    <InventoryStatus value={event.status} />
+                  </td>
                   <td>{event.lines.length}</td>
                   <td>{event.patientId ?? '—'}</td>
                 </tr>
@@ -993,10 +1297,48 @@ function UsagePanel({
           </table>
         </div>
       )}
+      {view === 'Lot Traceability' && (
+        <div>
+          <p>
+            Choose a tracked lot from an item record to review the clinical source, patient, and
+            deduction history tied to it.
+          </p>
+          {items.flatMap((item) =>
+            item.lots.map((lot) => (
+              <article className="lot" key={lot.id}>
+                <strong>{item.name}</strong>
+                <span>{lot.lotNumber ? `Lot ${lot.lotNumber}` : 'Lot number not recorded'}</span>
+                <small>
+                  {lot.stockLocation.name} · {fmt(lot.quantity)} on hand ·{' '}
+                  {lot.expirationDate
+                    ? `expires ${new Date(lot.expirationDate).toLocaleDateString()}`
+                    : 'no expiration recorded'}
+                </small>
+                <a className="button-secondary" href={`/api/inventory/usage/lots/${lot.id}/export`}>
+                  Export trace
+                </a>
+              </article>
+            )),
+          )}
+          {!items.some((item) => item.lots.length) && (
+            <EmptyState
+              title="No tracked lots"
+              detail="Lots will appear here after lot-tracked inventory is received."
+            />
+          )}
+        </div>
+      )}
       {creating && (
-        <Modal title="Create usage mapping" onClose={() => setCreating(false)}>
+        <Modal
+          title="Create usage mapping"
+          className="inventory-modal--usage-mapping"
+          onClose={() => {
+            setCreating(false);
+            setMappingSource(null);
+          }}
+        >
           <form
-            className="inventory__form"
+            className="inventory-form usage-mapping-form"
             onSubmit={async (event) => {
               event.preventDefault();
               const form = new FormData(event.currentTarget);
@@ -1037,13 +1379,32 @@ function UsagePanel({
               await onSaved();
             }}
           >
+            <p className="usage-mapping-form__intro form-wide">
+              Connect a clinical or retail action to the physical inventory it consumes. The mapping
+              activates after review.
+            </p>
+            <h3>Source action</h3>
             <label>
-              Source action
-              <input name="sourceReference" placeholder="e.g. SNAP 4Dx Plus" required />
+              Action name
+              <input
+                name="sourceReference"
+                placeholder="e.g. SNAP 4Dx Plus"
+                defaultValue={mappingSource ? humanize(mappingSource.eventType) : ''}
+                required
+              />
             </label>
             <label>
               Source type
-              <select name="sourceType">
+              <select
+                name="sourceType"
+                defaultValue={
+                  mappingSource?.eventType.includes('LAB_TEST')
+                    ? 'LAB_TEST'
+                    : mappingSource?.eventType.includes('PROCEDURE')
+                      ? 'PROCEDURE'
+                      : 'MEDICATION'
+                }
+              >
                 {[
                   'MEDICATION',
                   'VACCINE',
@@ -1055,10 +1416,13 @@ function UsagePanel({
                   'SERVICE',
                   'BUNDLE',
                 ].map((value) => (
-                  <option key={value}>{value}</option>
+                  <option key={value} value={value}>
+                    {humanize(value)}
+                  </option>
                 ))}
               </select>
             </label>
+            <h3>Inventory deduction</h3>
             <label>
               Physical component
               <select name="itemId" required>
@@ -1072,12 +1436,12 @@ function UsagePanel({
               </select>
             </label>
             <label>
-              Quantity
+              Quantity consumed
               <input name="quantity" type="number" min="0.000001" step="any" required />
             </label>
             <label>
               Deduction event
-              <select name="deductionEvent">
+              <select name="deductionEvent" defaultValue={mappingSource?.eventType}>
                 <option value="MEDICATION_ADMINISTERED">Medication administered</option>
                 <option value="PRESCRIPTION_DISPENSED">Prescription dispensed</option>
                 <option value="VACCINE_ADMINISTERED">Vaccine administered</option>
@@ -1086,29 +1450,36 @@ function UsagePanel({
                 <option value="RETAIL_SALE_FINALIZED">Retail sale finalized</option>
               </select>
             </label>
-            <details>
-              <summary>Reservation and lot selection</summary>
-              <label>
-                Reservation behavior
-                <select name="reservationBehavior">
-                  <option value="OFF">Off</option>
-                  <option value="WHEN_ORDERED">When ordered</option>
-                  <option value="WHEN_APPROVED">When approved</option>
-                  <option value="WHEN_PREPARED">When prepared</option>
-                  <option value="MANUAL">Manual</option>
-                </select>
-              </label>
-              <label>
-                Lot selection
-                <select name="lotSelectionPolicy">
-                  <option value="FEFO">First expiring, first out</option>
-                  <option value="FIFO">First received, first out</option>
-                  <option value="MANUAL">Manual</option>
-                  <option value="LOCATION_PRIORITY">Location priority</option>
-                </select>
-              </label>
+            <details className="usage-mapping-form__advanced form-wide">
+              <summary>Advanced reservation and lot settings</summary>
+              <div>
+                <label>
+                  Reservation behavior
+                  <select name="reservationBehavior">
+                    <option value="OFF">Off</option>
+                    <option value="WHEN_ORDERED">When ordered</option>
+                    <option value="WHEN_APPROVED">When approved</option>
+                    <option value="WHEN_PREPARED">When prepared</option>
+                    <option value="MANUAL">Manual</option>
+                  </select>
+                </label>
+                <label>
+                  Lot selection
+                  <select name="lotSelectionPolicy">
+                    <option value="FEFO">First expiring, first out</option>
+                    <option value="FIFO">First received, first out</option>
+                    <option value="MANUAL">Manual</option>
+                    <option value="LOCATION_PRIORITY">Location priority</option>
+                  </select>
+                </label>
+              </div>
             </details>
-            <button className="button-primary">Review & Activate</button>
+            <footer className="usage-mapping-form__footer">
+              <button type="button" onClick={() => setCreating(false)}>
+                Cancel
+              </button>
+              <button className="button-primary">Review & activate</button>
+            </footer>
           </form>
         </Modal>
       )}
@@ -1718,11 +2089,9 @@ function ControlledEventEditor({
 }
 function CountsPanel({
   counts,
-  onStart,
   onOpen,
 }: {
   counts: CountSummary[];
-  onStart: () => void;
   onOpen: (count: CountSummary) => void;
 }) {
   const [view, setView] = useState('Active Counts');
@@ -1742,55 +2111,73 @@ function CountsPanel({
           <h2>Inventory Counts</h2>
           <p>Frozen physical counts with reconciliation against ongoing ledger activity.</p>
         </div>
-        <button className="button-primary" onClick={onStart}>
-          Start Count
-        </button>
       </div>
       <div className="inventory__views">
-        {['Active Counts', 'Needs Review', 'Completed', 'Templates'].map((v) => (
+        {['Active Counts', 'Needs Review', 'Completed'].map((v) => (
           <button key={v} className={view === v ? 'is-active' : ''} onClick={() => setView(v)}>
             {v}
           </button>
         ))}
       </div>
-      {view === 'Templates' ? (
-        <p>
-          Reusable templates are available through the count-template API; template editing is the
-          next UI refinement.
-        </p>
-      ) : (
-        <div className="inventory__table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Count</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Recounts</th>
-                <th>Started</th>
+      <div className="inventory__table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Count</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Progress</th>
+              <th>Recounts</th>
+              <th>Started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((c) => (
+              <tr
+                key={c.id}
+                tabIndex={0}
+                onClick={() => onOpen(c)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') onOpen(c);
+                }}
+              >
+                <td>
+                  <strong>{c.number}</strong>
+                  {c.blindCount && <span className="inventory-tag">Blind count</span>}
+                </td>
+                <td>{humanize(c.countType)}</td>
+                <td>
+                  <InventoryStatus value={c.status} />
+                </td>
+                <td>
+                  <span>
+                    {c.progress.counted} of {c.progress.total}
+                  </span>
+                  <span className="inventory-progress">
+                    <span
+                      style={{
+                        width: `${c.progress.total ? (c.progress.counted / c.progress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </span>
+                </td>
+                <td>{c.progress.recounts}</td>
+                <td>{c.startedAt ? new Date(c.startedAt).toLocaleString() : 'Not started'}</td>
               </tr>
-            </thead>
-            <tbody>
-              {shown.map((c) => (
-                <tr key={c.id} onClick={() => onOpen(c)}>
-                  <td>
-                    <strong>{c.number}</strong>
-                    {c.blindCount && <small>Blind count</small>}
-                  </td>
-                  <td>{c.countType}</td>
-                  <td>{c.status.replaceAll('_', ' ')}</td>
-                  <td>
-                    {c.progress.counted}/{c.progress.total}
-                  </td>
-                  <td>{c.progress.recounts}</td>
-                  <td>{c.startedAt ? new Date(c.startedAt).toLocaleString() : 'Not started'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+            {!shown.length && (
+              <tr>
+                <td colSpan={6}>
+                  <EmptyState
+                    title={`No ${view.toLowerCase()}`}
+                    detail="Counts will appear here as they move through reconciliation."
+                  />
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -2101,7 +2488,7 @@ function CountLineRow({
     </tr>
   );
 }
-function VendorsPanel({ vendors, onAdd }: { vendors: Vendor[]; onAdd: () => void }) {
+function VendorsPanel({ vendors }: { vendors: Vendor[] }) {
   return (
     <section className="inventory__panel">
       <div className="inventory__section-heading">
@@ -2109,9 +2496,6 @@ function VendorsPanel({ vendors, onAdd }: { vendors: Vendor[]; onAdd: () => void
           <h2>Vendors</h2>
           <p>Suppliers and item package mappings.</p>
         </div>
-        <button className="button-primary" onClick={onAdd}>
-          Add Vendor
-        </button>
       </div>
       <div className="inventory__table-wrap">
         <table>
@@ -2131,9 +2515,21 @@ function VendorsPanel({ vendors, onAdd }: { vendors: Vendor[]; onAdd: () => void
                 </td>
                 <td>{v.contactName || v.email || v.phone || '—'}</td>
                 <td>{v.items.length}</td>
-                <td>{v.archivedAt ? 'Archived' : 'Active'}</td>
+                <td>
+                  <InventoryStatus value={v.archivedAt ? 'ARCHIVED' : 'ACTIVE'} />
+                </td>
               </tr>
             ))}
+            {!vendors.length && (
+              <tr>
+                <td colSpan={4}>
+                  <EmptyState
+                    title="No vendors found"
+                    detail="Add a vendor to connect purchasing contacts and package mappings."
+                  />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -2181,10 +2577,14 @@ function OrdersPanel({
                   <strong>{o.number}</strong>
                 </td>
                 <td>{o.vendor.name}</td>
-                <td>{o.status.replaceAll('_', ' ')}</td>
+                <td>
+                  <InventoryStatus value={o.status} />
+                </td>
                 <td>{o.expectedDate ? new Date(o.expectedDate).toLocaleDateString() : '—'}</td>
                 <td>{o.lines.length}</td>
-                <td>{o.lines.reduce((n, l) => n + Number(l.outstandingQuantity), 0)}</td>
+                <td className="inventory-number">
+                  {o.lines.reduce((n, l) => n + Number(l.outstandingQuantity), 0)}
+                </td>
                 <td>
                   {o.status === 'DRAFT' && (
                     <button onClick={() => void transition(o, 'SUBMIT')}>Submit</button>
@@ -2201,6 +2601,16 @@ function OrdersPanel({
                 </td>
               </tr>
             ))}
+            {!orders.length && (
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState
+                    title="No purchase orders found"
+                    detail="Create a purchase order or clear the purchasing search."
+                  />
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -2778,27 +3188,49 @@ function Modal({
   title,
   onClose,
   children,
+  className = '',
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  className?: string;
 }) {
-  return (
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+  const modal = (
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <section className="inventory-modal">
+      <section
+        className={`inventory-modal ${className}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="inventory-modal-title"
+      >
         <header>
-          <h2>{title}</h2>
-          <button onClick={onClose}>×</button>
+          <h2 id="inventory-modal-title">{title}</h2>
+          <button onClick={onClose} aria-label={`Close ${title}`}>
+            ×
+          </button>
         </header>
         {children}
       </section>
     </div>
   );
+  return createPortal(modal, document.body);
 }
 function ItemEditor({
   mode,
@@ -2900,8 +3332,13 @@ function ItemEditor({
     <Modal
       title={mode === 'edit' ? 'Edit Item' : mode === 'duplicate' ? 'Duplicate Item' : 'Add Item'}
       onClose={close}
+      className="inventory-modal--item-editor"
     >
       <form className="inventory-form" onChange={() => setDirty(true)} onSubmit={submit}>
+        <p className="item-editor__intro form-wide">
+          Add the essential item details first. Stock controls and unit conversions can be refined
+          here or from the item record later.
+        </p>
         {formError && <div className="inventory__error form-wide">{formError}</div>}
         <h3>Basics</h3>
         <label>
@@ -2921,7 +3358,9 @@ function ItemEditor({
               'FOOD',
               'OTHER',
             ].map((v) => (
-              <option key={v}>{v}</option>
+              <option key={v} value={v}>
+                {humanize(v)}
+              </option>
             ))}
           </select>
         </label>
@@ -2958,12 +3397,14 @@ function ItemEditor({
               <input name="therapeuticClass" defaultValue={item?.therapeuticClass ?? ''} />
             </label>
             <label>
-              Species, comma separated
+              Species
               <input name="species" defaultValue={item?.species.join(', ')} />
+              <small>Separate multiple species with commas.</small>
             </label>
             <label>
-              Tags, comma separated
+              Tags
               <input name="tags" defaultValue={item?.tags.join(', ')} />
+              <small>Separate multiple tags with commas.</small>
             </label>
             {type === 'MEDICATION' && (
               <>
@@ -2983,7 +3424,7 @@ function ItemEditor({
             )}
           </>
         )}
-        <h3>Billing and units</h3>
+        <h3>Billing and unit conversion</h3>
         <label className="check">
           <input type="checkbox" name="billable" defaultChecked={item?.billable} /> Billable
         </label>
@@ -3057,7 +3498,8 @@ function ItemEditor({
           Internal notes
           <textarea name="internalNotes" defaultValue={item?.internalNotes ?? ''} />
         </label>
-        <footer>
+        <footer className="item-editor__footer">
+          <span>Required fields are marked by your browser.</span>
           <button type="button" onClick={close}>
             Cancel
           </button>

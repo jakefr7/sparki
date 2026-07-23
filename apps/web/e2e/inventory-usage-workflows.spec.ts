@@ -27,7 +27,7 @@ test('creates a clinical usage mapping and exposes review queue destinations', a
     await page.getByLabel('Physical component').selectOption({ label: 'Carprofen 75 mg tablets' });
     await page.getByLabel('Quantity').fill('1');
     await page.getByLabel('Deduction event').selectOption('VACCINE_ADMINISTERED');
-    await page.getByRole('button', { name: 'Review & Activate' }).click();
+    await page.getByRole('button', { name: 'Review & activate' }).click();
     await expect(page.getByRole('heading', { name: 'Create usage mapping' })).toBeHidden();
     await page.getByRole('button', { name: 'Mappings', exact: true }).click();
     await expect(page.getByText(new RegExp(sourceReference))).toBeVisible();
@@ -38,7 +38,7 @@ test('creates a clinical usage mapping and exposes review queue destinations', a
     createdId = mappings.find((mapping) => mapping.sourceReference === sourceReference)?.id;
     expect(createdId).toBeTruthy();
 
-    await page.getByRole('button', { name: 'Review Queue', exact: true }).click();
+    await page.getByRole('button', { name: 'Needs Review', exact: true }).click();
     await expect(page.getByText(/NO USAGE MAPPING|No active usage mapping exists/i)).toBeVisible();
   } finally {
     if (createdId) await request.post(`${API_URL}/inventory/usage/mappings/${createdId}/archive`);

@@ -4,7 +4,13 @@ const API_URL = process.env.API_URL ?? 'http://localhost:4000';
 
 test('edits an existing item and opens duplication as an unpersisted copy', async ({ page, request }) => {
   test.setTimeout(60_000);
-  await page.context().addCookies([{ name: 'sparki_session', value: 'development-e2e', url: 'http://127.0.0.1:3001' }]);
+  await page.context().addCookies([
+    {
+      name: 'sparki_session',
+      value: 'development-e2e',
+      url: `http://127.0.0.1:${process.env.WEB_PORT ?? '3001'}`,
+    },
+  ]);
   const listResponse = await request.get(`${API_URL}/inventory/items?search=Carprofen%2075`);
   expect(listResponse.ok()).toBe(true);
   const [original] = (await listResponse.json()) as Array<{ id: string; description: string | null }>;

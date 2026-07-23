@@ -33,6 +33,12 @@ const scopedInclude = (locationId: string) =>
     },
     documents: true,
     transactions: { where: { clinicLocationId: locationId } },
+    countLines: {
+      where: { session: { clinicLocationId: locationId, status: 'POSTED' } },
+      include: { session: { select: { id: true, number: true, postedAt: true } } },
+      orderBy: { updatedAt: 'desc' as const },
+      take: 10,
+    },
   }) as const;
 const money = (value: string | null | undefined) =>
   value == null || value === '' ? null : new Prisma.Decimal(value);
@@ -106,6 +112,88 @@ export class InventoryService {
         createdAt: { gte: new Date(now.getTime() - 7 * 86400000) },
       },
     });
+    const [openOrders, pendingApproval, partiallyReceived, overdueDeliveries, receiptIssues] =
+      await Promise.all([
+        prisma.purchaseOrder.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: { in: ['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'] },
+          },
+        }),
+        prisma.purchaseOrder.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: 'PENDING_APPROVAL',
+          },
+        }),
+        prisma.purchaseOrder.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: 'PARTIALLY_RECEIVED',
+          },
+        }),
+        prisma.purchaseOrder.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: { in: ['ORDERED', 'PARTIALLY_RECEIVED'] },
+            expectedDate: { lt: now },
+          },
+        }),
+        prisma.inventoryReceiptLine.count({
+          where: {
+            receipt: { organizationId: user.organizationId, clinicLocationId: user.locationId },
+            OR: [{ rejectedQuantity: { gt: 0 } }, { quarantinedQuantity: { gt: 0 } }],
+          },
+        }),
+      ]);
+    const [activeCounts, countsAwaitingReview, recountsRequired, unresolvedVariances, lastFull] =
+      await Promise.all([
+        prisma.inventoryCountSession.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: { in: ['DRAFT', 'IN_PROGRESS'] },
+          },
+        }),
+        prisma.inventoryCountSession.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: { in: ['SUBMITTED', 'APPROVED'] },
+          },
+        }),
+        prisma.inventoryCountSession.count({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            status: 'RECOUNT_REQUIRED',
+          },
+        }),
+        prisma.inventoryCountLine.count({
+          where: {
+            session: {
+              organizationId: user.organizationId,
+              clinicLocationId: user.locationId,
+              status: { in: ['SUBMITTED', 'RECOUNT_REQUIRED'] },
+            },
+            varianceQuantity: { not: 0 },
+          },
+        }),
+        prisma.inventoryCountSession.findFirst({
+          where: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            countType: 'FULL',
+            status: 'POSTED',
+          },
+          orderBy: { postedAt: 'desc' },
+          select: { postedAt: true },
+        }),
+      ]);
     return {
       metrics: {
         needsAttention: attention.length,
@@ -114,8 +202,18 @@ export class InventoryService {
           .length,
         totalActiveItems: items.filter((i) => i.status === 'ACTIVE').length,
         recentAdjustments: recent,
+        openOrders,
+        pendingApproval,
+        partiallyReceived,
+        overdueDeliveries,
+        receiptIssues,
+        activeCounts,
+        countsAwaitingReview,
+        recountsRequired,
+        unresolvedVariances,
       },
       attention,
+      lastFullCountDate: lastFull?.postedAt ?? null,
     };
   }
 
@@ -507,6 +605,8 @@ export class InventoryService {
       nextExpiration: next ?? null,
       primaryLocation: item.balances[0]?.stockLocation.name ?? null,
       attention,
+      countHistory: item.countLines,
+      lastCount: item.countLines[0] ?? null,
       permissions: {
         canEdit: canInventory(user, 'EDIT_ITEMS'),
         canArchive: canInventory(user, 'ARCHIVE'),

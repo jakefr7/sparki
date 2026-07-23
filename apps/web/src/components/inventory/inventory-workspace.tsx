@@ -63,6 +63,13 @@ type Item = {
     stockLocation: { name: string };
   }>;
   documents: Array<{ id: string; name: string; type: string; url: string }>;
+  countHistory?: Array<{
+    id: string;
+    finalCountedQuantity: string | null;
+    expectedQuantitySnapshot: string;
+    varianceQuantity: string | null;
+    session: { id: string; number: string; postedAt: string | null };
+  }>;
 };
 type Location = { id: string; name: string; parentId: string | null };
 type Activity = {
@@ -78,6 +85,66 @@ type Activity = {
   lot: { lotNumber: string | null } | null;
   user: { firstName: string; lastName: string };
 };
+type Vendor = {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  archivedAt: string | null;
+  items: Array<{
+    id: string;
+    purchaseUnit: string;
+    packageCost?: string | null;
+    item: { name: string };
+  }>;
+};
+type Order = {
+  id: string;
+  number: string;
+  status: string;
+  expectedDate: string | null;
+  vendor: { name: string };
+  lines: Array<{
+    id: string;
+    itemId: string;
+    itemNameSnapshot: string;
+    orderedQuantity: string;
+    receivedQuantity: string;
+    outstandingQuantity: string;
+    purchaseUnitSnapshot: string;
+    stockUnitSnapshot: string;
+    conversionSnapshot: string;
+  }>;
+};
+type CountSummary = {
+  id: string;
+  number: string;
+  countType: string;
+  status: string;
+  blindCount: boolean;
+  startedAt: string | null;
+  progress: { total: number; counted: number; recounts: number };
+  permissions: { canStart: boolean; canApprove: boolean; canPost: boolean };
+};
+type CountLine = {
+  id: string;
+  itemNameSnapshot: string;
+  skuSnapshot: string | null;
+  baseUnitSnapshot: string;
+  lotNumberSnapshot: string | null;
+  expectedQuantitySnapshot?: string;
+  finalCountedQuantity: string | null;
+  varianceQuantity?: string;
+  status: string;
+  recountRequired: boolean;
+  item: { barcodes: Array<{ value: string }> };
+};
+type CountDetail = CountSummary & {
+  requireAllLines: boolean;
+  lines: CountLine[];
+  assignments: unknown[];
+};
 const tabs = [
   'Overview',
   'Items',
@@ -87,7 +154,7 @@ const tabs = [
   'Vendors',
   'Activity',
 ] as const;
-const later = new Set(['Orders', 'Counts', 'Controlled', 'Vendors']);
+const later = new Set(['Controlled']);
 const fmt = (n: string | null) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
@@ -96,22 +163,42 @@ export function InventoryWorkspace() {
   const [items, setItems] = useState<Item[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [activity, setActivity] = useState<Activity[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [counts, setCounts] = useState<CountSummary[]>([]);
+  const [activeCount, setActiveCount] = useState<CountDetail | null>(null);
   const [overview, setOverview] = useState<{
     metrics: Record<string, number>;
     attention: Array<{ itemId: string; itemName: string; message: string }>;
   } | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Item | null>(null);
-  const [modal, setModal] = useState<'add' | 'edit' | 'duplicate' | 'adjust' | 'scan' | null>(null);
+  const [modal, setModal] = useState<
+    | 'add'
+    | 'edit'
+    | 'duplicate'
+    | 'adjust'
+    | 'scan'
+    | 'vendor'
+    | 'order'
+    | 'receive'
+    | 'transfer'
+    | 'count'
+    | null
+  >(null);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     const q = new URLSearchParams();
     if (search) q.set('search', search);
-    const [i, o, l, a] = await Promise.all([
+    const [i, o, l, a, v, p, c] = await Promise.all([
       fetch(`/api/inventory/items?${q}`),
       fetch('/api/inventory/overview'),
       fetch('/api/inventory/locations'),
       fetch('/api/inventory/activity'),
+      fetch('/api/inventory/vendors'),
+      fetch('/api/inventory/orders'),
+      fetch('/api/inventory/counts'),
     ]);
     if (i.ok) {
       const next: Item[] = await i.json();
@@ -123,6 +210,9 @@ export function InventoryWorkspace() {
     if (o.ok) setOverview(await o.json());
     if (l.ok) setLocations(await l.json());
     if (a.ok) setActivity(await a.json());
+    if (v.ok) setVendors(await v.json());
+    if (p.ok) setOrders(await p.json());
+    if (c.ok) setCounts(await c.json());
   }, [search]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 180);
@@ -154,13 +244,24 @@ export function InventoryWorkspace() {
         <select aria-label="Clinic location">
           <option>Current clinic</option>
         </select>
-        <button onClick={() => setModal('scan')}>Scan</button>
+        <button
+          onClick={() =>
+            activeCount
+              ? document.querySelector<HTMLInputElement>('[data-count-scan]')?.focus()
+              : setModal('scan')
+          }
+        >
+          Scan Item
+        </button>
         <button className="button-primary" onClick={() => setModal('add')}>
           Add Item
         </button>
         <button className="button-primary" onClick={() => setModal('adjust')}>
           Adjust Stock
         </button>
+        <button onClick={() => setModal('order')}>New Purchase Order</button>
+        <button onClick={() => setModal('receive')}>Receive Inventory</button>
+        <button onClick={() => setModal('transfer')}>Transfer Stock</button>
       </div>
       {error && <div className="inventory__error">{error}</div>}
       {later.has(tab) && (
@@ -177,6 +278,15 @@ export function InventoryWorkspace() {
             <Metric label="Expiring Soon" value={metrics?.expiringSoon} />
             <Metric label="Total Active Items" value={metrics?.totalActiveItems} />
             <Metric label="Recent Adjustments" value={metrics?.recentAdjustments} />
+            <Metric label="Open Orders" value={metrics?.openOrders} />
+            <Metric label="Pending Approval" value={metrics?.pendingApproval} />
+            <Metric label="Partially Received" value={metrics?.partiallyReceived} />
+            <Metric label="Overdue Deliveries" value={metrics?.overdueDeliveries} />
+            <Metric label="Receipt Issues" value={metrics?.receiptIssues} />
+            <Metric label="Active Counts" value={metrics?.activeCounts} />
+            <Metric label="Awaiting Review" value={metrics?.countsAwaitingReview} />
+            <Metric label="Recounts Required" value={metrics?.recountsRequired} />
+            <Metric label="Unresolved Variances" value={metrics?.unresolvedVariances} />
           </div>
           <section className="inventory__panel">
             <h2>Needs Attention</h2>
@@ -205,6 +315,38 @@ export function InventoryWorkspace() {
         </>
       )}
       {tab === 'Items' && <ItemsTable items={items} onSelect={setSelected} />}
+      {tab === 'Vendors' && <VendorsPanel vendors={vendors} onAdd={() => setModal('vendor')} />}
+      {tab === 'Orders' && (
+        <OrdersPanel
+          orders={orders}
+          onReceive={(order) => {
+            setActiveOrder(order);
+            setModal('receive');
+          }}
+          onChanged={load}
+        />
+      )}
+      {tab === 'Counts' &&
+        (activeCount ? (
+          <CountWorkspace
+            count={activeCount}
+            onRefresh={async () => {
+              const r = await fetch(`/api/inventory/counts/${activeCount.id}`);
+              if (r.ok) setActiveCount(await r.json());
+              await load();
+            }}
+            onExit={() => setActiveCount(null)}
+          />
+        ) : (
+          <CountsPanel
+            counts={counts}
+            onStart={() => setModal('count')}
+            onOpen={async (c) => {
+              const r = await fetch(`/api/inventory/counts/${c.id}`);
+              if (r.ok) setActiveCount(await r.json());
+            }}
+          />
+        ))}
       {tab === 'Activity' && <ActivityTable rows={activity} />}
       {selected && (
         <ItemDrawer
@@ -243,8 +385,8 @@ export function InventoryWorkspace() {
       {modal === 'scan' && (
         <Modal title="Scan item" onClose={() => setModal(null)}>
           <p>
-            Camera barcode scanning is planned for a later inventory pass. You can search a barcode
-            in the search field now.
+            USB and Bluetooth scanners that send keyboard input are supported inside an active
+            count. Camera scanning is not implemented.
           </p>
         </Modal>
       )}
@@ -276,6 +418,49 @@ export function InventoryWorkspace() {
           onClose={() => setModal(null)}
           onSaved={load}
           onError={setError}
+        />
+      )}
+      {modal === 'vendor' && (
+        <VendorEditor items={items} onClose={() => setModal(null)} onSaved={load} />
+      )}
+      {modal === 'order' && (
+        <OrderEditor
+          vendors={vendors}
+          items={items}
+          onClose={() => setModal(null)}
+          onSaved={load}
+        />
+      )}
+      {modal === 'receive' && (
+        <ReceiveEditor
+          order={activeOrder}
+          vendors={vendors}
+          items={items}
+          locations={locations}
+          onClose={() => {
+            setModal(null);
+            setActiveOrder(null);
+          }}
+          onSaved={load}
+        />
+      )}
+      {modal === 'transfer' && (
+        <TransferEditor
+          items={items}
+          locations={locations}
+          onClose={() => setModal(null)}
+          onSaved={load}
+        />
+      )}
+      {modal === 'count' && (
+        <StartCount
+          locations={locations}
+          onClose={() => setModal(null)}
+          onStarted={async (id) => {
+            await load();
+            const r = await fetch(`/api/inventory/counts/${id}`);
+            if (r.ok) setActiveCount(await r.json());
+          }}
         />
       )}
     </div>
@@ -415,6 +600,911 @@ function ActivityTable({ rows }: { rows: Activity[] }) {
     </section>
   );
 }
+function CountsPanel({
+  counts,
+  onStart,
+  onOpen,
+}: {
+  counts: CountSummary[];
+  onStart: () => void;
+  onOpen: (count: CountSummary) => void;
+}) {
+  const [view, setView] = useState('Active Counts');
+  const shown = counts.filter((c) =>
+    view === 'Active Counts'
+      ? ['DRAFT', 'IN_PROGRESS'].includes(c.status)
+      : view === 'Needs Review'
+        ? ['SUBMITTED', 'RECOUNT_REQUIRED', 'APPROVED'].includes(c.status)
+        : view === 'Completed'
+          ? ['POSTED', 'CANCELLED'].includes(c.status)
+          : false,
+  );
+  return (
+    <section className="inventory__panel">
+      <div className="inventory__section-heading">
+        <div>
+          <h2>Inventory Counts</h2>
+          <p>Frozen physical counts with reconciliation against ongoing ledger activity.</p>
+        </div>
+        <button className="button-primary" onClick={onStart}>
+          Start Count
+        </button>
+      </div>
+      <div className="inventory__views">
+        {['Active Counts', 'Needs Review', 'Completed', 'Templates'].map((v) => (
+          <button key={v} className={view === v ? 'is-active' : ''} onClick={() => setView(v)}>
+            {v}
+          </button>
+        ))}
+      </div>
+      {view === 'Templates' ? (
+        <p>
+          Reusable templates are available through the count-template API; template editing is the
+          next UI refinement.
+        </p>
+      ) : (
+        <div className="inventory__table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Count</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Recounts</th>
+                <th>Started</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((c) => (
+                <tr key={c.id} onClick={() => onOpen(c)}>
+                  <td>
+                    <strong>{c.number}</strong>
+                    {c.blindCount && <small>Blind count</small>}
+                  </td>
+                  <td>{c.countType}</td>
+                  <td>{c.status.replaceAll('_', ' ')}</td>
+                  <td>
+                    {c.progress.counted}/{c.progress.total}
+                  </td>
+                  <td>{c.progress.recounts}</td>
+                  <td>{c.startedAt ? new Date(c.startedAt).toLocaleString() : 'Not started'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+function StartCount({
+  locations,
+  onClose,
+  onStarted,
+}: {
+  locations: Location[];
+  onClose: () => void;
+  onStarted: (id: string) => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  return (
+    <Modal title="Start inventory count" onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget),
+            type = String(f.get('countType')),
+            locationId = String(f.get('locationId') || '');
+          const r = await fetch('/api/inventory/counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              countType: type,
+              configuration: {
+                stockLocationIds: type === 'LOCATION' && locationId ? [locationId] : [],
+                itemIds: [],
+                itemTypes: [],
+                routes: [],
+                therapeuticClasses: [],
+                tags: [],
+                lotIds: [],
+                includeDescendants: f.get('descendants') === 'on',
+                includeZeroBalance: f.get('zero') === 'on',
+                includeQuarantined: f.get('quarantine') === 'on',
+              },
+              blindCount: f.get('blind') === 'on',
+              requireAllLines: true,
+              requireRecount: true,
+              varianceQuantityThreshold: String(f.get('quantityThreshold') || '2'),
+              variancePercentThreshold: String(f.get('percentThreshold') || '10'),
+              notes: f.get('notes') || null,
+              startImmediately: true,
+            }),
+          });
+          if (!r.ok) return setError((await r.json()).message || 'Unable to start count');
+          const count = await r.json();
+          await onStarted(count.id);
+          onClose();
+        }}
+      >
+        <label>
+          Count type
+          <select name="countType" required>
+            <option value="FULL">Full inventory</option>
+            <option value="LOCATION">Location</option>
+            <option value="CATEGORY">Category</option>
+            <option value="CYCLE">Cycle count</option>
+            <option value="LOT">Lot count</option>
+          </select>
+        </label>
+        <label>
+          Stock-location branch
+          <select name="locationId">
+            <option value="">All locations</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <input name="descendants" type="checkbox" defaultChecked /> Include descendant locations
+        </label>
+        <label>
+          <input name="blind" type="checkbox" /> Blind count
+        </label>
+        <label>
+          <input name="zero" type="checkbox" /> Include zero balances
+        </label>
+        <label>
+          <input name="quarantine" type="checkbox" /> Include quarantined lots
+        </label>
+        <label>
+          Recount quantity threshold
+          <input name="quantityThreshold" type="number" step="any" defaultValue="2" />
+        </label>
+        <label>
+          Recount percentage threshold
+          <input name="percentThreshold" type="number" step="any" defaultValue="10" />
+        </label>
+        <label>
+          Notes
+          <textarea name="notes" />
+        </label>
+        <p>Controlled inventory is excluded and must use the later compliance workflow.</p>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Freeze scope and start</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function CountWorkspace({
+  count,
+  onRefresh,
+  onExit,
+}: {
+  count: CountDetail;
+  onRefresh: () => Promise<void>;
+  onExit: () => void;
+}) {
+  const [scan, setScan] = useState(''),
+    [highlight, setHighlight] = useState(''),
+    [error, setError] = useState('');
+  const action = async (path: string, body?: unknown) => {
+    const r = await fetch(`/api/inventory/counts/${count.id}/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (!r.ok) {
+      setError((await r.json()).message || 'Count action failed');
+      return false;
+    }
+    await onRefresh();
+    return true;
+  };
+  const scanLookup = async () => {
+    if (!scan.trim()) return;
+    const r = await fetch(
+      `/api/inventory/counts/${count.id}/scan?query=${encodeURIComponent(scan.trim())}`,
+    );
+    if (!r.ok) return setError((await r.json()).message || 'Scan lookup failed');
+    const result = await r.json(),
+      matches = result.exact.length ? result.exact : result.matches;
+    if (matches.length === 1) {
+      setHighlight(matches[0].id);
+      document.querySelector<HTMLInputElement>(`[data-line="${matches[0].id}"]`)?.focus();
+      setScan('');
+    } else if (matches.length > 1)
+      setError('Multiple location or lot lines match. Choose the correct line below.');
+    else setError('Barcode, SKU, or item was not found in this frozen count scope.');
+  };
+  return (
+    <section className="inventory__panel">
+      <div className="inventory__section-heading">
+        <div>
+          <button onClick={onExit}>← Counts</button>
+          <h2>{count.number}</h2>
+          <p>
+            {count.countType} · {count.status.replaceAll('_', ' ')}{' '}
+            {count.blindCount ? '· Blind count' : ''}
+          </p>
+        </div>
+        <div className="inventory__actions">
+          {['IN_PROGRESS', 'RECOUNT_REQUIRED'].includes(count.status) && (
+            <button className="button-primary" onClick={() => void action('submit')}>
+              Submit Count
+            </button>
+          )}
+          {count.status === 'SUBMITTED' && count.permissions.canApprove && (
+            <button className="button-primary" onClick={() => void action('approve')}>
+              Approve
+            </button>
+          )}
+          {count.status === 'APPROVED' && count.permissions.canPost && (
+            <button
+              className="button-primary"
+              onClick={() => void action('post', { idempotencyKey: crypto.randomUUID() })}
+            >
+              Post Adjustments
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <div className="inventory__error">{error}</div>}
+      <form
+        className="inventory__search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void scanLookup();
+        }}
+      >
+        <span>Scan or search</span>
+        <input
+          data-count-scan
+          autoFocus
+          value={scan}
+          onChange={(e) => {
+            setScan(e.target.value);
+            setError('');
+          }}
+          placeholder="Scan barcode, enter SKU, or item name"
+        />
+        <button>Find</button>
+      </form>
+      <p>
+        {count.lines.filter((l) => l.finalCountedQuantity !== null).length} of {count.lines.length}{' '}
+        lines counted
+      </p>
+      <div className="inventory__table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Lot</th>
+              {count.lines.some((l) => l.expectedQuantitySnapshot !== undefined) && (
+                <th>Expected</th>
+              )}
+              <th>Counted</th>
+              <th>Variance</th>
+              <th>Status</th>
+              <th>Review</th>
+            </tr>
+          </thead>
+          <tbody>
+            {count.lines.map((line) => (
+              <CountLineRow
+                key={line.id}
+                count={count}
+                line={line}
+                highlighted={highlight === line.id}
+                onSaved={onRefresh}
+                onReview={(actionName) =>
+                  action(`lines/${line.id}/review`, {
+                    action: actionName,
+                    reason: actionName === 'EXCLUDE' ? 'Excluded during variance review' : null,
+                  })
+                }
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+function CountLineRow({
+  count,
+  line,
+  highlighted,
+  onSaved,
+  onReview,
+}: {
+  count: CountDetail;
+  line: CountLine;
+  highlighted: boolean;
+  onSaved: () => Promise<void>;
+  onReview: (a: 'ACCEPT' | 'EXCLUDE') => Promise<boolean>;
+}) {
+  const [quantity, setQuantity] = useState(line.finalCountedQuantity ?? ''),
+    [saving, setSaving] = useState(false);
+  return (
+    <tr className={highlighted ? 'is-selected' : ''}>
+      <td>
+        <strong>{line.itemNameSnapshot}</strong>
+        <small>
+          {line.skuSnapshot || 'No SKU'} · {line.baseUnitSnapshot}
+        </small>
+      </td>
+      <td>{line.lotNumberSnapshot || '—'}</td>
+      {line.expectedQuantitySnapshot !== undefined && <td>{fmt(line.expectedQuantitySnapshot)}</td>}
+      <td>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setSaving(true);
+            const r = await fetch(`/api/inventory/counts/${count.id}/lines/${line.id}/entries`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ quantity, method: 'MANUAL' }),
+            });
+            setSaving(false);
+            if (r.ok) await onSaved();
+          }}
+        >
+          <input
+            data-line={line.id}
+            inputMode="decimal"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            aria-label={`Count ${line.itemNameSnapshot}`}
+            required
+          />
+          <button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        </form>
+      </td>
+      <td>{line.varianceQuantity === undefined ? 'Hidden' : fmt(line.varianceQuantity)}</td>
+      <td>{line.status.replaceAll('_', ' ')}</td>
+      <td>
+        {['SUBMITTED', 'RECOUNT_REQUIRED'].includes(count.status) &&
+          count.permissions.canApprove && (
+            <>
+              <button onClick={() => void onReview('ACCEPT')}>Accept</button>
+              <button onClick={() => void onReview('EXCLUDE')}>Exclude</button>
+            </>
+          )}
+      </td>
+    </tr>
+  );
+}
+function VendorsPanel({ vendors, onAdd }: { vendors: Vendor[]; onAdd: () => void }) {
+  return (
+    <section className="inventory__panel">
+      <div className="inventory__section-heading">
+        <div>
+          <h2>Vendors</h2>
+          <p>Suppliers and item package mappings.</p>
+        </div>
+        <button className="button-primary" onClick={onAdd}>
+          Add Vendor
+        </button>
+      </div>
+      <div className="inventory__table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th>
+              <th>Contact</th>
+              <th>Mapped items</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendors.map((v) => (
+              <tr key={v.id}>
+                <td>
+                  <strong>{v.name}</strong>
+                </td>
+                <td>{v.contactName || v.email || v.phone || '—'}</td>
+                <td>{v.items.length}</td>
+                <td>{v.archivedAt ? 'Archived' : 'Active'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+function OrdersPanel({
+  orders,
+  onReceive,
+  onChanged,
+}: {
+  orders: Order[];
+  onReceive: (o: Order) => void;
+  onChanged: () => Promise<void>;
+}) {
+  const transition = async (o: Order, action: string) => {
+    const r = await fetch(`/api/inventory/orders/${o.id}/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, expectedStatus: o.status }),
+    });
+    if (!r.ok) window.alert((await r.json()).message || 'Unable to update order');
+    else await onChanged();
+  };
+  return (
+    <section className="inventory__panel">
+      <h2>Purchase Orders</h2>
+      <div className="inventory__table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>PO</th>
+              <th>Vendor</th>
+              <th>Status</th>
+              <th>Expected</th>
+              <th>Lines</th>
+              <th>Outstanding</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td>
+                  <strong>{o.number}</strong>
+                </td>
+                <td>{o.vendor.name}</td>
+                <td>{o.status.replaceAll('_', ' ')}</td>
+                <td>{o.expectedDate ? new Date(o.expectedDate).toLocaleDateString() : '—'}</td>
+                <td>{o.lines.length}</td>
+                <td>{o.lines.reduce((n, l) => n + Number(l.outstandingQuantity), 0)}</td>
+                <td>
+                  {o.status === 'DRAFT' && (
+                    <button onClick={() => void transition(o, 'SUBMIT')}>Submit</button>
+                  )}
+                  {o.status === 'PENDING_APPROVAL' && (
+                    <button onClick={() => void transition(o, 'APPROVE')}>Approve</button>
+                  )}
+                  {o.status === 'APPROVED' && (
+                    <button onClick={() => void transition(o, 'MARK_ORDERED')}>Mark ordered</button>
+                  )}
+                  {['ORDERED', 'PARTIALLY_RECEIVED'].includes(o.status) && (
+                    <button onClick={() => onReceive(o)}>Receive</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+function VendorEditor({
+  items,
+  onClose,
+  onSaved,
+}: {
+  items: Item[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  return (
+    <Modal title="Add vendor" onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const r = await fetch('/api/inventory/vendors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: f.get('name'),
+              contactName: f.get('contactName') || null,
+              email: f.get('email') || null,
+              phone: f.get('phone') || null,
+            }),
+          });
+          if (!r.ok) return setError((await r.json()).message || 'Unable to add vendor');
+          const vendor = await r.json();
+          const item = items.find((i) => i.id === f.get('itemId')),
+            c = item?.conversions.find((x) => x.isActive);
+          if (item && c) {
+            const m = await fetch(`/api/inventory/vendors/${vendor.id}/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                itemId: item.id,
+                purchaseUnit: c.purchaseUnit,
+                stockUnit: c.stockUnit,
+                purchaseToStock: c.purchaseToStock,
+                packageCost: f.get('packageCost') || null,
+                isPreferred: true,
+              }),
+            });
+            if (!m.ok)
+              return setError((await m.json()).message || 'Vendor saved, but item mapping failed');
+          }
+          await onSaved();
+          onClose();
+        }}
+      >
+        <label>
+          Vendor name
+          <input name="name" required />
+        </label>
+        <label>
+          Contact
+          <input name="contactName" />
+        </label>
+        <label>
+          Email
+          <input name="email" type="email" />
+        </label>
+        <label>
+          Phone
+          <input name="phone" />
+        </label>
+        <label>
+          Initial item mapping
+          <select name="itemId">
+            <option value="">None</option>
+            {items
+              .filter((i) => i.conversions.some((c) => c.isActive))
+              .map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Package cost
+          <input name="packageCost" type="number" min="0" step="0.01" />
+        </label>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Save vendor</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function OrderEditor({
+  vendors,
+  items,
+  onClose,
+  onSaved,
+}: {
+  vendors: Vendor[];
+  items: Item[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  return (
+    <Modal title="New purchase order" onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const r = await fetch('/api/inventory/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              vendorId: f.get('vendorId'),
+              expectedDate: f.get('expectedDate') || null,
+              lines: [
+                {
+                  itemId: f.get('itemId'),
+                  orderedQuantity: f.get('quantity'),
+                  unitCost: f.get('cost') || null,
+                },
+              ],
+            }),
+          });
+          if (!r.ok) return setError((await r.json()).message || 'Unable to create order');
+          await onSaved();
+          onClose();
+        }}
+      >
+        <label>
+          Vendor
+          <select name="vendorId" required>
+            <option value="">Choose vendor</option>
+            {vendors
+              .filter((v) => !v.archivedAt)
+              .map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Item
+          <select name="itemId" required>
+            <option value="">Choose item</option>
+            {items
+              .filter((i) => i.status === 'ACTIVE' && i.inventoryTracked)
+              .map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Packages
+          <input name="quantity" type="number" min="0.000001" step="any" required />
+        </label>
+        <label>
+          Package cost
+          <input name="cost" type="number" min="0" step="0.01" />
+        </label>
+        <label>
+          Expected date
+          <input name="expectedDate" type="date" />
+        </label>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Create draft</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function ReceiveEditor({
+  order,
+  vendors,
+  items,
+  locations,
+  onClose,
+  onSaved,
+}: {
+  order: Order | null;
+  vendors: Vendor[];
+  items: Item[];
+  locations: Location[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  const line = order?.lines.find((l) => Number(l.outstandingQuantity) > 0);
+  return (
+    <Modal title={order ? `Receive ${order.number}` : 'Receive inventory'} onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const item = items.find((i) => i.id === (line?.itemId || f.get('itemId')));
+          const conversion = item?.conversions.find((c) => c.isActive);
+          const r = await fetch('/api/inventory/receipts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idempotencyKey: crypto.randomUUID(),
+              vendorId: order
+                ? vendors.find((v) => v.name === order.vendor.name)?.id
+                : f.get('vendorId'),
+              purchaseOrderId: order?.id || null,
+              reference: f.get('reference') || null,
+              lines: [
+                {
+                  purchaseOrderLineId: line?.id || null,
+                  itemId: line?.itemId || f.get('itemId'),
+                  stockLocationId: f.get('locationId'),
+                  packageQuantity: f.get('quantity'),
+                  purchaseToStock: line?.conversionSnapshot || conversion?.purchaseToStock || '1',
+                  purchaseUnit: line?.purchaseUnitSnapshot || conversion?.purchaseUnit || 'package',
+                  stockUnit: line?.stockUnitSnapshot || conversion?.stockUnit || 'unit',
+                  lotNumber: f.get('lotNumber') || null,
+                  expirationDate: f.get('expirationDate') || null,
+                  quarantinedQuantity: f.get('quarantined') || '0',
+                },
+              ],
+            }),
+          });
+          if (!r.ok) return setError((await r.json()).message || 'Unable to post receipt');
+          await onSaved();
+          onClose();
+        }}
+      >
+        {!order && (
+          <>
+            <label>
+              Vendor
+              <select name="vendorId" required>
+                {vendors
+                  .filter((v) => !v.archivedAt)
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Item
+              <select name="itemId" required>
+                {items
+                  .filter((i) => i.inventoryTracked)
+                  .map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </>
+        )}{' '}
+        {line && (
+          <p>
+            <strong>{line.itemNameSnapshot}</strong> · {fmt(line.outstandingQuantity)}{' '}
+            {line.purchaseUnitSnapshot} outstanding
+          </p>
+        )}
+        <label>
+          Destination
+          <select name="locationId" required>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Packages received
+          <input
+            name="quantity"
+            type="number"
+            step="any"
+            min="0.000001"
+            max={line?.outstandingQuantity}
+            required
+          />
+        </label>
+        <label>
+          Lot number
+          <input name="lotNumber" />
+        </label>
+        <label>
+          Expiration
+          <input name="expirationDate" type="date" />
+        </label>
+        <label>
+          Quarantined base quantity
+          <input name="quarantined" type="number" step="any" min="0" defaultValue="0" />
+        </label>
+        <label>
+          Packing slip / invoice
+          <input name="reference" />
+        </label>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Post receipt</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+function TransferEditor({
+  items,
+  locations,
+  onClose,
+  onSaved,
+}: {
+  items: Item[];
+  locations: Location[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  return (
+    <Modal title="Transfer stock" onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const r = await fetch('/api/inventory/transfers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idempotencyKey: crypto.randomUUID(),
+              reason: f.get('reason') || null,
+              lines: [
+                {
+                  itemId: f.get('itemId'),
+                  sourceStockLocationId: f.get('source'),
+                  destinationStockLocationId: f.get('destination'),
+                  quantity: f.get('quantity'),
+                },
+              ],
+            }),
+          });
+          if (!r.ok) return setError((await r.json()).message || 'Unable to transfer stock');
+          await onSaved();
+          onClose();
+        }}
+      >
+        <label>
+          Item
+          <select name="itemId" required>
+            {items
+              .filter((i) => i.inventoryTracked && !i.controlledSubstance)
+              .map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name} ({fmt(i.available)} available)
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Source
+          <select name="source" required>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Destination
+          <select name="destination" required>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Base quantity
+          <input name="quantity" type="number" min="0.000001" step="any" required />
+        </label>
+        <label>
+          Reason
+          <input name="reason" />
+        </label>
+        <p>Controlled-item transfers require the later compliance workflow.</p>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Post transfer</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 function ItemDrawer({
   item,
   activity,
@@ -454,7 +1544,7 @@ function ItemDrawer({
           </button>
         </header>
         <nav>
-          {['Overview', 'Stock & Lots', 'Pricing', 'Documents', 'Activity'].map((t) => (
+          {['Overview', 'Stock & Lots', 'Pricing', 'Documents', 'Counts', 'Activity'].map((t) => (
             <button className={tab === t ? 'is-active' : ''} key={t} onClick={() => setTab(t)}>
               {t}
             </button>
@@ -528,6 +1618,26 @@ function ItemDrawer({
             ) : (
               <p>No documents attached.</p>
             ))}
+          {tab === 'Counts' && (
+            <div>
+              <h3>Recent count history</h3>
+              {item.countHistory?.length ? (
+                item.countHistory.map((line) => (
+                  <p key={line.id}>
+                    <strong>{line.session.number}</strong> · counted{' '}
+                    {fmt(line.finalCountedQuantity)}
+                    {' · '}expected {fmt(line.expectedQuantitySnapshot)} · variance{' '}
+                    {fmt(line.varianceQuantity)} ·{' '}
+                    {line.session.postedAt
+                      ? new Date(line.session.postedAt).toLocaleDateString()
+                      : '—'}
+                  </p>
+                ))
+              ) : (
+                <p>No posted count history.</p>
+              )}
+            </div>
+          )}
           {tab === 'Activity' && <ActivityTable rows={activity} />}
         </div>
         <footer>

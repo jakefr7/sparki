@@ -1612,6 +1612,105 @@ enum InventoryTransactionType {
   QUARANTINED
   RELEASED_FROM_QUARANTINE
   REVERSAL
+  PURCHASE
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum InventoryReceiptType {
+  PURCHASE_ORDER
+  AD_HOC
+}
+
+enum InventoryTransferStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+enum InventoryEventType {
+  VENDOR_CREATED
+  VENDOR_UPDATED
+  VENDOR_ARCHIVED
+  VENDOR_MAPPING_CHANGED
+  PO_CREATED
+  PO_SUBMITTED
+  PO_APPROVED
+  PO_ORDERED
+  PO_CANCELLED
+  RECEIPT_POSTED
+  PARTIAL_RECEIPT_POSTED
+  RECEIPT_COST_VARIANCE
+  TRANSFER_POSTED
+  REMAINING_QUANTITY_CLOSED
+}
+
+enum InventoryCountType {
+  FULL
+  LOCATION
+  CATEGORY
+  CYCLE
+  LOT
+}
+
+enum InventoryCountStatus {
+  DRAFT
+  IN_PROGRESS
+  SUBMITTED
+  RECOUNT_REQUIRED
+  APPROVED
+  POSTED
+  CANCELLED
+}
+
+enum InventoryCountLineStatus {
+  NOT_COUNTED
+  COUNTED
+  RECOUNT_REQUIRED
+  ACCEPTED
+  EXCLUDED
+  CONFLICT
+}
+
+enum InventoryCountEntryMethod {
+  MANUAL
+  BARCODE_SCAN
+  SKU_SEARCH
+  ITEM_SEARCH
+  IMPORT
+}
+
+enum InventoryCountAssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  REASSIGNED
+  CANCELLED
+}
+
+enum InventoryCountEventType {
+  CREATED
+  STARTED
+  SCOPE_FROZEN
+  USER_ASSIGNED
+  ITEM_SCANNED
+  LINE_COUNTED
+  UNEXPECTED_ITEM_FOUND
+  MISPLACED_ITEM_FOUND
+  RECOUNT_REQUESTED
+  RECOUNT_COMPLETED
+  SUBMITTED
+  APPROVED
+  ADJUSTMENT_POSTED
+  CANCELLED
 }
 
 enum ItemDocumentType {
@@ -1660,14 +1759,19 @@ model CatalogItem {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id])
-  location     Location?              @relation(fields: [locationId], references: [id])
-  barcodes     ItemBarcode[]
-  conversions  ItemUnitConversion[]
-  lots         InventoryLot[]
-  balances     StockBalance[]
-  transactions InventoryTransaction[]
-  documents    ItemDocument[]
+  organization       Organization            @relation(fields: [organizationId], references: [id])
+  location           Location?               @relation(fields: [locationId], references: [id])
+  barcodes           ItemBarcode[]
+  conversions        ItemUnitConversion[]
+  lots               InventoryLot[]
+  balances           StockBalance[]
+  transactions       InventoryTransaction[]
+  documents          ItemDocument[]
+  vendorItems        VendorItem[]
+  purchaseOrderLines PurchaseOrderLine[]
+  receiptLines       InventoryReceiptLine[]
+  transferLines      InventoryTransferLine[]
+  countLines         InventoryCountLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, locationId, status])
@@ -1788,6 +1892,8 @@ model InventoryTransaction {
   visitId               String?
   invoiceId             String?
   purchaseOrderId       String?
+  countSessionId        String?                  @db.Uuid
+  countLineId           String?                  @db.Uuid
   otherReference        String?
   notes                 String?
   reversesTransactionId String?                  @unique @db.Uuid
@@ -1805,6 +1911,164 @@ model InventoryTransaction {
   @@index([itemId, createdAt])
 }
 
+model InventoryCountTemplate {
+  id                         String                  @id @default(uuid()) @db.Uuid
+  organizationId             String
+  clinicLocationId           String
+  name                       String
+  description                String?
+  isActive                   Boolean                 @default(true)
+  countType                  InventoryCountType
+  configuration              Json
+  includeDescendantLocations Boolean                 @default(true)
+  includeInactiveItems       Boolean                 @default(false)
+  includeZeroBalanceItems    Boolean                 @default(false)
+  includeQuarantinedLots     Boolean                 @default(false)
+  createdById                String
+  archivedAt                 DateTime?
+  archivedById               String?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  sessions                   InventoryCountSession[]
+
+  @@unique([organizationId, clinicLocationId, name])
+  @@index([organizationId, clinicLocationId, isActive])
+}
+
+model InventoryCountSequence {
+  organizationId String
+  year           Int
+  nextValue      Int    @default(1)
+
+  @@id([organizationId, year])
+}
+
+model InventoryCountSession {
+  id                        String                     @id @default(uuid()) @db.Uuid
+  organizationId            String
+  clinicLocationId          String
+  number                    String
+  countType                 InventoryCountType
+  status                    InventoryCountStatus       @default(DRAFT)
+  templateId                String?                    @db.Uuid
+  configurationSnapshot     Json
+  expectedSnapshotAt        DateTime?
+  blindCount                Boolean                    @default(false)
+  requireAllLines           Boolean                    @default(true)
+  requireRecount            Boolean                    @default(true)
+  varianceQuantityThreshold Decimal?                   @db.Decimal(20, 6)
+  variancePercentThreshold  Decimal?                   @db.Decimal(10, 4)
+  startedById               String
+  startedAt                 DateTime?
+  submittedById             String?
+  submittedAt               DateTime?
+  approvedById              String?
+  approvedAt                DateTime?
+  cancelledById             String?
+  cancelledAt               DateTime?
+  cancellationReason        String?
+  postedById                String?
+  postedAt                  DateTime?
+  postingIdempotencyKey     String?
+  notes                     String?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  template                  InventoryCountTemplate?    @relation(fields: [templateId], references: [id])
+  lines                     InventoryCountLine[]
+  assignments               InventoryCountAssignment[]
+  events                    InventoryCountEvent[]
+
+  @@unique([organizationId, number])
+  @@unique([organizationId, postingIdempotencyKey])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model InventoryCountLine {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  sessionId                 String                   @db.Uuid
+  itemId                    String                   @db.Uuid
+  stockLocationId           String                   @db.Uuid
+  lotId                     String?                  @db.Uuid
+  itemNameSnapshot          String
+  skuSnapshot               String?
+  barcodeSnapshot           Json?
+  baseUnitSnapshot          String
+  quantityPrecisionSnapshot Int                      @default(6)
+  lotNumberSnapshot         String?
+  expirationSnapshot        DateTime?                @db.Date
+  lotStatusSnapshot         InventoryLotStatus?
+  expectedQuantitySnapshot  Decimal                  @db.Decimal(20, 6)
+  firstCountedQuantity      Decimal?                 @db.Decimal(20, 6)
+  finalCountedQuantity      Decimal?                 @db.Decimal(20, 6)
+  varianceQuantity          Decimal?                 @db.Decimal(20, 6)
+  variancePercentage        Decimal?                 @db.Decimal(10, 4)
+  status                    InventoryCountLineStatus @default(NOT_COUNTED)
+  countedById               String?
+  countedAt                 DateTime?
+  recountRequired           Boolean                  @default(false)
+  recountReason             String?
+  notes                     String?
+  isUnexpected              Boolean                  @default(false)
+  isMisplaced               Boolean                  @default(false)
+  expectedStockLocationId   String?                  @db.Uuid
+  postedTransactionId       String?                  @db.Uuid
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  session                   InventoryCountSession    @relation(fields: [sessionId], references: [id])
+  item                      CatalogItem              @relation(fields: [itemId], references: [id])
+  entries                   InventoryCountEntry[]
+
+  @@unique([sessionId, itemId, stockLocationId, lotId])
+  @@index([sessionId, status])
+}
+
+model InventoryCountEntry {
+  id             String                    @id @default(uuid()) @db.Uuid
+  countLineId    String                    @db.Uuid
+  attemptNumber  Int
+  quantity       Decimal                   @db.Decimal(20, 6)
+  enteredById    String
+  enteredAt      DateTime                  @default(now())
+  method         InventoryCountEntryMethod
+  notes          String?
+  deviceMetadata Json?
+  line           InventoryCountLine        @relation(fields: [countLineId], references: [id])
+
+  @@unique([countLineId, attemptNumber])
+  @@index([countLineId, enteredAt])
+}
+
+model InventoryCountAssignment {
+  id              String                         @id @default(uuid()) @db.Uuid
+  sessionId       String                         @db.Uuid
+  assignedUserId  String
+  stockLocationId String?                        @db.Uuid
+  filterSnapshot  Json?
+  status          InventoryCountAssignmentStatus @default(ASSIGNED)
+  assignedById    String
+  assignedAt      DateTime                       @default(now())
+  completedAt     DateTime?
+  session         InventoryCountSession          @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, assignedUserId, status])
+}
+
+model InventoryCountEvent {
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  sessionId        String                  @db.Uuid
+  lineId           String?                 @db.Uuid
+  type             InventoryCountEventType
+  actorId          String
+  details          Json?
+  createdAt        DateTime                @default(now())
+  session          InventoryCountSession   @relation(fields: [sessionId], references: [id])
+
+  @@index([organizationId, clinicLocationId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
 model ItemDocument {
   id           String           @id @default(uuid()) @db.Uuid
   itemId       String           @db.Uuid
@@ -1817,4 +2081,210 @@ model ItemDocument {
   item         CatalogItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
+}
+
+model InventoryVendor {
+  id                    String             @id @default(uuid()) @db.Uuid
+  organizationId        String
+  name                  String
+  normalizedName        String
+  contactName           String?
+  email                 String?
+  phone                 String?
+  address               String?
+  website               String?
+  orderingWebsite       String?
+  notes                 String?
+  defaultLeadTimeDays   Int?
+  minimumOrder          Decimal?           @db.Decimal(19, 4)
+  freeShippingThreshold Decimal?           @db.Decimal(19, 4)
+  archivedAt            DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  items                 VendorItem[]
+  purchaseOrders        PurchaseOrder[]
+  receipts              InventoryReceipt[]
+
+  @@unique([organizationId, normalizedName])
+  @@index([organizationId, archivedAt])
+}
+
+model VendorItem {
+  id                   String          @id @default(uuid()) @db.Uuid
+  organizationId       String
+  vendorId             String          @db.Uuid
+  itemId               String          @db.Uuid
+  clinicLocationId     String?
+  vendorSku            String?
+  vendorBarcode        String?
+  productUrl           String?
+  purchaseUnit         String
+  stockUnit            String
+  purchaseToStock      Decimal         @db.Decimal(20, 8)
+  packageCost          Decimal?        @db.Decimal(19, 4)
+  minimumOrderQuantity Decimal?        @db.Decimal(20, 6)
+  orderIncrement       Decimal?        @db.Decimal(20, 6)
+  isPreferred          Boolean         @default(false)
+  isActive             Boolean         @default(true)
+  lastOrderedAt        DateTime?
+  lastReceivedAt       DateTime?
+  archivedAt           DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  vendor               InventoryVendor @relation(fields: [vendorId], references: [id])
+  item                 CatalogItem     @relation(fields: [itemId], references: [id])
+
+  @@unique([vendorId, itemId, clinicLocationId, purchaseUnit])
+  @@index([organizationId, itemId, isActive])
+}
+
+model PurchaseOrderSequence {
+  organizationId String
+  year           Int
+  nextValue      Int    @default(1)
+
+  @@id([organizationId, year])
+}
+
+model PurchaseOrder {
+  id               String              @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  vendorId         String              @db.Uuid
+  number           String
+  status           PurchaseOrderStatus @default(DRAFT)
+  orderDate        DateTime?           @db.Date
+  expectedDate     DateTime?           @db.Date
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  orderedAt        DateTime?
+  cancelledAt      DateTime?
+  receivedAt       DateTime?
+  notes            String?
+  createdById      String
+  updatedById      String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  vendor           InventoryVendor     @relation(fields: [vendorId], references: [id])
+  lines            PurchaseOrderLine[]
+  receipts         InventoryReceipt[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model PurchaseOrderLine {
+  id                   String                 @id @default(uuid()) @db.Uuid
+  purchaseOrderId      String                 @db.Uuid
+  itemId               String                 @db.Uuid
+  vendorItemId         String?                @db.Uuid
+  itemNameSnapshot     String
+  skuSnapshot          String?
+  purchaseUnitSnapshot String
+  stockUnitSnapshot    String
+  conversionSnapshot   Decimal                @db.Decimal(20, 8)
+  orderedQuantity      Decimal                @db.Decimal(20, 6)
+  receivedQuantity     Decimal                @default(0) @db.Decimal(20, 6)
+  unitCostSnapshot     Decimal?               @db.Decimal(19, 4)
+  createdAt            DateTime               @default(now())
+  purchaseOrder        PurchaseOrder          @relation(fields: [purchaseOrderId], references: [id])
+  item                 CatalogItem            @relation(fields: [itemId], references: [id])
+  receiptLines         InventoryReceiptLine[]
+
+  @@unique([purchaseOrderId, itemId, purchaseUnitSnapshot])
+}
+
+model InventoryReceipt {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  vendorId         String                 @db.Uuid
+  purchaseOrderId  String?                @db.Uuid
+  type             InventoryReceiptType
+  idempotencyKey   String
+  receivedAt       DateTime               @default(now())
+  reference        String?
+  notes            String?
+  postedById       String
+  createdAt        DateTime               @default(now())
+  vendor           InventoryVendor        @relation(fields: [vendorId], references: [id])
+  purchaseOrder    PurchaseOrder?         @relation(fields: [purchaseOrderId], references: [id])
+  lines            InventoryReceiptLine[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, clinicLocationId, receivedAt])
+}
+
+model InventoryReceiptLine {
+  id                     String             @id @default(uuid()) @db.Uuid
+  receiptId              String             @db.Uuid
+  purchaseOrderLineId    String?            @db.Uuid
+  itemId                 String             @db.Uuid
+  stockLocationId        String             @db.Uuid
+  lotId                  String?            @db.Uuid
+  itemNameSnapshot       String
+  purchaseUnitSnapshot   String
+  stockUnitSnapshot      String
+  conversionSnapshot     Decimal            @db.Decimal(20, 8)
+  packageQuantity        Decimal            @db.Decimal(20, 6)
+  baseQuantity           Decimal            @db.Decimal(20, 6)
+  usableQuantity         Decimal            @db.Decimal(20, 6)
+  damagedQuantity        Decimal            @default(0) @db.Decimal(20, 6)
+  rejectedQuantity       Decimal            @default(0) @db.Decimal(20, 6)
+  quarantinedQuantity    Decimal            @default(0) @db.Decimal(20, 6)
+  unitCostSnapshot       Decimal?           @db.Decimal(19, 4)
+  lotNumberSnapshot      String?
+  expirationDateSnapshot DateTime?          @db.Date
+  transactionId          String?            @db.Uuid
+  receipt                InventoryReceipt   @relation(fields: [receiptId], references: [id])
+  purchaseOrderLine      PurchaseOrderLine? @relation(fields: [purchaseOrderLineId], references: [id])
+  item                   CatalogItem        @relation(fields: [itemId], references: [id])
+}
+
+model InventoryTransfer {
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  status           InventoryTransferStatus @default(DRAFT)
+  idempotencyKey   String
+  reason           String?
+  postedById       String?
+  postedAt         DateTime?
+  createdById      String
+  createdAt        DateTime                @default(now())
+  lines            InventoryTransferLine[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, clinicLocationId, createdAt])
+}
+
+model InventoryTransferLine {
+  id                         String            @id @default(uuid()) @db.Uuid
+  transferId                 String            @db.Uuid
+  itemId                     String            @db.Uuid
+  sourceStockLocationId      String            @db.Uuid
+  destinationStockLocationId String            @db.Uuid
+  sourceLotId                String?           @db.Uuid
+  destinationLotId           String?           @db.Uuid
+  quantity                   Decimal           @db.Decimal(20, 6)
+  unitSnapshot               String
+  transactionGroupId         String            @db.Uuid
+  outTransactionId           String?           @db.Uuid
+  inTransactionId            String?           @db.Uuid
+  transfer                   InventoryTransfer @relation(fields: [transferId], references: [id])
+  item                       CatalogItem       @relation(fields: [itemId], references: [id])
+}
+
+model InventoryEvent {
+  id               String             @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String?
+  type             InventoryEventType
+  entityType       String
+  entityId         String
+  actorId          String
+  details          Json?
+  createdAt        DateTime           @default(now())
+
+  @@index([organizationId, clinicLocationId, createdAt])
 }

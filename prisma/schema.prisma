@@ -1613,6 +1613,172 @@ enum InventoryTransactionType {
   RELEASED_FROM_QUARANTINE
   REVERSAL
   PURCHASE
+  CONTROLLED_ADMINISTERED
+  CONTROLLED_DISPENSED
+  CONTROLLED_WASTE
+  CONTROLLED_DISPOSAL
+  CONTROLLED_CORRECTION
+}
+
+enum ControlledRegistrationType {
+  DEA
+  STATE_CONTROLLED
+  STATE_DISPENSING
+  OTHER
+}
+
+enum ControlledAuthorizationStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum ControlledContainerStatus {
+  SEALED
+  OPEN
+  DEPLETED
+  QUARANTINED
+  EXPIRED
+  RECALLED
+  PENDING_DISPOSAL
+  DISPOSED
+}
+
+enum ControlledEventType {
+  INITIAL_BALANCE
+  RECEIVED
+  ADMINISTERED
+  DISPENSED
+  WASTED_DURING_ADMINISTRATION
+  ACCIDENTAL_LOSS
+  DAMAGED
+  EXPIRED
+  RETURNED_TO_VENDOR
+  RETURNED_TO_STOCK
+  QUARANTINED
+  RELEASED_FROM_QUARANTINE
+  TRANSFER_OUT
+  TRANSFER_IN
+  COUNT_ADJUSTMENT
+  CORRECTION
+  REVERSAL
+  DISPOSAL_PENDING
+  DISPOSED
+  THEFT_OR_SIGNIFICANT_LOSS_REVIEW
+}
+
+enum ControlledDiscrepancyStatus {
+  OPEN
+  INVESTIGATING
+  RECOUNT_REQUIRED
+  CORRECTION_PENDING
+  EXTERNAL_REPORT_REVIEW
+  RESOLVED
+  CLOSED_NO_ADJUSTMENT
+}
+
+enum ControlledDiscrepancyClassification {
+  DATA_ENTRY_ERROR
+  TIMING_DIFFERENCE
+  UNRECORDED_ADMINISTRATION
+  UNRECORDED_WASTE
+  RECEIVING_ERROR
+  LOCATION_ERROR
+  BREAKAGE_OR_SPILL
+  THEFT_OR_SIGNIFICANT_LOSS_CONCERN
+  UNKNOWN
+}
+
+enum ControlledDisposalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  READY_FOR_COMPLETION
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum ControlledReportType {
+  STATE_DISPENSING
+  ZERO_REPORT
+  THEFT_OR_LOSS
+  DESTRUCTION
+  REGISTRATION_INVENTORY
+  OTHER
+}
+
+enum ControlledReportStatus {
+  NOT_APPLICABLE
+  READY_FOR_REVIEW
+  ACTION_REQUIRED
+  EXPORTED
+  FILED_EXTERNALLY
+  ACCEPTED_EXTERNALLY
+  REJECTED_EXTERNALLY
+  CORRECTION_REQUIRED
+}
+
+enum ControlledApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ControlledCountType {
+  INITIAL_INVENTORY
+  PERIODIC_COUNT
+  BIENNIAL_INVENTORY
+  SPOT_CHECK
+  SHIFT_COUNT
+  DISCREPANCY_RECOUNT
+  REGISTRATION_CLOSURE_COUNT
+}
+
+enum ControlledCountTiming {
+  OPEN_OF_BUSINESS
+  CLOSE_OF_BUSINESS
+  DURING_BUSINESS
+  NOT_APPLICABLE
+}
+
+enum ControlledCountStatus {
+  DRAFT
+  IN_PROGRESS
+  SUBMITTED
+  RECOUNT_REQUIRED
+  FIRST_REVIEW_COMPLETE
+  SECOND_REVIEW_REQUIRED
+  APPROVED
+  POSTED
+  CANCELLED
+}
+
+enum ControlledCorrectionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  POSTED
+  REJECTED
+  CANCELLED
+}
+
+enum ControlledCorrectionReason {
+  WRONG_PATIENT
+  WRONG_CLIENT
+  WRONG_ITEM
+  WRONG_LOT
+  WRONG_CONTAINER
+  WRONG_QUANTITY
+  WRONG_UNIT
+  WRONG_EVENT_TIME
+  WRONG_PERFORMING_USER
+  WRONG_PRESCRIBER
+  WRONG_WITNESS
+  DUPLICATE_ENTRY
+  MISSING_WASTE
+  OTHER
 }
 
 enum PurchaseOrderStatus {
@@ -1772,6 +1938,7 @@ model CatalogItem {
   receiptLines       InventoryReceiptLine[]
   transferLines      InventoryTransferLine[]
   countLines         InventoryCountLine[]
+  controlledProfiles ControlledItemProfile[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, locationId, status])
@@ -2067,6 +2234,504 @@ model InventoryCountEvent {
 
   @@index([organizationId, clinicLocationId, createdAt])
   @@index([sessionId, createdAt])
+}
+
+model ControlledRegistration {
+  id                 String                      @id @default(uuid()) @db.Uuid
+  organizationId     String
+  clinicLocationId   String
+  type               ControlledRegistrationType
+  authority          String
+  registrationNumber String
+  registrantUserId   String?
+  registrantName     String
+  legalName          String
+  registeredAddress  String
+  effectiveDate      DateTime                    @db.Date
+  expirationDate     DateTime?                   @db.Date
+  isActive           Boolean                     @default(true)
+  schedules          String[]                    @default([])
+  jurisdiction       String?
+  policy             Json?
+  notes              String?
+  createdById        String
+  archivedAt         DateTime?
+  archivedById       String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  authorizations     ControlledAuthorization[]
+  profiles           ControlledItemProfile[]
+  ledgerEntries      ControlledLedgerEntry[]
+  containers         ControlledContainer[]
+  discrepancies      ControlledDiscrepancyCase[]
+  disposals          ControlledDisposal[]
+  reports            ControlledExternalReport[]
+
+  @@unique([organizationId, clinicLocationId, type, registrationNumber])
+  @@index([organizationId, clinicLocationId, isActive])
+}
+
+model ControlledAuthorization {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  organizationId     String
+  clinicLocationId   String
+  registrationId     String                        @db.Uuid
+  userId             String
+  authorizationTypes String[]                      @default([])
+  effectiveDate      DateTime
+  expirationDate     DateTime?
+  status             ControlledAuthorizationStatus @default(ACTIVE)
+  grantedById        String
+  revokedById        String?
+  revokedAt          DateTime?
+  notes              String?
+  createdAt          DateTime                      @default(now())
+  registration       ControlledRegistration        @relation(fields: [registrationId], references: [id])
+
+  @@index([organizationId, clinicLocationId, userId, status])
+}
+
+model ControlledItemProfile {
+  id                      String                      @id @default(uuid()) @db.Uuid
+  organizationId          String
+  clinicLocationId        String
+  registrationId          String                      @db.Uuid
+  itemId                  String                      @db.Uuid
+  federalSchedule         String
+  stateSchedule           String?
+  ndc                     String?
+  deaCode                 String?
+  dosageForm              String
+  strength                String
+  concentration           String?
+  baseUnit                String
+  packageConfiguration    Json?
+  containerTracking       Boolean                     @default(false)
+  exactCountRequired      Boolean                     @default(true)
+  estimatedCountPermitted Boolean                     @default(false)
+  openContainerTracking   Boolean                     @default(false)
+  secureStockLocationIds  String[]                    @default([]) @db.Uuid
+  administrationPrecision Int                         @default(3)
+  dispensingPrecision     Int                         @default(3)
+  discrepancyThreshold    Decimal                     @default(0) @db.Decimal(20, 6)
+  witnessRules            Json?
+  countFrequencyDays      Int?
+  reportingConfiguration  Json?
+  effectiveFrom           DateTime                    @default(now())
+  effectiveTo             DateTime?
+  isActive                Boolean                     @default(true)
+  createdById             String
+  createdAt               DateTime                    @default(now())
+  registration            ControlledRegistration      @relation(fields: [registrationId], references: [id])
+  item                    CatalogItem                 @relation(fields: [itemId], references: [id])
+  containers              ControlledContainer[]
+  ledgerEntries           ControlledLedgerEntry[]
+  discrepancies           ControlledDiscrepancyCase[]
+
+  @@index([organizationId, clinicLocationId, itemId, isActive])
+}
+
+model ControlledContainer {
+  id                     String                      @id @default(uuid()) @db.Uuid
+  organizationId         String
+  clinicLocationId       String
+  registrationId         String                      @db.Uuid
+  profileId              String                      @db.Uuid
+  lotId                  String?                     @db.Uuid
+  stockLocationId        String                      @db.Uuid
+  containerNumber        String
+  manufacturerIdentifier String?
+  barcode                String?
+  packageQuantity        Decimal                     @db.Decimal(20, 6)
+  initialQuantity        Decimal                     @db.Decimal(20, 6)
+  currentQuantity        Decimal                     @db.Decimal(20, 6)
+  status                 ControlledContainerStatus   @default(SEALED)
+  openedById             String?
+  openedAt               DateTime?
+  beyondUseDate          DateTime?                   @db.Date
+  depletedAt             DateTime?
+  quarantinedAt          DateTime?
+  disposedAt             DateTime?
+  notes                  String?
+  createdAt              DateTime                    @default(now())
+  updatedAt              DateTime                    @updatedAt
+  registration           ControlledRegistration      @relation(fields: [registrationId], references: [id])
+  profile                ControlledItemProfile       @relation(fields: [profileId], references: [id])
+  ledgerEntries          ControlledLedgerEntry[]
+  discrepancies          ControlledDiscrepancyCase[]
+
+  @@unique([registrationId, containerNumber])
+  @@index([organizationId, clinicLocationId, profileId, status])
+}
+
+model ControlledLedgerSequence {
+  registrationId String @db.Uuid
+  year           Int
+  nextValue      Int    @default(1)
+
+  @@id([registrationId, year])
+}
+
+model ControlledLedgerEntry {
+  id                         String                 @id @default(uuid()) @db.Uuid
+  organizationId             String
+  clinicLocationId           String
+  registrationId             String                 @db.Uuid
+  profileId                  String                 @db.Uuid
+  itemId                     String                 @db.Uuid
+  lotId                      String?                @db.Uuid
+  containerId                String?                @db.Uuid
+  inventoryTransactionId     String                 @unique @db.Uuid
+  transactionGroupId         String                 @db.Uuid
+  entryNumber                String
+  idempotencyKey             String
+  eventType                  ControlledEventType
+  eventAt                    DateTime
+  recordedAt                 DateTime               @default(now())
+  quantityBefore             Decimal                @db.Decimal(20, 6)
+  quantityChanged            Decimal                @db.Decimal(20, 6)
+  quantityAfter              Decimal                @db.Decimal(20, 6)
+  baseUnitSnapshot           String
+  dosageFormSnapshot         String
+  strengthSnapshot           String
+  scheduleSnapshot           String
+  reason                     String
+  patientId                  String?
+  clientId                   String?
+  visitId                    String?
+  appointmentId              String?
+  prescriptionReference      String?
+  invoiceId                  String?
+  purchaseOrderId            String?
+  receiptId                  String?                @db.Uuid
+  sourceStockLocationId      String?                @db.Uuid
+  destinationStockLocationId String?                @db.Uuid
+  performedById              String
+  authorizingVeterinarianId  String?
+  witnessId                  String?
+  approverId                 String?
+  externalReference          String?
+  correctsEntryId            String?                @db.Uuid
+  reversesEntryId            String?                @unique @db.Uuid
+  notes                      String?
+  attestation                Json?
+  createdAt                  DateTime               @default(now())
+  registration               ControlledRegistration @relation(fields: [registrationId], references: [id])
+  profile                    ControlledItemProfile  @relation(fields: [profileId], references: [id])
+  container                  ControlledContainer?   @relation(fields: [containerId], references: [id])
+
+  @@unique([registrationId, entryNumber])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, clinicLocationId, eventAt])
+  @@index([profileId, eventAt])
+}
+
+model ControlledDiscrepancyCase {
+  id                          String                              @id @default(uuid()) @db.Uuid
+  organizationId              String
+  clinicLocationId            String
+  registrationId              String                              @db.Uuid
+  profileId                   String?                             @db.Uuid
+  itemId                      String?                             @db.Uuid
+  lotId                       String?                             @db.Uuid
+  containerId                 String?                             @db.Uuid
+  caseNumber                  String
+  detectedAt                  DateTime                            @default(now())
+  detectedById                String
+  sourceEventId               String?                             @db.Uuid
+  expectedQuantity            Decimal?                            @db.Decimal(20, 6)
+  actualQuantity              Decimal?                            @db.Decimal(20, 6)
+  discrepancyQuantity         Decimal?                            @db.Decimal(20, 6)
+  severity                    String
+  classification              ControlledDiscrepancyClassification @default(UNKNOWN)
+  status                      ControlledDiscrepancyStatus         @default(OPEN)
+  assignedInvestigatorId      String?
+  investigationNotes          String?
+  resolution                  String?
+  externalReportingAssessment String?
+  approvedById                String?
+  closedAt                    DateTime?
+  createdAt                   DateTime                            @default(now())
+  updatedAt                   DateTime                            @updatedAt
+  registration                ControlledRegistration              @relation(fields: [registrationId], references: [id])
+  profile                     ControlledItemProfile?              @relation(fields: [profileId], references: [id])
+  container                   ControlledContainer?                @relation(fields: [containerId], references: [id])
+
+  @@unique([organizationId, caseNumber])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model ControlledDisposal {
+  id                String                   @id @default(uuid()) @db.Uuid
+  organizationId    String
+  clinicLocationId  String
+  registrationId    String                   @db.Uuid
+  number            String
+  status            ControlledDisposalStatus @default(DRAFT)
+  reason            String
+  proposedMethod    String
+  disposalLocation  String?
+  authorizedParty   String?
+  externalReference String?
+  scheduledAt       DateTime?
+  completedAt       DateTime?
+  createdById       String
+  approvedById      String?
+  completedById     String?
+  witnessIds        String[]                 @default([])
+  notes             String?
+  idempotencyKey    String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  registration      ControlledRegistration   @relation(fields: [registrationId], references: [id])
+  lines             ControlledDisposalLine[]
+
+  @@unique([organizationId, number])
+  @@unique([organizationId, idempotencyKey])
+}
+
+model ControlledDisposalLine {
+  id                    String             @id @default(uuid()) @db.Uuid
+  disposalId            String             @db.Uuid
+  profileId             String             @db.Uuid
+  itemId                String             @db.Uuid
+  lotId                 String?            @db.Uuid
+  containerId           String?            @db.Uuid
+  stockLocationId       String             @db.Uuid
+  quantity              Decimal            @db.Decimal(20, 6)
+  unitSnapshot          String
+  pendingLedgerEntryId  String?            @db.Uuid
+  disposedLedgerEntryId String?            @db.Uuid
+  disposal              ControlledDisposal @relation(fields: [disposalId], references: [id])
+}
+
+model ControlledExternalReport {
+  id                         String                          @id @default(uuid()) @db.Uuid
+  organizationId             String
+  clinicLocationId           String
+  registrationId             String                          @db.Uuid
+  type                       ControlledReportType
+  status                     ControlledReportStatus          @default(READY_FOR_REVIEW)
+  jurisdiction               String
+  authority                  String
+  reportingPeriodStart       DateTime?                       @db.Date
+  reportingPeriodEnd         DateTime?                       @db.Date
+  sourceRecords              Json
+  dueAt                      DateTime?
+  generatedAt                DateTime                        @default(now())
+  reviewedById               String?
+  exportedAt                 DateTime?
+  externallyFiledAt          DateTime?
+  externalConfirmationNumber String?
+  notes                      String?
+  registration               ControlledRegistration          @relation(fields: [registrationId], references: [id])
+  events                     ControlledExternalReportEvent[]
+
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model ControlledExternalReportEvent {
+  id          String                   @id @default(uuid()) @db.Uuid
+  reportId    String                   @db.Uuid
+  fromStatus  ControlledReportStatus?
+  toStatus    ControlledReportStatus
+  actorId     String
+  notes       String?
+  attestation Json?
+  createdAt   DateTime                 @default(now())
+  report      ControlledExternalReport @relation(fields: [reportId], references: [id])
+
+  @@index([reportId, createdAt])
+}
+
+model ControlledApproval {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String
+  clinicLocationId      String
+  registrationId        String                   @db.Uuid
+  actionType            String
+  entityType            String
+  entityId              String
+  version               Int                      @default(1)
+  initiatedById         String
+  requiredAuthorization String
+  status                ControlledApprovalStatus @default(PENDING)
+  actedById             String?
+  actedAt               DateTime?
+  rejectionReason       String?
+  attestation           Json?
+  createdAt             DateTime                 @default(now())
+
+  @@unique([entityType, entityId, version])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model ControlledCountSession {
+  id                      String                  @id @default(uuid()) @db.Uuid
+  organizationId          String
+  clinicLocationId        String
+  registrationId          String                  @db.Uuid
+  number                  String
+  type                    ControlledCountType
+  timing                  ControlledCountTiming   @default(NOT_APPLICABLE)
+  status                  ControlledCountStatus   @default(DRAFT)
+  startedById             String
+  startedAt               DateTime?
+  expectedSnapshotAt      DateTime?
+  submittedById           String?
+  submittedAt             DateTime?
+  firstReviewerId         String?
+  firstReviewedAt         DateTime?
+  secondReviewerId        String?
+  secondReviewedAt        DateTime?
+  postedById              String?
+  postedAt                DateTime?
+  cancelledById           String?
+  cancelledAt             DateTime?
+  cancellationReason      String?
+  blindCount              Boolean                 @default(true)
+  exactCountRequired      Boolean                 @default(true)
+  estimatedCountPermitted Boolean                 @default(false)
+  dualReviewRequired      Boolean                 @default(true)
+  postingIdempotencyKey   String?
+  notes                   String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  lines                   ControlledCountLine[]
+  reviews                 ControlledCountReview[]
+  events                  ControlledCountEvent[]
+
+  @@unique([registrationId, number])
+  @@unique([organizationId, postingIdempotencyKey])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model ControlledCountLine {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  sessionId           String                 @db.Uuid
+  profileId           String                 @db.Uuid
+  itemId              String                 @db.Uuid
+  lotId               String?                @db.Uuid
+  containerId         String?                @db.Uuid
+  stockLocationId     String                 @db.Uuid
+  profileSnapshot     Json
+  containerSnapshot   Json?
+  expectedQuantity    Decimal                @db.Decimal(20, 6)
+  finalQuantity       Decimal?               @db.Decimal(20, 6)
+  adjustedExpected    Decimal?               @db.Decimal(20, 6)
+  variance            Decimal?               @db.Decimal(20, 6)
+  discrepancyId       String?                @db.Uuid
+  postedLedgerEntryId String?                @db.Uuid
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  session             ControlledCountSession @relation(fields: [sessionId], references: [id])
+  entries             ControlledCountEntry[]
+
+  @@unique([sessionId, profileId, containerId, lotId, stockLocationId])
+}
+
+model ControlledCountEntry {
+  id                 String              @id @default(uuid()) @db.Uuid
+  lineId             String              @db.Uuid
+  attemptNumber      Int
+  quantity           Decimal             @db.Decimal(20, 6)
+  exact              Boolean
+  sealedPackageCount Decimal?            @db.Decimal(20, 6)
+  openedPackageCount Decimal?            @db.Decimal(20, 6)
+  measuredQuantity   Decimal?            @db.Decimal(20, 6)
+  enteredById        String
+  method             String
+  notes              String?
+  attestation        Json
+  createdAt          DateTime            @default(now())
+  line               ControlledCountLine @relation(fields: [lineId], references: [id])
+
+  @@unique([lineId, attemptNumber])
+}
+
+model ControlledCountReview {
+  id              String                 @id @default(uuid()) @db.Uuid
+  sessionId       String                 @db.Uuid
+  stage           Int
+  reviewerId      String
+  decision        String
+  reason          String?
+  idempotencyKey  String
+  attestation     Json
+  createdAt       DateTime               @default(now())
+  session         ControlledCountSession @relation(fields: [sessionId], references: [id])
+  organizationKey String
+
+  @@unique([sessionId, stage])
+  @@unique([organizationKey, idempotencyKey])
+}
+
+model ControlledCountEvent {
+  id        String                 @id @default(uuid()) @db.Uuid
+  sessionId String                 @db.Uuid
+  type      String
+  actorId   String
+  details   Json?
+  createdAt DateTime               @default(now())
+  session   ControlledCountSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, createdAt])
+}
+
+model ControlledCorrectionRequest {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  organizationId        String
+  clinicLocationId      String
+  registrationId        String                      @db.Uuid
+  originalEntryId       String                      @db.Uuid
+  status                ControlledCorrectionStatus  @default(DRAFT)
+  reason                ControlledCorrectionReason
+  explanation           String
+  proposedReplacement   Json?
+  quantityImpact        Decimal                     @db.Decimal(20, 6)
+  patientImpact         Boolean                     @default(false)
+  reportingImpact       Boolean                     @default(false)
+  requestedById         String
+  approvedById          String?
+  approvedAt            DateTime?
+  postedAt              DateTime?
+  rejectionReason       String?
+  postingIdempotencyKey String?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  events                ControlledCorrectionEvent[]
+
+  @@unique([organizationId, postingIdempotencyKey])
+  @@index([organizationId, clinicLocationId, status])
+}
+
+model ControlledCorrectionEvent {
+  id          String                      @id @default(uuid()) @db.Uuid
+  requestId   String                      @db.Uuid
+  type        String
+  actorId     String
+  details     Json?
+  attestation Json?
+  createdAt   DateTime                    @default(now())
+  request     ControlledCorrectionRequest @relation(fields: [requestId], references: [id])
+
+  @@index([requestId, createdAt])
+}
+
+model ControlledExportAudit {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  registrationId   String   @db.Uuid
+  reportType       String
+  format           String
+  filters          Json
+  generatedById    String
+  generatedAt      DateTime @default(now())
+  rowCount         Int
+  checksum         String?
+
+  @@index([organizationId, clinicLocationId, generatedAt])
 }
 
 model ItemDocument {

@@ -20,7 +20,7 @@
     "db:seed-demo": "dotenv -e .env -- node scripts/reset-demo-clinic-data.mjs",
     "db:seed-auth-users": "dotenv -e .env -- node scripts/seed-auth-users.mjs",
     "seed:local-demo": "dotenv -e .env -- node scripts/seed-local-clinic-demo-data.mjs",
-    "seed:inventory": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-2.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-3.mjs",
+    "seed:inventory": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-2.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-3.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-4.mjs",
     "seed:inventory:refresh-expirations": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs --refresh-expirations",
     "cleanup:test-debris": "dotenv -e .env -- node scripts/cleanup-local-test-debris.mjs"
   },

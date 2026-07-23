@@ -1,35 +1,750 @@
 // Prisma's exact optional generated inputs reject Zod's explicit undefined fields; all writes below
 // are runtime-validated and tenant-scoped before entering a transaction.
 // @ts-nocheck
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, prisma } from '@sparki/db';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedUser } from '../auth/types';
-import type { POInput, POTransition, ReceiptInput, TransferInput, VendorInput, VendorItemInput, VendorUpdate } from './dto/purchasing.schema';
+import type {
+  POInput,
+  POTransition,
+  ReceiptInput,
+  TransferInput,
+  VendorInput,
+  VendorItemInput,
+  VendorUpdate,
+} from './dto/purchasing.schema';
 import { canInventory, requireInventory } from './inventory.permissions';
 
-const dec=(v:string|undefined|null)=>v==null?null:new Prisma.Decimal(v);
-const normalize=(v:string)=>v.trim().replace(/\s+/g,' ').toLocaleLowerCase();
-const redact=<T extends Record<string,unknown>>(row:T, allowed:boolean)=>allowed?row:Object.fromEntries(Object.entries(row).filter(([k])=>!/(cost|minimumOrder|freeShipping)/i.test(k))) as T;
+const dec = (v: string | undefined | null) => (v == null ? null : new Prisma.Decimal(v));
+const normalize = (v: string) => v.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+const redact = <T extends Record<string, unknown>>(row: T, allowed: boolean) =>
+  allowed
+    ? row
+    : (Object.fromEntries(
+        Object.entries(row).filter(([k]) => !/(cost|minimumOrder|freeShipping)/i.test(k)),
+      ) as T);
 
 @Injectable()
 export class PurchasingService {
-  async vendors(user:AuthenticatedUser){ requireInventory(user,'VIEW_VENDORS'); const rows=await prisma.inventoryVendor.findMany({where:{organizationId:user.organizationId},include:{items:{where:{isActive:true},include:{item:{select:{name:true}}}},_count:{select:{purchaseOrders:true}}},orderBy:{name:'asc'}}); return rows.map(v=>({...redact(v,canInventory(user,'VIEW_COSTS')),permissions:{canManage:canInventory(user,'MANAGE_VENDORS'),canViewCosts:canInventory(user,'VIEW_COSTS')}})); }
-  async createVendor(user:AuthenticatedUser,input:VendorInput){ requireInventory(user,'MANAGE_VENDORS'); try { const v=await prisma.inventoryVendor.create({data:{...input,normalizedName:normalize(input.name),organizationId:user.organizationId,minimumOrder:dec(input.minimumOrder),freeShippingThreshold:dec(input.freeShippingThreshold)}}); await this.event(user,'VENDOR_CREATED','vendor',v.id); return v; } catch(e){ if(e instanceof Prisma.PrismaClientKnownRequestError&&e.code==='P2002') throw new ConflictException('A vendor with this name already exists.'); throw e;} }
-  async updateVendor(user:AuthenticatedUser,id:string,input:VendorUpdate){ requireInventory(user,'MANAGE_VENDORS'); await this.vendor(user,id); const v=await prisma.inventoryVendor.update({where:{id},data:{...input,...(input.name?{normalizedName:normalize(input.name)}:{}),...(input.minimumOrder!==undefined?{minimumOrder:dec(input.minimumOrder)}:{}),...(input.freeShippingThreshold!==undefined?{freeShippingThreshold:dec(input.freeShippingThreshold)}:{})}}); await this.event(user,'VENDOR_UPDATED','vendor',id); return v; }
-  async archiveVendor(user:AuthenticatedUser,id:string){ requireInventory(user,'MANAGE_VENDORS'); await this.vendor(user,id); const open=await prisma.purchaseOrder.count({where:{vendorId:id,status:{notIn:['RECEIVED','CANCELLED']}}}); if(open) throw new ConflictException('This vendor has open purchase orders and cannot be archived.'); const v=await prisma.inventoryVendor.update({where:{id},data:{archivedAt:new Date()}}); await this.event(user,'VENDOR_ARCHIVED','vendor',id); return v; }
-  async mapVendorItem(user:AuthenticatedUser,vendorId:string,input:VendorItemInput){ requireInventory(user,'MANAGE_VENDORS'); await this.vendor(user,vendorId); const item=await prisma.catalogItem.findFirst({where:{id:input.itemId,organizationId:user.organizationId}}); if(!item) throw new NotFoundException('Item not found'); return prisma.$transaction(async tx=>{ if(input.isPreferred) await tx.vendorItem.updateMany({where:{organizationId:user.organizationId,itemId:input.itemId,isPreferred:true,isActive:true},data:{isPreferred:false}}); const row=await tx.vendorItem.create({data:{...input,organizationId:user.organizationId,vendorId,purchaseToStock:new Prisma.Decimal(input.purchaseToStock),packageCost:dec(input.packageCost),minimumOrderQuantity:dec(input.minimumOrderQuantity),orderIncrement:dec(input.orderIncrement)}}); await tx.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type:'VENDOR_MAPPING_CHANGED',entityType:'vendorItem',entityId:row.id,actorId:user.id}}); return row; }); }
-  async orders(user:AuthenticatedUser){ requireInventory(user,'VIEW_PO'); const rows=await prisma.purchaseOrder.findMany({where:{organizationId:user.organizationId,clinicLocationId:user.locationId},include:{vendor:true,lines:true,receipts:{select:{id:true,receivedAt:true}}},orderBy:{createdAt:'desc'}}); return rows.map(p=>this.presentPO(p,canInventory(user,'VIEW_COSTS'))); }
-  async order(user:AuthenticatedUser,id:string){ requireInventory(user,'VIEW_PO'); const p=await prisma.purchaseOrder.findFirst({where:{id,organizationId:user.organizationId,clinicLocationId:user.locationId},include:{vendor:true,lines:{include:{item:true}},receipts:{include:{lines:true}}}}); if(!p) throw new NotFoundException('Purchase order not found'); return this.presentPO(p,canInventory(user,'VIEW_COSTS')); }
-  async createOrder(user:AuthenticatedUser,input:POInput){ requireInventory(user,'CREATE_PO'); return this.serial(async tx=>{ const vendor=await tx.inventoryVendor.findFirst({where:{id:input.vendorId,organizationId:user.organizationId,archivedAt:null}}); if(!vendor) throw new NotFoundException('Active vendor not found'); const year=new Date().getFullYear(); const seq=await tx.purchaseOrderSequence.upsert({where:{organizationId_year:{organizationId:user.organizationId,year}},create:{organizationId:user.organizationId,year,nextValue:2},update:{nextValue:{increment:1}}}); const number=`PO-${year}-${String(seq.nextValue-1).padStart(5,'0')}`; const items=await tx.catalogItem.findMany({where:{id:{in:input.lines.map(l=>l.itemId)},organizationId:user.organizationId},include:{conversions:{where:{isActive:true},take:1}}}); if(items.length!==new Set(input.lines.map(l=>l.itemId)).size) throw new NotFoundException('One or more items were not found'); const po=await tx.purchaseOrder.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,vendorId:input.vendorId,number,expectedDate:input.expectedDate,notes:input.notes,createdById:user.id,updatedById:user.id,lines:{create:input.lines.map(line=>{const item=items.find(i=>i.id===line.itemId)!; const c=item.conversions[0]; if(!c) throw new BadRequestException(`${item.name} needs an active unit conversion.`); return {itemId:item.id,vendorItemId:line.vendorItemId,itemNameSnapshot:item.name,skuSnapshot:item.sku,purchaseUnitSnapshot:c.purchaseUnit,stockUnitSnapshot:c.stockUnit,conversionSnapshot:c.purchaseToStock,orderedQuantity:new Prisma.Decimal(line.orderedQuantity),unitCostSnapshot:dec(line.unitCost)};})}},include:{vendor:true,lines:true}}); await tx.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type:'PO_CREATED',entityType:'purchaseOrder',entityId:po.id,actorId:user.id}}); return this.presentPO(po,canInventory(user,'VIEW_COSTS')); }); }
-  async transition(user:AuthenticatedUser,id:string,input:POTransition){ const cap=input.action==='SUBMIT'?'CREATE_PO':input.action==='APPROVE'?'APPROVE_PO':input.action==='MARK_ORDERED'?'PLACE_PO':'CANCEL_PO'; requireInventory(user,cap); const map={SUBMIT:['DRAFT','PENDING_APPROVAL','PO_SUBMITTED'],APPROVE:['PENDING_APPROVAL','APPROVED','PO_APPROVED'],MARK_ORDERED:['APPROVED','ORDERED','PO_ORDERED'],CANCEL:['DRAFT,PENDING_APPROVAL,APPROVED,ORDERED,PARTIALLY_RECEIVED','CANCELLED','PO_CANCELLED']} as const; const [allowed,next,event]=map[input.action]; return this.serial(async tx=>{ const po=await tx.purchaseOrder.findFirst({where:{id,organizationId:user.organizationId,clinicLocationId:user.locationId}}); if(!po) throw new NotFoundException('Purchase order not found'); if(input.expectedStatus&&po.status!==input.expectedStatus) throw new ConflictException('Purchase order changed; refresh and try again.'); if(!allowed.split(',').includes(po.status)) throw new ConflictException(`Cannot ${input.action.toLowerCase()} a ${po.status} purchase order.`); const now=new Date(); const updated=await tx.purchaseOrder.update({where:{id},data:{status:next as never,updatedById:user.id,...(input.action==='SUBMIT'?{submittedAt:now}:input.action==='APPROVE'?{approvedAt:now}:input.action==='MARK_ORDERED'?{orderedAt:now,orderDate:now}:{cancelledAt:now})}}); await tx.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type:event as never,entityType:'purchaseOrder',entityId:id,actorId:user.id}}); return updated; }); }
-  async receive(user:AuthenticatedUser,input:ReceiptInput){ requireInventory(user,'RECEIVE'); return this.serial(async tx=>{ const existing=await tx.inventoryReceipt.findUnique({where:{organizationId_idempotencyKey:{organizationId:user.organizationId,idempotencyKey:input.idempotencyKey}},include:{lines:true}}); if(existing) return existing; const vendor=await tx.inventoryVendor.findFirst({where:{id:input.vendorId,organizationId:user.organizationId}}); if(!vendor) throw new NotFoundException('Vendor not found'); const po=input.purchaseOrderId?await tx.purchaseOrder.findFirst({where:{id:input.purchaseOrderId,organizationId:user.organizationId,clinicLocationId:user.locationId},include:{lines:true}}):null; if(input.purchaseOrderId&&!po) throw new NotFoundException('Purchase order not found'); if(po&&!['ORDERED','PARTIALLY_RECEIVED'].includes(po.status)) throw new ConflictException(`A ${po.status} purchase order cannot be received.`); const receipt=await tx.inventoryReceipt.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,vendorId:input.vendorId,purchaseOrderId:po?.id,type:po?'PURCHASE_ORDER':'AD_HOC',idempotencyKey:input.idempotencyKey,receivedAt:input.receivedAt,reference:input.reference,notes:input.notes,postedById:user.id}}); for(const line of input.lines) await this.postReceiptLine(tx,user,receipt.id,po,line); let partial=false; if(po){ const lines=await tx.purchaseOrderLine.findMany({where:{purchaseOrderId:po.id}}); partial=lines.some(l=>l.receivedQuantity.lt(l.orderedQuantity)); await tx.purchaseOrder.update({where:{id:po.id},data:{status:partial?'PARTIALLY_RECEIVED':'RECEIVED',...(partial?{}:{receivedAt:new Date()}),updatedById:user.id}}); } await tx.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type:partial?'PARTIAL_RECEIPT_POSTED':'RECEIPT_POSTED',entityType:'receipt',entityId:receipt.id,actorId:user.id}}); return tx.inventoryReceipt.findUnique({where:{id:receipt.id},include:{lines:true}}); }); }
-  async transfer(user:AuthenticatedUser,input:TransferInput){ requireInventory(user,'TRANSFER'); return this.serial(async tx=>{ const existing=await tx.inventoryTransfer.findUnique({where:{organizationId_idempotencyKey:{organizationId:user.organizationId,idempotencyKey:input.idempotencyKey}},include:{lines:true}}); if(existing)return existing; const transfer=await tx.inventoryTransfer.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,idempotencyKey:input.idempotencyKey,reason:input.reason,status:'POSTED',createdById:user.id,postedById:user.id,postedAt:new Date()}}); for(const l of input.lines) await this.postTransferLine(tx,user,transfer.id,l); await tx.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type:'TRANSFER_POSTED',entityType:'transfer',entityId:transfer.id,actorId:user.id}}); return tx.inventoryTransfer.findUnique({where:{id:transfer.id},include:{lines:true}}); }); }
-  async events(user:AuthenticatedUser){ requireInventory(user,'PURCHASING_AUDIT'); return prisma.inventoryEvent.findMany({where:{organizationId:user.organizationId,OR:[{clinicLocationId:null},{clinicLocationId:user.locationId}]},orderBy:{createdAt:'desc'},take:250}); }
-  private async postReceiptLine(tx:Prisma.TransactionClient,user:AuthenticatedUser,receiptId:string,po:any,line:ReceiptInput['lines'][number]){ const item=await tx.catalogItem.findFirst({where:{id:line.itemId,organizationId:user.organizationId,status:'ACTIVE'}}); const loc=await tx.stockLocation.findFirst({where:{id:line.stockLocationId,organizationId:user.organizationId,clinicLocationId:user.locationId,isActive:true}}); if(!item||!loc)throw new NotFoundException('Active item or destination not found'); if(item.lotTracking&&!line.lotNumber)throw new BadRequestException('Lot number is required.'); if(item.expirationTracking&&!line.expirationDate)throw new BadRequestException('Expiration date is required.'); const packages=new Prisma.Decimal(line.packageQuantity), conversion=new Prisma.Decimal(line.purchaseToStock), base=packages.mul(conversion), damaged=new Prisma.Decimal(line.damagedQuantity??0),rejected=new Prisma.Decimal(line.rejectedQuantity??0),quarantined=new Prisma.Decimal(line.quarantinedQuantity??0),usable=line.usableQuantity?new Prisma.Decimal(line.usableQuantity):base.minus(damaged).minus(rejected).minus(quarantined); if(usable.plus(damaged).plus(rejected).plus(quarantined).gt(base))throw new BadRequestException('Receipt disposition quantities exceed quantity received.'); const onHand=usable.plus(quarantined); let lotId:string|null=null; if(item.lotTracking||line.lotNumber){ const lot=await tx.inventoryLot.upsert({where:{itemId_stockLocationId_lotNumber:{itemId:item.id,stockLocationId:loc.id,lotNumber:line.lotNumber??null}},create:{organizationId:user.organizationId,itemId:item.id,stockLocationId:loc.id,lotNumber:line.lotNumber,expirationDate:line.expirationDate,receivedDate:new Date(),receivedUnitCost:dec(line.unitCost),status:quarantined.gt(0)?'QUARANTINED':'AVAILABLE',quantity:onHand},update:{quantity:{increment:onHand},status:quarantined.gt(0)?'QUARANTINED':undefined}}); lotId=lot.id; } const balance=await tx.stockBalance.findFirst({where:{itemId:item.id,stockLocationId:loc.id,lotId}}); const previous=balance?.onHand??new Prisma.Decimal(0),result=previous.plus(onHand); if(balance)await tx.stockBalance.update({where:{id:balance.id},data:{onHand:result,quarantined:{increment:quarantined}}}); else await tx.stockBalance.create({data:{organizationId:user.organizationId,itemId:item.id,stockLocationId:loc.id,lotId,onHand:result,quarantined}}); const tr=await tx.inventoryTransaction.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,itemId:item.id,lotId,stockLocationId:loc.id,transactionGroupId:randomUUID(),transactionType:'PURCHASE',quantityDelta:onHand,previousBalance:previous,resultingBalance:result,reason:po?'PURCHASE_ORDER_RECEIPT':'AD_HOC_RECEIPT',purchaseOrderId:po?.id,otherReference:receiptId,userId:user.id}}); const pol=line.purchaseOrderLineId&&po?po.lines.find((x:any)=>x.id===line.purchaseOrderLineId):null; if(po&&!pol)throw new BadRequestException('Receipt line does not belong to this purchase order.'); if(pol&&pol.receivedQuantity.plus(packages).gt(pol.orderedQuantity))throw new ConflictException('Receipt exceeds the outstanding ordered quantity.'); if(pol)await tx.purchaseOrderLine.update({where:{id:pol.id},data:{receivedQuantity:{increment:packages}}}); await tx.inventoryReceiptLine.create({data:{receiptId,purchaseOrderLineId:pol?.id,itemId:item.id,stockLocationId:loc.id,lotId,itemNameSnapshot:item.name,purchaseUnitSnapshot:line.purchaseUnit,stockUnitSnapshot:line.stockUnit,conversionSnapshot:conversion,packageQuantity:packages,baseQuantity:base,usableQuantity:usable,damagedQuantity:damaged,rejectedQuantity:rejected,quarantinedQuantity:quarantined,unitCostSnapshot:dec(line.unitCost),lotNumberSnapshot:line.lotNumber,expirationDateSnapshot:line.expirationDate,transactionId:tr.id}}); }
-  private async postTransferLine(tx:Prisma.TransactionClient,user:AuthenticatedUser,transferId:string,l:TransferInput['lines'][number]){ if(l.sourceStockLocationId===l.destinationStockLocationId)throw new BadRequestException('Source and destination must be different.'); const [item,src,dst]=await Promise.all([tx.catalogItem.findFirst({where:{id:l.itemId,organizationId:user.organizationId,status:'ACTIVE'},include:{conversions:{where:{isActive:true},take:1}}}),tx.stockLocation.findFirst({where:{id:l.sourceStockLocationId,organizationId:user.organizationId,clinicLocationId:user.locationId,isActive:true}}),tx.stockLocation.findFirst({where:{id:l.destinationStockLocationId,organizationId:user.organizationId,clinicLocationId:user.locationId,isActive:true}})]); if(!item||!src||!dst)throw new NotFoundException('Active item, source, or destination not found'); if(item.controlledSubstance)throw new ConflictException('Controlled-item transfers require the compliance workflow.'); const source=await tx.stockBalance.findFirst({where:{itemId:item.id,stockLocationId:src.id,lotId:l.sourceLotId??null},include:{lot:true}}); const qty=new Prisma.Decimal(l.quantity); if(!source||source.onHand.minus(source.quarantined).minus(source.expired).minus(source.reserved).lt(qty))throw new ConflictException('Insufficient available stock at source.'); if(source.lot&&source.lot.status!=='AVAILABLE')throw new ConflictException('Expired, recalled, or quarantined lots cannot be transferred.'); let destinationLotId:string|null=null; if(source.lot){ const dl=await tx.inventoryLot.upsert({where:{itemId_stockLocationId_lotNumber:{itemId:item.id,stockLocationId:dst.id,lotNumber:source.lot.lotNumber}},create:{organizationId:user.organizationId,itemId:item.id,stockLocationId:dst.id,lotNumber:source.lot.lotNumber,expirationDate:source.lot.expirationDate,receivedDate:source.lot.receivedDate,receivedUnitCost:source.lot.receivedUnitCost,quantity:qty},update:{quantity:{increment:qty}}}); destinationLotId=dl.id; await tx.inventoryLot.update({where:{id:source.lot.id},data:{quantity:{decrement:qty}}}); } const dest=await tx.stockBalance.findFirst({where:{itemId:item.id,stockLocationId:dst.id,lotId:destinationLotId}}); const group=randomUUID(),srcResult=source.onHand.minus(qty),dstPrevious=dest?.onHand??new Prisma.Decimal(0),dstResult=dstPrevious.plus(qty); await tx.stockBalance.update({where:{id:source.id},data:{onHand:srcResult}}); if(dest)await tx.stockBalance.update({where:{id:dest.id},data:{onHand:dstResult}});else await tx.stockBalance.create({data:{organizationId:user.organizationId,itemId:item.id,stockLocationId:dst.id,lotId:destinationLotId,onHand:dstResult}}); const out=await tx.inventoryTransaction.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,itemId:item.id,lotId:l.sourceLotId,stockLocationId:src.id,transactionGroupId:group,transactionType:'TRANSFER_OUT',quantityDelta:qty.neg(),previousBalance:source.onHand,resultingBalance:srcResult,reason:'LOCATION_TRANSFER',otherReference:transferId,userId:user.id}}); const incoming=await tx.inventoryTransaction.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,itemId:item.id,lotId:destinationLotId,stockLocationId:dst.id,transactionGroupId:group,transactionType:'TRANSFER_IN',quantityDelta:qty,previousBalance:dstPrevious,resultingBalance:dstResult,reason:'LOCATION_TRANSFER',otherReference:transferId,userId:user.id}}); await tx.inventoryTransferLine.create({data:{transferId,itemId:item.id,sourceStockLocationId:src.id,destinationStockLocationId:dst.id,sourceLotId:l.sourceLotId,destinationLotId,quantity:qty,unitSnapshot:item.conversions[0]?.stockUnit??'unit',transactionGroupId:group,outTransactionId:out.id,inTransactionId:incoming.id}}); }
-  private async vendor(user:AuthenticatedUser,id:string){ const v=await prisma.inventoryVendor.findFirst({where:{id,organizationId:user.organizationId}}); if(!v)throw new NotFoundException('Vendor not found'); return v; }
-  private presentPO<T extends Record<string,any>>(p:T,costs:boolean){ return {...p,lines:p.lines?.map((l:any)=>({...redact(l,costs),outstandingQuantity:new Prisma.Decimal(l.orderedQuantity).minus(l.receivedQuantity)}))}; }
-  private event(user:AuthenticatedUser,type:any,entityType:string,entityId:string){ return prisma.inventoryEvent.create({data:{organizationId:user.organizationId,clinicLocationId:user.locationId,type,entityType,entityId,actorId:user.id}}); }
-  private async serial<T>(fn:(tx:Prisma.TransactionClient)=>Promise<T>){ for(let i=0;i<3;i++)try{return await prisma.$transaction(fn,{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});}catch(e){if(!(e instanceof Prisma.PrismaClientKnownRequestError)||e.code!=='P2034'||i===2)throw e;} throw new ConflictException('Concurrent purchasing update failed; retry.'); }
+  async vendors(user: AuthenticatedUser) {
+    requireInventory(user, 'VIEW_VENDORS');
+    const rows = await prisma.inventoryVendor.findMany({
+      where: { organizationId: user.organizationId },
+      include: {
+        items: { where: { isActive: true }, include: { item: { select: { name: true } } } },
+        _count: { select: { purchaseOrders: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+    return rows.map((v) => ({
+      ...redact(v, canInventory(user, 'VIEW_COSTS')),
+      permissions: {
+        canManage: canInventory(user, 'MANAGE_VENDORS'),
+        canViewCosts: canInventory(user, 'VIEW_COSTS'),
+      },
+    }));
+  }
+  async createVendor(user: AuthenticatedUser, input: VendorInput) {
+    requireInventory(user, 'MANAGE_VENDORS');
+    try {
+      const v = await prisma.inventoryVendor.create({
+        data: {
+          ...input,
+          normalizedName: normalize(input.name),
+          organizationId: user.organizationId,
+          minimumOrder: dec(input.minimumOrder),
+          freeShippingThreshold: dec(input.freeShippingThreshold),
+        },
+      });
+      await this.event(user, 'VENDOR_CREATED', 'vendor', v.id);
+      return v;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw new ConflictException('A vendor with this name already exists.');
+      throw e;
+    }
+  }
+  async updateVendor(user: AuthenticatedUser, id: string, input: VendorUpdate) {
+    requireInventory(user, 'MANAGE_VENDORS');
+    await this.vendor(user, id);
+    const v = await prisma.inventoryVendor.update({
+      where: { id },
+      data: {
+        ...input,
+        ...(input.name ? { normalizedName: normalize(input.name) } : {}),
+        ...(input.minimumOrder !== undefined ? { minimumOrder: dec(input.minimumOrder) } : {}),
+        ...(input.freeShippingThreshold !== undefined
+          ? { freeShippingThreshold: dec(input.freeShippingThreshold) }
+          : {}),
+      },
+    });
+    await this.event(user, 'VENDOR_UPDATED', 'vendor', id);
+    return v;
+  }
+  async archiveVendor(user: AuthenticatedUser, id: string) {
+    requireInventory(user, 'MANAGE_VENDORS');
+    await this.vendor(user, id);
+    const open = await prisma.purchaseOrder.count({
+      where: { vendorId: id, status: { notIn: ['RECEIVED', 'CANCELLED'] } },
+    });
+    if (open)
+      throw new ConflictException('This vendor has open purchase orders and cannot be archived.');
+    const v = await prisma.inventoryVendor.update({
+      where: { id },
+      data: { archivedAt: new Date() },
+    });
+    await this.event(user, 'VENDOR_ARCHIVED', 'vendor', id);
+    return v;
+  }
+  async mapVendorItem(user: AuthenticatedUser, vendorId: string, input: VendorItemInput) {
+    requireInventory(user, 'MANAGE_VENDORS');
+    await this.vendor(user, vendorId);
+    const item = await prisma.catalogItem.findFirst({
+      where: { id: input.itemId, organizationId: user.organizationId },
+    });
+    if (!item) throw new NotFoundException('Item not found');
+    return prisma.$transaction(async (tx) => {
+      if (input.isPreferred)
+        await tx.vendorItem.updateMany({
+          where: {
+            organizationId: user.organizationId,
+            itemId: input.itemId,
+            isPreferred: true,
+            isActive: true,
+          },
+          data: { isPreferred: false },
+        });
+      const row = await tx.vendorItem.create({
+        data: {
+          ...input,
+          organizationId: user.organizationId,
+          vendorId,
+          purchaseToStock: new Prisma.Decimal(input.purchaseToStock),
+          packageCost: dec(input.packageCost),
+          minimumOrderQuantity: dec(input.minimumOrderQuantity),
+          orderIncrement: dec(input.orderIncrement),
+        },
+      });
+      await tx.inventoryEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          type: 'VENDOR_MAPPING_CHANGED',
+          entityType: 'vendorItem',
+          entityId: row.id,
+          actorId: user.id,
+        },
+      });
+      return row;
+    });
+  }
+  async orders(user: AuthenticatedUser) {
+    requireInventory(user, 'VIEW_PO');
+    const rows = await prisma.purchaseOrder.findMany({
+      where: { organizationId: user.organizationId, clinicLocationId: user.locationId },
+      include: { vendor: true, lines: true, receipts: { select: { id: true, receivedAt: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((p) => this.presentPO(p, canInventory(user, 'VIEW_COSTS')));
+  }
+  async order(user: AuthenticatedUser, id: string) {
+    requireInventory(user, 'VIEW_PO');
+    const p = await prisma.purchaseOrder.findFirst({
+      where: { id, organizationId: user.organizationId, clinicLocationId: user.locationId },
+      include: {
+        vendor: true,
+        lines: { include: { item: true } },
+        receipts: { include: { lines: true } },
+      },
+    });
+    if (!p) throw new NotFoundException('Purchase order not found');
+    return this.presentPO(p, canInventory(user, 'VIEW_COSTS'));
+  }
+  async createOrder(user: AuthenticatedUser, input: POInput) {
+    requireInventory(user, 'CREATE_PO');
+    return this.serial(async (tx) => {
+      const vendor = await tx.inventoryVendor.findFirst({
+        where: { id: input.vendorId, organizationId: user.organizationId, archivedAt: null },
+      });
+      if (!vendor) throw new NotFoundException('Active vendor not found');
+      const year = new Date().getFullYear();
+      const seq = await tx.purchaseOrderSequence.upsert({
+        where: { organizationId_year: { organizationId: user.organizationId, year } },
+        create: { organizationId: user.organizationId, year, nextValue: 2 },
+        update: { nextValue: { increment: 1 } },
+      });
+      const number = `PO-${year}-${String(seq.nextValue - 1).padStart(5, '0')}`;
+      const items = await tx.catalogItem.findMany({
+        where: {
+          id: { in: input.lines.map((l) => l.itemId) },
+          organizationId: user.organizationId,
+        },
+        include: { conversions: { where: { isActive: true }, take: 1 } },
+      });
+      if (items.length !== new Set(input.lines.map((l) => l.itemId)).size)
+        throw new NotFoundException('One or more items were not found');
+      const po = await tx.purchaseOrder.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          vendorId: input.vendorId,
+          number,
+          expectedDate: input.expectedDate,
+          notes: input.notes,
+          createdById: user.id,
+          updatedById: user.id,
+          lines: {
+            create: input.lines.map((line) => {
+              const item = items.find((i) => i.id === line.itemId)!;
+              const c = item.conversions[0];
+              if (!c)
+                throw new BadRequestException(`${item.name} needs an active unit conversion.`);
+              return {
+                itemId: item.id,
+                vendorItemId: line.vendorItemId,
+                itemNameSnapshot: item.name,
+                skuSnapshot: item.sku,
+                purchaseUnitSnapshot: c.purchaseUnit,
+                stockUnitSnapshot: c.stockUnit,
+                conversionSnapshot: c.purchaseToStock,
+                orderedQuantity: new Prisma.Decimal(line.orderedQuantity),
+                unitCostSnapshot: dec(line.unitCost),
+              };
+            }),
+          },
+        },
+        include: { vendor: true, lines: true },
+      });
+      await tx.inventoryEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          type: 'PO_CREATED',
+          entityType: 'purchaseOrder',
+          entityId: po.id,
+          actorId: user.id,
+        },
+      });
+      return this.presentPO(po, canInventory(user, 'VIEW_COSTS'));
+    });
+  }
+  async transition(user: AuthenticatedUser, id: string, input: POTransition) {
+    const cap =
+      input.action === 'SUBMIT'
+        ? 'CREATE_PO'
+        : input.action === 'APPROVE'
+          ? 'APPROVE_PO'
+          : input.action === 'MARK_ORDERED'
+            ? 'PLACE_PO'
+            : 'CANCEL_PO';
+    requireInventory(user, cap);
+    const map = {
+      SUBMIT: ['DRAFT', 'PENDING_APPROVAL', 'PO_SUBMITTED'],
+      APPROVE: ['PENDING_APPROVAL', 'APPROVED', 'PO_APPROVED'],
+      MARK_ORDERED: ['APPROVED', 'ORDERED', 'PO_ORDERED'],
+      CANCEL: [
+        'DRAFT,PENDING_APPROVAL,APPROVED,ORDERED,PARTIALLY_RECEIVED',
+        'CANCELLED',
+        'PO_CANCELLED',
+      ],
+    } as const;
+    const [allowed, next, event] = map[input.action];
+    return this.serial(async (tx) => {
+      const po = await tx.purchaseOrder.findFirst({
+        where: { id, organizationId: user.organizationId, clinicLocationId: user.locationId },
+      });
+      if (!po) throw new NotFoundException('Purchase order not found');
+      if (input.expectedStatus && po.status !== input.expectedStatus)
+        throw new ConflictException('Purchase order changed; refresh and try again.');
+      if (!allowed.split(',').includes(po.status))
+        throw new ConflictException(
+          `Cannot ${input.action.toLowerCase()} a ${po.status} purchase order.`,
+        );
+      const now = new Date();
+      const updated = await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          status: next as never,
+          updatedById: user.id,
+          ...(input.action === 'SUBMIT'
+            ? { submittedAt: now }
+            : input.action === 'APPROVE'
+              ? { approvedAt: now }
+              : input.action === 'MARK_ORDERED'
+                ? { orderedAt: now, orderDate: now }
+                : { cancelledAt: now }),
+        },
+      });
+      await tx.inventoryEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          type: event as never,
+          entityType: 'purchaseOrder',
+          entityId: id,
+          actorId: user.id,
+        },
+      });
+      return updated;
+    });
+  }
+  async receive(user: AuthenticatedUser, input: ReceiptInput) {
+    requireInventory(user, 'RECEIVE');
+    return this.serial(async (tx) => {
+      const existing = await tx.inventoryReceipt.findUnique({
+        where: {
+          organizationId_idempotencyKey: {
+            organizationId: user.organizationId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+        include: { lines: true },
+      });
+      if (existing) return existing;
+      const vendor = await tx.inventoryVendor.findFirst({
+        where: { id: input.vendorId, organizationId: user.organizationId },
+      });
+      if (!vendor) throw new NotFoundException('Vendor not found');
+      const po = input.purchaseOrderId
+        ? await tx.purchaseOrder.findFirst({
+            where: {
+              id: input.purchaseOrderId,
+              organizationId: user.organizationId,
+              clinicLocationId: user.locationId,
+            },
+            include: { lines: true },
+          })
+        : null;
+      if (input.purchaseOrderId && !po) throw new NotFoundException('Purchase order not found');
+      if (po && !['ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status))
+        throw new ConflictException(`A ${po.status} purchase order cannot be received.`);
+      const receipt = await tx.inventoryReceipt.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          vendorId: input.vendorId,
+          purchaseOrderId: po?.id,
+          type: po ? 'PURCHASE_ORDER' : 'AD_HOC',
+          idempotencyKey: input.idempotencyKey,
+          receivedAt: input.receivedAt,
+          reference: input.reference,
+          notes: input.notes,
+          postedById: user.id,
+        },
+      });
+      for (const line of input.lines) await this.postReceiptLine(tx, user, receipt.id, po, line);
+      let partial = false;
+      if (po) {
+        const lines = await tx.purchaseOrderLine.findMany({ where: { purchaseOrderId: po.id } });
+        partial = lines.some((l) => l.receivedQuantity.lt(l.orderedQuantity));
+        await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: {
+            status: partial ? 'PARTIALLY_RECEIVED' : 'RECEIVED',
+            ...(partial ? {} : { receivedAt: new Date() }),
+            updatedById: user.id,
+          },
+        });
+      }
+      await tx.inventoryEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          type: partial ? 'PARTIAL_RECEIPT_POSTED' : 'RECEIPT_POSTED',
+          entityType: 'receipt',
+          entityId: receipt.id,
+          actorId: user.id,
+        },
+      });
+      return tx.inventoryReceipt.findUnique({
+        where: { id: receipt.id },
+        include: { lines: true },
+      });
+    });
+  }
+  async transfer(user: AuthenticatedUser, input: TransferInput) {
+    requireInventory(user, 'TRANSFER');
+    return this.serial(async (tx) => {
+      const existing = await tx.inventoryTransfer.findUnique({
+        where: {
+          organizationId_idempotencyKey: {
+            organizationId: user.organizationId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+        include: { lines: true },
+      });
+      if (existing) return existing;
+      const transfer = await tx.inventoryTransfer.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          idempotencyKey: input.idempotencyKey,
+          reason: input.reason,
+          status: 'POSTED',
+          createdById: user.id,
+          postedById: user.id,
+          postedAt: new Date(),
+        },
+      });
+      for (const l of input.lines) await this.postTransferLine(tx, user, transfer.id, l);
+      await tx.inventoryEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          type: 'TRANSFER_POSTED',
+          entityType: 'transfer',
+          entityId: transfer.id,
+          actorId: user.id,
+        },
+      });
+      return tx.inventoryTransfer.findUnique({
+        where: { id: transfer.id },
+        include: { lines: true },
+      });
+    });
+  }
+  async events(user: AuthenticatedUser) {
+    requireInventory(user, 'PURCHASING_AUDIT');
+    return prisma.inventoryEvent.findMany({
+      where: {
+        organizationId: user.organizationId,
+        OR: [{ clinicLocationId: null }, { clinicLocationId: user.locationId }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 250,
+    });
+  }
+  private async postReceiptLine(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    receiptId: string,
+    po: any,
+    line: ReceiptInput['lines'][number],
+  ) {
+    const item = await tx.catalogItem.findFirst({
+      where: { id: line.itemId, organizationId: user.organizationId, status: 'ACTIVE' },
+    });
+    const loc = await tx.stockLocation.findFirst({
+      where: {
+        id: line.stockLocationId,
+        organizationId: user.organizationId,
+        clinicLocationId: user.locationId,
+        isActive: true,
+      },
+    });
+    if (!item || !loc) throw new NotFoundException('Active item or destination not found');
+    if (item.controlledSubstance)
+      throw new ConflictException(
+        'Controlled inventory must be received through the controlled receiving workflow.',
+      );
+    if (item.lotTracking && !line.lotNumber)
+      throw new BadRequestException('Lot number is required.');
+    if (item.expirationTracking && !line.expirationDate)
+      throw new BadRequestException('Expiration date is required.');
+    const packages = new Prisma.Decimal(line.packageQuantity),
+      conversion = new Prisma.Decimal(line.purchaseToStock),
+      base = packages.mul(conversion),
+      damaged = new Prisma.Decimal(line.damagedQuantity ?? 0),
+      rejected = new Prisma.Decimal(line.rejectedQuantity ?? 0),
+      quarantined = new Prisma.Decimal(line.quarantinedQuantity ?? 0),
+      usable = line.usableQuantity
+        ? new Prisma.Decimal(line.usableQuantity)
+        : base.minus(damaged).minus(rejected).minus(quarantined);
+    if (usable.plus(damaged).plus(rejected).plus(quarantined).gt(base))
+      throw new BadRequestException('Receipt disposition quantities exceed quantity received.');
+    const onHand = usable.plus(quarantined);
+    let lotId: string | null = null;
+    if (item.lotTracking || line.lotNumber) {
+      const lot = await tx.inventoryLot.upsert({
+        where: {
+          itemId_stockLocationId_lotNumber: {
+            itemId: item.id,
+            stockLocationId: loc.id,
+            lotNumber: line.lotNumber ?? null,
+          },
+        },
+        create: {
+          organizationId: user.organizationId,
+          itemId: item.id,
+          stockLocationId: loc.id,
+          lotNumber: line.lotNumber,
+          expirationDate: line.expirationDate,
+          receivedDate: new Date(),
+          receivedUnitCost: dec(line.unitCost),
+          status: quarantined.gt(0) ? 'QUARANTINED' : 'AVAILABLE',
+          quantity: onHand,
+        },
+        update: {
+          quantity: { increment: onHand },
+          status: quarantined.gt(0) ? 'QUARANTINED' : undefined,
+        },
+      });
+      lotId = lot.id;
+    }
+    const balance = await tx.stockBalance.findFirst({
+      where: { itemId: item.id, stockLocationId: loc.id, lotId },
+    });
+    const previous = balance?.onHand ?? new Prisma.Decimal(0),
+      result = previous.plus(onHand);
+    if (balance)
+      await tx.stockBalance.update({
+        where: { id: balance.id },
+        data: { onHand: result, quarantined: { increment: quarantined } },
+      });
+    else
+      await tx.stockBalance.create({
+        data: {
+          organizationId: user.organizationId,
+          itemId: item.id,
+          stockLocationId: loc.id,
+          lotId,
+          onHand: result,
+          quarantined,
+        },
+      });
+    const tr = await tx.inventoryTransaction.create({
+      data: {
+        organizationId: user.organizationId,
+        clinicLocationId: user.locationId,
+        itemId: item.id,
+        lotId,
+        stockLocationId: loc.id,
+        transactionGroupId: randomUUID(),
+        transactionType: 'PURCHASE',
+        quantityDelta: onHand,
+        previousBalance: previous,
+        resultingBalance: result,
+        reason: po ? 'PURCHASE_ORDER_RECEIPT' : 'AD_HOC_RECEIPT',
+        purchaseOrderId: po?.id,
+        otherReference: receiptId,
+        userId: user.id,
+      },
+    });
+    const pol =
+      line.purchaseOrderLineId && po
+        ? po.lines.find((x: any) => x.id === line.purchaseOrderLineId)
+        : null;
+    if (po && !pol)
+      throw new BadRequestException('Receipt line does not belong to this purchase order.');
+    if (pol && pol.receivedQuantity.plus(packages).gt(pol.orderedQuantity))
+      throw new ConflictException('Receipt exceeds the outstanding ordered quantity.');
+    if (pol)
+      await tx.purchaseOrderLine.update({
+        where: { id: pol.id },
+        data: { receivedQuantity: { increment: packages } },
+      });
+    await tx.inventoryReceiptLine.create({
+      data: {
+        receiptId,
+        purchaseOrderLineId: pol?.id,
+        itemId: item.id,
+        stockLocationId: loc.id,
+        lotId,
+        itemNameSnapshot: item.name,
+        purchaseUnitSnapshot: line.purchaseUnit,
+        stockUnitSnapshot: line.stockUnit,
+        conversionSnapshot: conversion,
+        packageQuantity: packages,
+        baseQuantity: base,
+        usableQuantity: usable,
+        damagedQuantity: damaged,
+        rejectedQuantity: rejected,
+        quarantinedQuantity: quarantined,
+        unitCostSnapshot: dec(line.unitCost),
+        lotNumberSnapshot: line.lotNumber,
+        expirationDateSnapshot: line.expirationDate,
+        transactionId: tr.id,
+      },
+    });
+  }
+  private async postTransferLine(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    transferId: string,
+    l: TransferInput['lines'][number],
+  ) {
+    if (l.sourceStockLocationId === l.destinationStockLocationId)
+      throw new BadRequestException('Source and destination must be different.');
+    const [item, src, dst] = await Promise.all([
+      tx.catalogItem.findFirst({
+        where: { id: l.itemId, organizationId: user.organizationId, status: 'ACTIVE' },
+        include: { conversions: { where: { isActive: true }, take: 1 } },
+      }),
+      tx.stockLocation.findFirst({
+        where: {
+          id: l.sourceStockLocationId,
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          isActive: true,
+        },
+      }),
+      tx.stockLocation.findFirst({
+        where: {
+          id: l.destinationStockLocationId,
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          isActive: true,
+        },
+      }),
+    ]);
+    if (!item || !src || !dst)
+      throw new NotFoundException('Active item, source, or destination not found');
+    if (item.controlledSubstance)
+      throw new ConflictException('Controlled-item transfers require the compliance workflow.');
+    const source = await tx.stockBalance.findFirst({
+      where: { itemId: item.id, stockLocationId: src.id, lotId: l.sourceLotId ?? null },
+      include: { lot: true },
+    });
+    const qty = new Prisma.Decimal(l.quantity);
+    if (
+      !source ||
+      source.onHand.minus(source.quarantined).minus(source.expired).minus(source.reserved).lt(qty)
+    )
+      throw new ConflictException('Insufficient available stock at source.');
+    if (source.lot && source.lot.status !== 'AVAILABLE')
+      throw new ConflictException('Expired, recalled, or quarantined lots cannot be transferred.');
+    let destinationLotId: string | null = null;
+    if (source.lot) {
+      const dl = await tx.inventoryLot.upsert({
+        where: {
+          itemId_stockLocationId_lotNumber: {
+            itemId: item.id,
+            stockLocationId: dst.id,
+            lotNumber: source.lot.lotNumber,
+          },
+        },
+        create: {
+          organizationId: user.organizationId,
+          itemId: item.id,
+          stockLocationId: dst.id,
+          lotNumber: source.lot.lotNumber,
+          expirationDate: source.lot.expirationDate,
+          receivedDate: source.lot.receivedDate,
+          receivedUnitCost: source.lot.receivedUnitCost,
+          quantity: qty,
+        },
+        update: { quantity: { increment: qty } },
+      });
+      destinationLotId = dl.id;
+      await tx.inventoryLot.update({
+        where: { id: source.lot.id },
+        data: { quantity: { decrement: qty } },
+      });
+    }
+    const dest = await tx.stockBalance.findFirst({
+      where: { itemId: item.id, stockLocationId: dst.id, lotId: destinationLotId },
+    });
+    const group = randomUUID(),
+      srcResult = source.onHand.minus(qty),
+      dstPrevious = dest?.onHand ?? new Prisma.Decimal(0),
+      dstResult = dstPrevious.plus(qty);
+    await tx.stockBalance.update({ where: { id: source.id }, data: { onHand: srcResult } });
+    if (dest) await tx.stockBalance.update({ where: { id: dest.id }, data: { onHand: dstResult } });
+    else
+      await tx.stockBalance.create({
+        data: {
+          organizationId: user.organizationId,
+          itemId: item.id,
+          stockLocationId: dst.id,
+          lotId: destinationLotId,
+          onHand: dstResult,
+        },
+      });
+    const out = await tx.inventoryTransaction.create({
+      data: {
+        organizationId: user.organizationId,
+        clinicLocationId: user.locationId,
+        itemId: item.id,
+        lotId: l.sourceLotId,
+        stockLocationId: src.id,
+        transactionGroupId: group,
+        transactionType: 'TRANSFER_OUT',
+        quantityDelta: qty.neg(),
+        previousBalance: source.onHand,
+        resultingBalance: srcResult,
+        reason: 'LOCATION_TRANSFER',
+        otherReference: transferId,
+        userId: user.id,
+      },
+    });
+    const incoming = await tx.inventoryTransaction.create({
+      data: {
+        organizationId: user.organizationId,
+        clinicLocationId: user.locationId,
+        itemId: item.id,
+        lotId: destinationLotId,
+        stockLocationId: dst.id,
+        transactionGroupId: group,
+        transactionType: 'TRANSFER_IN',
+        quantityDelta: qty,
+        previousBalance: dstPrevious,
+        resultingBalance: dstResult,
+        reason: 'LOCATION_TRANSFER',
+        otherReference: transferId,
+        userId: user.id,
+      },
+    });
+    await tx.inventoryTransferLine.create({
+      data: {
+        transferId,
+        itemId: item.id,
+        sourceStockLocationId: src.id,
+        destinationStockLocationId: dst.id,
+        sourceLotId: l.sourceLotId,
+        destinationLotId,
+        quantity: qty,
+        unitSnapshot: item.conversions[0]?.stockUnit ?? 'unit',
+        transactionGroupId: group,
+        outTransactionId: out.id,
+        inTransactionId: incoming.id,
+      },
+    });
+  }
+  private async vendor(user: AuthenticatedUser, id: string) {
+    const v = await prisma.inventoryVendor.findFirst({
+      where: { id, organizationId: user.organizationId },
+    });
+    if (!v) throw new NotFoundException('Vendor not found');
+    return v;
+  }
+  private presentPO<T extends Record<string, any>>(p: T, costs: boolean) {
+    return {
+      ...p,
+      lines: p.lines?.map((l: any) => ({
+        ...redact(l, costs),
+        outstandingQuantity: new Prisma.Decimal(l.orderedQuantity).minus(l.receivedQuantity),
+      })),
+    };
+  }
+  private event(user: AuthenticatedUser, type: any, entityType: string, entityId: string) {
+    return prisma.inventoryEvent.create({
+      data: {
+        organizationId: user.organizationId,
+        clinicLocationId: user.locationId,
+        type,
+        entityType,
+        entityId,
+        actorId: user.id,
+      },
+    });
+  }
+  private async serial<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) {
+    for (let i = 0; i < 3; i++)
+      try {
+        return await prisma.$transaction(fn, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (e) {
+        if (!(e instanceof Prisma.PrismaClientKnownRequestError) || e.code !== 'P2034' || i === 2)
+          throw e;
+      }
+    throw new ConflictException('Concurrent purchasing update failed; retry.');
+  }
 }

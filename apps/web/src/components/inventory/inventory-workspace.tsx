@@ -145,6 +145,91 @@ type CountDetail = CountSummary & {
   lines: CountLine[];
   assignments: unknown[];
 };
+type ControlledProfile = {
+  id: string;
+  registrationId: string;
+  baseUnit: string;
+  federalSchedule: string;
+  strength: string;
+  dosageForm: string;
+  secureStockLocationIds: string[];
+  item: { id: string; name: string; sku: string | null };
+  containers: Array<{
+    id: string;
+    containerNumber: string;
+    stockLocationId: string;
+    currentQuantity: string;
+    status: string;
+  }>;
+};
+type ControlledLedger = {
+  id: string;
+  entryNumber: string;
+  eventAt: string;
+  eventType: string;
+  quantityChanged: string;
+  quantityAfter: string;
+  performedById: string;
+  witnessId: string | null;
+  patientId: string | null;
+  profile: { item: { name: string }; federalSchedule: string };
+  container: { containerNumber: string } | null;
+};
+type ControlledOverview = { metrics: Record<string, number>; notice: string };
+type ControlledDiscrepancy = {
+  id: string;
+  caseNumber: string;
+  severity: string;
+  classification: string;
+  status: string;
+};
+type ControlledReport = {
+  id: string;
+  type: string;
+  status: string;
+  jurisdiction: string;
+  authority: string;
+  externalConfirmationNumber: string | null;
+};
+type ControlledCount = {
+  id: string;
+  number: string;
+  registrationId: string;
+  type: string;
+  timing: string;
+  status: string;
+  blindCount: boolean;
+  lines: Array<{
+    id: string;
+    finalQuantity?: string | null;
+    variance?: string | null;
+    containerSnapshot?: { containerNumber?: string };
+    profileSnapshot?: { baseUnit?: string; federalSchedule?: string };
+  }>;
+};
+type ControlledCorrection = {
+  id: string;
+  number: string;
+  status: string;
+  reason: string;
+  explanation: string;
+  originalEntryId: string;
+};
+type ControlledDisposal = {
+  id: string;
+  number: string;
+  status: string;
+  reason: string;
+  proposedMethod: string;
+  lines: Array<{ id: string; quantity: string; unitSnapshot: string }>;
+};
+type ControlledAuthorization = {
+  id: string;
+  registrationId: string;
+  userId: string;
+  authorizationType: string;
+  status: string;
+};
 const tabs = [
   'Overview',
   'Items',
@@ -154,7 +239,7 @@ const tabs = [
   'Vendors',
   'Activity',
 ] as const;
-const later = new Set(['Controlled']);
+const later = new Set<string>();
 const fmt = (n: string | null) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
@@ -167,6 +252,19 @@ export function InventoryWorkspace() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [counts, setCounts] = useState<CountSummary[]>([]);
   const [activeCount, setActiveCount] = useState<CountDetail | null>(null);
+  const [controlledOverview, setControlledOverview] = useState<ControlledOverview | null>(null);
+  const [controlledProfiles, setControlledProfiles] = useState<ControlledProfile[]>([]);
+  const [controlledLedger, setControlledLedger] = useState<ControlledLedger[]>([]);
+  const [controlledDiscrepancies, setControlledDiscrepancies] = useState<ControlledDiscrepancy[]>(
+    [],
+  );
+  const [controlledReports, setControlledReports] = useState<ControlledReport[]>([]);
+  const [controlledCounts, setControlledCounts] = useState<ControlledCount[]>([]);
+  const [controlledCorrections, setControlledCorrections] = useState<ControlledCorrection[]>([]);
+  const [controlledDisposals, setControlledDisposals] = useState<ControlledDisposal[]>([]);
+  const [controlledAuthorizations, setControlledAuthorizations] = useState<
+    ControlledAuthorization[]
+  >([]);
   const [overview, setOverview] = useState<{
     metrics: Record<string, number>;
     attention: Array<{ itemId: string; itemName: string; message: string }>;
@@ -191,7 +289,7 @@ export function InventoryWorkspace() {
   const load = useCallback(async () => {
     const q = new URLSearchParams();
     if (search) q.set('search', search);
-    const [i, o, l, a, v, p, c] = await Promise.all([
+    const [i, o, l, a, v, p, c, co, cp, cl, cd, cr, cc, cx, cw, ca] = await Promise.all([
       fetch(`/api/inventory/items?${q}`),
       fetch('/api/inventory/overview'),
       fetch('/api/inventory/locations'),
@@ -199,6 +297,15 @@ export function InventoryWorkspace() {
       fetch('/api/inventory/vendors'),
       fetch('/api/inventory/orders'),
       fetch('/api/inventory/counts'),
+      fetch('/api/inventory/controlled/overview'),
+      fetch('/api/inventory/controlled/profiles'),
+      fetch('/api/inventory/controlled/ledger'),
+      fetch('/api/inventory/controlled/discrepancies'),
+      fetch('/api/inventory/controlled/reports'),
+      fetch('/api/inventory/controlled/counts'),
+      fetch('/api/inventory/controlled/corrections'),
+      fetch('/api/inventory/controlled/disposals'),
+      fetch('/api/inventory/controlled/authorizations'),
     ]);
     if (i.ok) {
       const next: Item[] = await i.json();
@@ -213,6 +320,15 @@ export function InventoryWorkspace() {
     if (v.ok) setVendors(await v.json());
     if (p.ok) setOrders(await p.json());
     if (c.ok) setCounts(await c.json());
+    if (co.ok) setControlledOverview(await co.json());
+    if (cp.ok) setControlledProfiles(await cp.json());
+    if (cl.ok) setControlledLedger(await cl.json());
+    if (cd.ok) setControlledDiscrepancies(await cd.json());
+    if (cr.ok) setControlledReports(await cr.json());
+    if (cc.ok) setControlledCounts(await cc.json());
+    if (cx.ok) setControlledCorrections(await cx.json());
+    if (cw.ok) setControlledDisposals(await cw.json());
+    if (ca.ok) setControlledAuthorizations(await ca.json());
   }, [search]);
   useEffect(() => {
     const timer = setTimeout(() => void load(), 180);
@@ -222,15 +338,17 @@ export function InventoryWorkspace() {
   return (
     <div className="inventory">
       <nav className="inventory__tabs" aria-label="Inventory sections">
-        {tabs.map((name) => (
-          <button
-            key={name}
-            className={tab === name ? 'is-active' : ''}
-            onClick={() => setTab(name)}
-          >
-            {name}
-          </button>
-        ))}
+        {tabs
+          .filter((name) => name !== 'Controlled' || controlledOverview)
+          .map((name) => (
+            <button
+              key={name}
+              className={tab === name ? 'is-active' : ''}
+              onClick={() => setTab(name)}
+            >
+              {name}
+            </button>
+          ))}
       </nav>
       <div className="inventory__toolbar">
         <label className="inventory__search">
@@ -347,6 +465,21 @@ export function InventoryWorkspace() {
             }}
           />
         ))}
+      {tab === 'Controlled' && (
+        <ControlledPanel
+          overview={controlledOverview}
+          profiles={controlledProfiles}
+          ledger={controlledLedger}
+          discrepancies={controlledDiscrepancies}
+          reports={controlledReports}
+          counts={controlledCounts}
+          corrections={controlledCorrections}
+          disposals={controlledDisposals}
+          authorizations={controlledAuthorizations}
+          locations={locations}
+          onSaved={load}
+        />
+      )}
       {tab === 'Activity' && <ActivityTable rows={activity} />}
       {selected && (
         <ItemDrawer
@@ -598,6 +731,606 @@ function ActivityTable({ rows }: { rows: Activity[] }) {
         </table>
       </div>
     </section>
+  );
+}
+function ControlledPanel({
+  overview,
+  profiles,
+  ledger,
+  discrepancies,
+  reports,
+  counts,
+  corrections,
+  disposals,
+  authorizations,
+  locations,
+  onSaved,
+}: {
+  overview: ControlledOverview | null;
+  profiles: ControlledProfile[];
+  ledger: ControlledLedger[];
+  discrepancies: ControlledDiscrepancy[];
+  reports: ControlledReport[];
+  counts: ControlledCount[];
+  corrections: ControlledCorrection[];
+  disposals: ControlledDisposal[];
+  authorizations: ControlledAuthorization[];
+  locations: Location[];
+  onSaved: () => Promise<void>;
+}) {
+  const [view, setView] = useState('Overview'),
+    [recording, setRecording] = useState(false);
+  const metrics = overview?.metrics ?? {};
+  return (
+    <section className="inventory__panel">
+      <div className="inventory__section-heading">
+        <div>
+          <h2>Controlled Substances</h2>
+          <p>
+            Compliance-supporting records. Confirm requirements with the clinic’s registrant or
+            legal advisor.
+          </p>
+        </div>
+        <button className="button-primary" onClick={() => setRecording(true)}>
+          Record Activity
+        </button>
+      </div>
+      <div className="inventory__views">
+        {[
+          'Overview',
+          'Running Log',
+          'Counts',
+          'Discrepancies',
+          'Waste & Disposal',
+          'Reports',
+          'Settings',
+        ].map((v) => (
+          <button key={v} className={view === v ? 'is-active' : ''} onClick={() => setView(v)}>
+            {v}
+          </button>
+        ))}
+      </div>
+      {view === 'Overview' && (
+        <>
+          <div className="inventory__metrics">
+            <Metric label="Open Discrepancies" value={metrics.openDiscrepancies} />
+            <Metric label="Pending Approval" value={metrics.pendingApproval} />
+            <Metric label="Unresolved Waste" value={metrics.unresolvedWaste} />
+            <Metric label="External Reports Awaiting Action" value={metrics.externalReports} />
+            <Metric label="Suspicious Balances" value={metrics.suspiciousBalances} />
+          </div>
+          <h3>Needs Attention</h3>
+          {discrepancies
+            .filter((d) => !['RESOLVED', 'CLOSED_NO_ADJUSTMENT'].includes(d.status))
+            .map((d) => (
+              <p key={d.id}>
+                <strong>{d.caseNumber}</strong> · {d.severity} · {d.status.replaceAll('_', ' ')} —
+                Investigate
+              </p>
+            ))}
+          {reports
+            .filter((r) =>
+              ['ACTION_REQUIRED', 'CORRECTION_REQUIRED', 'REJECTED_EXTERNALLY'].includes(r.status),
+            )
+            .map((r) => (
+              <p key={r.id}>
+                <strong>{r.type.replaceAll('_', ' ')}</strong> · {r.status.replaceAll('_', ' ')} —
+                Review external filing requirements
+              </p>
+            ))}
+        </>
+      )}
+      {view === 'Running Log' && <ControlledLog rows={ledger} />}{' '}
+      {view === 'Discrepancies' && (
+        <div>
+          {discrepancies.map((d) => (
+            <article className="lot" key={d.id}>
+              <strong>
+                {d.caseNumber} · {d.severity}
+              </strong>
+              <span>{d.classification.replaceAll('_', ' ')}</span>
+              <small>{d.status.replaceAll('_', ' ')} · Original records remain immutable</small>
+            </article>
+          ))}
+        </div>
+      )}
+      {view === 'Reports' && (
+        <div>
+          <p>
+            Reporting preparation and status tracking. Exporting does not mark a record as filed.
+          </p>
+          {reports.map((r) => (
+            <article className="lot" key={r.id}>
+              <strong>{r.type.replaceAll('_', ' ')}</strong>
+              <span>
+                {r.jurisdiction} · {r.authority}
+              </span>
+              <small>
+                {r.status.replaceAll('_', ' ')}
+                {r.externalConfirmationNumber ? ` · ${r.externalConfirmationNumber}` : ''}
+              </small>
+            </article>
+          ))}
+          {profiles[0] && (
+            <div className="inventory__actions">
+              <a
+                className="button-secondary"
+                href={`/api/inventory/controlled/exports?registrationId=${profiles[0].registrationId}&format=csv&reportType=CONTROLLED_RUNNING_BALANCE`}
+              >
+                Export CSV
+              </a>
+              <a
+                className="button-secondary"
+                href={`/api/inventory/controlled/exports?registrationId=${profiles[0].registrationId}&format=pdf&reportType=CONTROLLED_RUNNING_BALANCE`}
+              >
+                Export inspection PDF
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+      {view === 'Settings' && (
+        <div>
+          <h3>Controlled profiles</h3>
+          {profiles.map((p) => (
+            <p key={p.id}>
+              <strong>{p.item.name}</strong> · Schedule {p.federalSchedule} · {p.strength} ·{' '}
+              {p.containers.length} active container(s)
+            </p>
+          ))}
+          <h3>Active authorizations</h3>
+          {authorizations.map((a) => (
+            <p key={a.id}>
+              <strong>{a.authorizationType.replaceAll('_', ' ')}</strong> · user {a.userId} ·{' '}
+              {a.status}
+            </p>
+          ))}
+        </div>
+      )}
+      {view === 'Counts' && (
+        <ControlledCounts counts={counts} profiles={profiles} onSaved={onSaved} />
+      )}
+      {view === 'Waste & Disposal' && (
+        <ControlledDisposals disposals={disposals} onSaved={onSaved} />
+      )}
+      {view === 'Running Log' && corrections.length > 0 && (
+        <div>
+          <h3>Correction requests</h3>
+          {corrections.map((c) => (
+            <article className="lot" key={c.id}>
+              <strong>
+                {c.number} · {c.status.replaceAll('_', ' ')}
+              </strong>
+              <span>{c.reason.replaceAll('_', ' ')}</span>
+              <small>{c.explanation}</small>
+            </article>
+          ))}
+        </div>
+      )}
+      {recording && (
+        <ControlledEventEditor
+          profiles={profiles}
+          locations={locations}
+          onClose={() => setRecording(false)}
+          onSaved={onSaved}
+        />
+      )}
+    </section>
+  );
+}
+function ControlledCounts({
+  counts,
+  profiles,
+  onSaved,
+}: {
+  counts: ControlledCount[];
+  profiles: ControlledProfile[];
+  onSaved: () => Promise<void>;
+}) {
+  const [active, setActive] = useState<ControlledCount | null>(null);
+  const start = async () => {
+    if (!profiles[0]) return;
+    const r = await fetch('/api/inventory/controlled/counts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        registrationId: profiles[0].registrationId,
+        type: 'PERIODIC_COUNT',
+        timing: 'CLOSE_OF_BUSINESS',
+        blindCount: true,
+        dualReviewRequired: true,
+      }),
+    });
+    if (r.ok) await onSaved();
+  };
+  const open = async (id: string) => {
+    const r = await fetch(`/api/inventory/controlled/counts/${id}`);
+    if (r.ok) setActive(await r.json());
+  };
+  const action = async (path: string, body?: Record<string, unknown>) => {
+    if (!active) return;
+    const r = await fetch(`/api/inventory/controlled/counts/${active.id}/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (r.ok) {
+      await onSaved();
+      await open(active.id);
+    }
+  };
+  return (
+    <div>
+      <div className="inventory__section-heading">
+        <p>Blind, container-level counts with distinct reconciliation review.</p>
+        <button className="button-primary" onClick={start} disabled={!profiles.length}>
+          Start controlled count
+        </button>
+      </div>
+      {counts.map((c) => (
+        <article className="lot" key={c.id}>
+          <strong>
+            {c.number} · {c.status.replaceAll('_', ' ')}
+          </strong>
+          <span>
+            {c.type.replaceAll('_', ' ')} · {c.lines.length} container(s)
+          </span>
+          <button className="button-secondary" onClick={() => open(c.id)}>
+            Open
+          </button>
+        </article>
+      ))}
+      {active && (
+        <Modal title={active.number} onClose={() => setActive(null)}>
+          <div className="inventory__form">
+            <p>
+              <strong>{active.status.replaceAll('_', ' ')}</strong> · frozen count scope
+            </p>
+            {active.lines.map((line) => (
+              <form
+                key={line.id}
+                className="lot"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const f = new FormData(e.currentTarget);
+                  await fetch(
+                    `/api/inventory/controlled/counts/${active.id}/lines/${line.id}/entries`,
+                    {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        quantity: f.get('quantity'),
+                        exact: true,
+                        method: 'MANUAL',
+                        attestation: 'I attest this controlled count is accurate.',
+                      }),
+                    },
+                  );
+                  await open(active.id);
+                }}
+              >
+                <strong>{line.containerSnapshot?.containerNumber ?? 'Controlled container'}</strong>
+                <span>
+                  Schedule {line.profileSnapshot?.federalSchedule ?? '—'} ·{' '}
+                  {line.profileSnapshot?.baseUnit ?? 'units'}
+                </span>
+                <input
+                  name="quantity"
+                  type="number"
+                  step="any"
+                  min="0"
+                  defaultValue={line.finalQuantity ?? ''}
+                  required
+                />
+                <button className="button-secondary">Record count</button>
+              </form>
+            ))}
+            {['IN_PROGRESS', 'RECOUNT_REQUIRED'].includes(active.status) && (
+              <button className="button-primary" onClick={() => action('submit')}>
+                Submit for review
+              </button>
+            )}
+            {['SUBMITTED', 'SECOND_REVIEW_REQUIRED'].includes(active.status) && (
+              <button
+                className="button-primary"
+                onClick={() =>
+                  action('reviews', {
+                    decision: 'APPROVE',
+                    idempotencyKey: crypto.randomUUID(),
+                    attestation: 'I attest that I independently reviewed this count.',
+                  })
+                }
+              >
+                Approve review
+              </button>
+            )}
+            {active.status === 'APPROVED' && (
+              <button
+                className="button-primary"
+                onClick={() =>
+                  action('post', {
+                    idempotencyKey: crypto.randomUUID(),
+                    attestation: 'I attest that this approved count may be posted.',
+                  })
+                }
+              >
+                Post approved count
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+function ControlledDisposals({
+  disposals,
+  onSaved,
+}: {
+  disposals: ControlledDisposal[];
+  onSaved: () => Promise<void>;
+}) {
+  const act = async (id: string, action: string) => {
+    const witnessIds =
+      action === 'COMPLETE'
+        ? [
+            window.prompt('First witness user ID') ?? '',
+            window.prompt('Second witness user ID') ?? '',
+          ]
+        : [];
+    const reason = ['REJECT', 'CANCEL'].includes(action) ? window.prompt('Reason') : undefined;
+    if (witnessIds.some((w) => !w) || (['REJECT', 'CANCEL'].includes(action) && !reason)) return;
+    const r = await fetch(`/api/inventory/controlled/disposals/${id}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action,
+        reason,
+        witnessIds,
+        idempotencyKey: crypto.randomUUID(),
+        attestation: 'I attest that this controlled disposal action is accurate.',
+      }),
+    });
+    if (r.ok) await onSaved();
+  };
+  return (
+    <div>
+      <p>
+        Pending disposal quantities are held from use until witnessed completion or cancellation.
+      </p>
+      {disposals.map((d) => (
+        <article className="lot" key={d.id}>
+          <strong>
+            {d.number} · {d.status.replaceAll('_', ' ')}
+          </strong>
+          <span>
+            {d.reason.replaceAll('_', ' ')} · {d.proposedMethod}
+          </span>
+          <small>{d.lines.map((l) => `${fmt(l.quantity)} ${l.unitSnapshot}`).join(', ')}</small>
+          <div className="inventory__actions">
+            {d.status === 'DRAFT' && <button onClick={() => act(d.id, 'SUBMIT')}>Submit</button>}
+            {d.status === 'PENDING_APPROVAL' && (
+              <button onClick={() => act(d.id, 'APPROVE')}>Approve</button>
+            )}
+            {['READY_FOR_COMPLETION', 'APPROVED', 'SCHEDULED'].includes(d.status) && (
+              <button onClick={() => act(d.id, 'COMPLETE')}>Complete with witnesses</button>
+            )}
+            {!['COMPLETED', 'CANCELLED'].includes(d.status) && (
+              <button onClick={() => act(d.id, 'CANCEL')}>Cancel</button>
+            )}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+function ControlledLog({ rows }: { rows: ControlledLedger[] }) {
+  return (
+    <div className="inventory__table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date and Time</th>
+            <th>Item</th>
+            <th>Schedule</th>
+            <th>Event</th>
+            <th>Patient / Reference</th>
+            <th>Container</th>
+            <th>Change</th>
+            <th>Running Balance</th>
+            <th>Witness</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id}>
+              <td>{new Date(r.eventAt).toLocaleString()}</td>
+              <td>
+                <strong>{r.profile.item.name}</strong>
+                <small>{r.entryNumber}</small>
+              </td>
+              <td>{r.profile.federalSchedule}</td>
+              <td>{r.eventType.replaceAll('_', ' ')}</td>
+              <td>{r.patientId || '—'}</td>
+              <td>{r.container?.containerNumber || 'Lot level'}</td>
+              <td>
+                {Number(r.quantityChanged) > 0 ? '+' : ''}
+                {fmt(r.quantityChanged)}
+              </td>
+              <td>{fmt(r.quantityAfter)}</td>
+              <td>{r.witnessId ? 'Recorded' : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function ControlledEventEditor({
+  profiles,
+  locations,
+  onClose,
+  onSaved,
+}: {
+  profiles: ControlledProfile[];
+  locations: Location[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [profileId, setProfileId] = useState(profiles[0]?.id ?? ''),
+    [eventType, setEventType] = useState('ADMINISTERED'),
+    [error, setError] = useState('');
+  const profile = profiles.find((p) => p.id === profileId);
+  return (
+    <Modal title="Record controlled activity" onClose={onClose}>
+      <form
+        className="inventory__form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const f = new FormData(e.currentTarget);
+          const r = await fetch('/api/inventory/controlled/ledger', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              idempotencyKey: crypto.randomUUID(),
+              registrationId: profile?.registrationId,
+              profileId,
+              containerId: f.get('containerId') || null,
+              stockLocationId: f.get('stockLocationId'),
+              eventType,
+              quantity: f.get('quantity'),
+              eventAt: new Date().toISOString(),
+              reason: f.get('reason'),
+              patientId: f.get('patientId') || null,
+              clientId: f.get('clientId') || null,
+              visitId: f.get('visitId') || null,
+              prescriptionReference: f.get('prescriptionReference') || null,
+              authorizingVeterinarianId: f.get('veterinarianId') || null,
+              witnessId: f.get('witnessId') || null,
+              notes: f.get('notes') || null,
+              attestation: String(f.get('attestation')),
+            }),
+          });
+          if (!r.ok)
+            return setError((await r.json()).message || 'Unable to post controlled activity');
+          await onSaved();
+          onClose();
+        }}
+      >
+        <label>
+          Controlled item
+          <select value={profileId} onChange={(e) => setProfileId(e.target.value)} required>
+            {profiles.map((p) => (
+              <option value={p.id} key={p.id}>
+                {p.item.name} · Schedule {p.federalSchedule}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Event
+          <select value={eventType} onChange={(e) => setEventType(e.target.value)}>
+            <option value="RECEIVED">Received</option>
+            <option value="ADMINISTERED">Administered</option>
+            <option value="DISPENSED">Dispensed</option>
+            <option value="WASTED_DURING_ADMINISTRATION">Administration waste</option>
+            <option value="ACCIDENTAL_LOSS">Accidental loss</option>
+            <option value="QUARANTINED">Quarantined</option>
+            <option value="RELEASED_FROM_QUARANTINE">Released from quarantine</option>
+            <option value="DISPOSAL_PENDING">Place into pending disposal</option>
+            <option value="DISPOSED">Complete witnessed disposal</option>
+          </select>
+        </label>
+        <label>
+          Container
+          <select name="containerId" required>
+            <option value="">Choose container</option>
+            {profile?.containers.map((c) => (
+              <option value={c.id} key={c.id}>
+                {c.containerNumber} · {fmt(c.currentQuantity)} {profile.baseUnit}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Secure location
+          <select name="stockLocationId" required>
+            {locations
+              .filter((l) => profile?.secureStockLocationIds.includes(l.id))
+              .map((l) => (
+                <option value={l.id} key={l.id}>
+                  {l.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Quantity ({profile?.baseUnit})
+          <input name="quantity" type="number" step="any" min="0.000001" required />
+        </label>
+        <label>
+          Reason
+          <input name="reason" required />
+        </label>
+        {['ADMINISTERED', 'DISPENSED'].includes(eventType) && (
+          <>
+            <label>
+              Patient ID
+              <input name="patientId" required />
+            </label>
+            <label>
+              Authorizing veterinarian user ID
+              <input name="veterinarianId" required />
+            </label>
+          </>
+        )}
+        {eventType === 'ADMINISTERED' && (
+          <label>
+            Visit ID
+            <input name="visitId" required />
+          </label>
+        )}
+        {eventType === 'DISPENSED' && (
+          <>
+            <label>
+              Client ID
+              <input name="clientId" required />
+            </label>
+            <label>
+              Prescription reference
+              <input name="prescriptionReference" required />
+            </label>
+          </>
+        )}
+        {['WASTED_DURING_ADMINISTRATION', 'ACCIDENTAL_LOSS', 'DISPOSED'].includes(eventType) && (
+          <label>
+            Distinct authorized witness user ID
+            <input name="witnessId" required />
+          </label>
+        )}
+        <label>
+          Notes
+          <textarea name="notes" />
+        </label>
+        <label>
+          <input
+            name="attestation"
+            type="checkbox"
+            value="I deliberately confirm this controlled-substance record is accurate."
+            required
+          />{' '}
+          I confirm this record is accurate to the best of my knowledge.
+        </label>
+        <p>No external filing or invoice action will be performed automatically.</p>
+        {error && <p className="inventory__error">{error}</p>}
+        <div className="inventory__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="button-primary">Post immutable record</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 function CountsPanel({

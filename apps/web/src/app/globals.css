@@ -94,7 +94,7 @@ body {
 
 /* Inventory uses the dashboard's existing neutral palette and reserves
  * warning/danger colors for actionable stock state. */
-.inventory { display: grid; gap: 1rem; padding: 0 1.5rem 2rem; color: #18212b; }
+.inventory { display: grid; gap: 1rem; padding: 0 1.5rem 2rem 0; color: #18212b; }
 .inventory button, .inventory input, .inventory select, .inventory textarea, .inventory-modal button, .inventory-modal input, .inventory-modal select, .inventory-modal textarea { font: inherit; }
 .inventory__tabs { display: flex; gap: 1.35rem; border-bottom: 1px solid #dfe3e8; overflow-x: auto; }
 .inventory__tabs button, .inventory__views button, .item-drawer nav button { border: 0; border-bottom: 2px solid transparent; padding: .75rem .1rem; background: transparent; color: #67717e; cursor: pointer; white-space: nowrap; }

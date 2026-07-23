@@ -63,9 +63,11 @@ export const adjustmentAmounts = (
 export class InventoryService {
   async list(user: AuthenticatedUser, query: InventoryQuery) {
     requireInventory(user, 'VIEW');
+    const controlledAccess = await this.hasControlledAccess(user);
     const items = await prisma.catalogItem.findMany({
       where: {
         organizationId: user.organizationId,
+        ...(controlledAccess ? {} : { controlledSubstance: false }),
         AND: [
           { OR: [{ locationId: null }, { locationId: user.locationId }] },
           ...(query.search
@@ -95,7 +97,10 @@ export class InventoryService {
 
   async get(user: AuthenticatedUser, id: string) {
     requireInventory(user, 'VIEW');
-    return this.present(user, await this.findItem(user, id));
+    const item = await this.findItem(user, id);
+    if (item.controlledSubstance && !(await this.hasControlledAccess(user)))
+      throw new NotFoundException('Inventory item not found');
+    return this.present(user, item);
   }
 
   async overview(user: AuthenticatedUser) {
@@ -359,7 +364,20 @@ export class InventoryService {
 
   async archive(user: AuthenticatedUser, id: string) {
     requireInventory(user, 'ARCHIVE');
-    await this.findItem(user, id);
+    const item = await this.findItem(user, id);
+    if (item.controlledSubstance) {
+      const blocked = await prisma.controlledDiscrepancyCase.count({
+        where: {
+          organizationId: user.organizationId,
+          itemId: id,
+          status: { notIn: ['RESOLVED', 'CLOSED_NO_ADJUSTMENT'] },
+        },
+      });
+      if (blocked)
+        throw new ConflictException(
+          'Controlled items with unresolved compliance work cannot be archived.',
+        );
+    }
     return prisma.catalogItem.update({
       where: { id },
       data: { status: 'INACTIVE', archivedAt: new Date(), updatedById: user.id },
@@ -554,6 +572,20 @@ export class InventoryService {
     });
     if (!item) throw new NotFoundException('Inventory item not found');
     return item;
+  }
+  private async hasControlledAccess(user: AuthenticatedUser) {
+    return (
+      (await prisma.controlledAuthorization.count({
+        where: {
+          organizationId: user.organizationId,
+          clinicLocationId: user.locationId,
+          userId: user.id,
+          status: 'ACTIVE',
+          effectiveDate: { lte: new Date() },
+          OR: [{ expirationDate: null }, { expirationDate: { gt: new Date() } }],
+        },
+      })) > 0
+    );
   }
   private present<T extends Awaited<ReturnType<InventoryService['findItem']>>>(
     user: AuthenticatedUser,

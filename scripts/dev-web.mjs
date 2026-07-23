@@ -45,6 +45,9 @@ function assertPortAvailable(port) {
       server.close(resolve);
     });
 
+    // Local development does not need an all-interface listener. Binding the
+    // probe explicitly to loopback also works in restricted environments
+    // where listening on 0.0.0.0 is denied with EPERM.
     server.listen(Number(port), '127.0.0.1');
   });
 }
@@ -60,7 +63,7 @@ try {
 
 console.log(`Sparki web dev starting at http://localhost:${selectedPort}`);
 
-const child = spawn('next', ['dev', '--port', selectedPort], {
+const child = spawn('next', ['dev', '--hostname', '127.0.0.1', '--port', selectedPort], {
   stdio: 'inherit',
   env: {
     ...process.env,

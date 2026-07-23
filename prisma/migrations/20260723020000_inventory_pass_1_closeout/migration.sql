@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "ItemUnitConversion" ADD COLUMN     "archivedAt" TIMESTAMP(3),
+ADD COLUMN     "effectiveFrom" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN     "isActive" BOOLEAN NOT NULL DEFAULT true;

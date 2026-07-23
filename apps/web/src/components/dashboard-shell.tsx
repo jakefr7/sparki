@@ -33,7 +33,7 @@ interface HeaderWeather {
 let cachedHeaderWeather: HeaderWeather | null = null;
 let cachedAreaLabel = 'Local weather';
 
-export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/messages' | '/communication' | '/settings';
+export type DashboardRoute = '/' | '/today' | '/scheduler' | '/patients' | '/messages' | '/communication' | '/inventory' | '/settings';
 
 const SIDEBAR_ITEMS: ReadonlyArray<{ label: string; href?: DashboardRoute }> = [
   { href: '/', label: 'Dashboard' },
@@ -44,7 +44,7 @@ const SIDEBAR_ITEMS: ReadonlyArray<{ label: string; href?: DashboardRoute }> = [
   { href: '/communication', label: 'Client Communication' },
   { label: 'Tasks' },
   { label: 'Reports' },
-  { label: 'Inventory' },
+  { href: '/inventory', label: 'Inventory' },
   { label: 'Billing' },
   { href: '/settings', label: 'Settings' },
   { label: 'Help' },

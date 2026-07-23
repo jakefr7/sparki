@@ -77,6 +77,9 @@ model Organization {
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
   visitHandoffs                VisitHandoff[]
+  catalogItems                 CatalogItem[]
+  stockLocations               StockLocation[]
+  inventoryTransactions        InventoryTransaction[]
 
   memberships    OrganizationMembership[]
   locationAccess ClinicLocationAccess[]
@@ -107,6 +110,9 @@ model Location {
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
   visitHandoffs                VisitHandoff[]
+  catalogItems                 CatalogItem[]
+  stockLocations               StockLocation[]
+  inventoryTransactions        InventoryTransaction[]
 
   // Location-level policy: clinics may allow operational checkout while an
   // invoice balance remains open. The balance itself stays visible work.
@@ -190,7 +196,7 @@ model User {
   visitTransitions          VisitTransition[]            @relation("VisitTransitionActor")
   assignedVisitWorkItems    VisitWorkItem[]              @relation("VisitWorkItemAssignee")
   completedVisitWorkItems   VisitWorkItem[]              @relation("VisitWorkItemCompletedBy")
-  visitWorkItemChanges     VisitWorkItemChange[]        @relation("VisitWorkItemChangeActor")
+  visitWorkItemChanges      VisitWorkItemChange[]        @relation("VisitWorkItemChangeActor")
   createdVisitExceptions    VisitException[]             @relation("VisitExceptionCreatedBy")
   ownedVisitExceptions      VisitException[]             @relation("VisitExceptionOwner")
   resolvedVisitExceptions   VisitException[]             @relation("VisitExceptionResolvedBy")
@@ -202,6 +208,7 @@ model User {
   assignedVisitSignoffs     VisitRecordSignoffDelegate[] @relation("VisitSignoffAssignedBy")
   completedVisitDischarges  VisitDischarge[]             @relation("VisitDischargeCompletedBy")
   completedVisitCheckouts   VisitCheckout[]              @relation("VisitCheckoutCompletedBy")
+  inventoryTransactions     InventoryTransaction[]
 
   notes                              Note[]
   createdTasks                       Task[]
@@ -717,20 +724,20 @@ model AppointmentTypeSlotTemplate {
 // rather than reusing AppointmentState/VisitState since it's a display-only
 // concept, not a workflow state.
 model DashboardStatusColorSetting {
-  id                    String   @id @default(cuid())
+  id                    String     @id @default(cuid())
   organizationId        String
   locationId            String
   status                String
   name                  String
   description           String?
   color                 String
-  sortOrder             Int      @default(0)
-  isEnabled             Boolean  @default(true)
-  isInClinic            Boolean  @default(false)
-  allowedTransitionKeys String[] @default([])
+  sortOrder             Int        @default(0)
+  isEnabled             Boolean    @default(true)
+  isInClinic            Boolean    @default(false)
+  allowedTransitionKeys String[]   @default([])
   lifecyclePhase        VisitPhase @default(Arrived)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   location     Location     @relation(fields: [locationId], references: [id])
@@ -1321,11 +1328,11 @@ model VisitWorkItem {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  location     Location     @relation(fields: [locationId], references: [id])
-  visit        Visit        @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  assignee     User?        @relation("VisitWorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  completedBy  User?        @relation("VisitWorkItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  location     Location              @relation(fields: [locationId], references: [id])
+  visit        Visit                 @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  assignee     User?                 @relation("VisitWorkItemAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  completedBy  User?                 @relation("VisitWorkItemCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   changes      VisitWorkItemChange[]
 
   @@index([visitId, status])
@@ -1334,15 +1341,15 @@ model VisitWorkItem {
 }
 
 model VisitWorkItemChange {
-  id          String              @id @default(cuid())
-  workItemId  String
-  visitId     String
-  actorId     String
-  fromStatus  VisitWorkItemStatus?
-  toStatus    VisitWorkItemStatus
-  reason      String?
-  metadata    Json?
-  createdAt   DateTime            @default(now())
+  id         String               @id @default(cuid())
+  workItemId String
+  visitId    String
+  actorId    String
+  fromStatus VisitWorkItemStatus?
+  toStatus   VisitWorkItemStatus
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime             @default(now())
 
   workItem VisitWorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   visit    Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
@@ -1413,9 +1420,9 @@ model VisitRecordSignoffDelegate {
   assignedById String
   assignedAt   DateTime @default(now())
 
-  visit          Visit         @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  delegate       User          @relation("VisitSignoffDelegate", fields: [delegateId], references: [id], onDelete: Cascade)
-  assignedBy     User          @relation("VisitSignoffAssignedBy", fields: [assignedById], references: [id])
+  visit      Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  delegate   User  @relation("VisitSignoffDelegate", fields: [delegateId], references: [id], onDelete: Cascade)
+  assignedBy User  @relation("VisitSignoffAssignedBy", fields: [assignedById], references: [id])
 
   @@id([visitId, delegateId])
   @@index([delegateId])
@@ -1562,4 +1569,252 @@ model SoapNote {
   @@index([medicalRecordId])
   @@index([visitId])
   @@index([amendsSoapNoteId])
+}
+
+// --- Inventory ----------------------------------------------------------
+// Inventory transactions are the source of truth. StockBalance is a
+// transactionally-maintained projection and must never be edited directly.
+
+enum CatalogItemStatus {
+  ACTIVE
+  INACTIVE
+  DISCONTINUED
+}
+
+enum CatalogItemType {
+  MEDICATION
+  VACCINE
+  DIAGNOSTIC
+  SERVICE
+  SUPPLY
+  RETAIL
+  FOOD
+  OTHER
+}
+
+enum InventoryLotStatus {
+  AVAILABLE
+  QUARANTINED
+  EXPIRED
+  RECALLED
+  DEPLETED
+}
+
+enum InventoryTransactionType {
+  OPENING_BALANCE
+  MANUAL_ADJUSTMENT
+  INVENTORY_COUNT_ADJUSTMENT
+  EXPIRED
+  DAMAGED
+  RETURNED
+  TRANSFER_IN
+  TRANSFER_OUT
+  QUARANTINED
+  RELEASED_FROM_QUARANTINE
+  REVERSAL
+}
+
+enum ItemDocumentType {
+  SDS
+  MANUFACTURER
+  INSTRUCTIONS
+  GENERAL
+}
+
+model CatalogItem {
+  id                  String            @id @default(uuid()) @db.Uuid
+  organizationId      String
+  locationId          String?
+  name                String
+  description         String?
+  primaryType         CatalogItemType
+  route               String?
+  therapeuticClass    String?
+  species             String[]          @default([])
+  tags                String[]          @default([])
+  brand               String?
+  manufacturer        String?
+  sku                 String?
+  status              CatalogItemStatus @default(ACTIVE)
+  imageUrl            String?
+  billable            Boolean           @default(false)
+  inventoryTracked    Boolean           @default(false)
+  taxable             Boolean           @default(false)
+  retailPrice         Decimal?          @db.Decimal(19, 4)
+  internalNotes       String?
+  lotTracking         Boolean           @default(false)
+  expirationTracking  Boolean           @default(false)
+  controlledSubstance Boolean           @default(false)
+  deaSchedule         String?
+  minimumStock        Decimal?          @db.Decimal(20, 6)
+  maximumStock        Decimal?          @db.Decimal(20, 6)
+  reorderPoint        Decimal?          @db.Decimal(20, 6)
+  reorderQuantity     Decimal?          @db.Decimal(20, 6)
+  sourceSystem        String?
+  sourceId            String?
+  sourceConfidence    Float?
+  importedAt          DateTime?
+  createdById         String?
+  updatedById         String?
+  archivedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  location     Location?              @relation(fields: [locationId], references: [id])
+  barcodes     ItemBarcode[]
+  conversions  ItemUnitConversion[]
+  lots         InventoryLot[]
+  balances     StockBalance[]
+  transactions InventoryTransaction[]
+  documents    ItemDocument[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, locationId, status])
+  @@index([organizationId, name])
+}
+
+model ItemBarcode {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String
+  itemId         String      @db.Uuid
+  value          String
+  barcodeType    String
+  unit           String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  item           CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, value])
+  @@index([itemId])
+}
+
+model ItemUnitConversion {
+  id              String      @id @default(uuid()) @db.Uuid
+  itemId          String      @db.Uuid
+  purchaseUnit    String
+  stockUnit       String
+  dispenseUnit    String?
+  billingUnit     String?
+  purchaseToStock Decimal     @db.Decimal(20, 8)
+  stockToDispense Decimal?    @db.Decimal(20, 8)
+  stockToBilling  Decimal?    @db.Decimal(20, 8)
+  isActive        Boolean     @default(true)
+  effectiveFrom   DateTime    @default(now())
+  archivedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  item            CatalogItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model StockLocation {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String
+  clinicLocationId String
+  parentId         String?                @db.Uuid
+  name             String
+  isActive         Boolean                @default(true)
+  archivedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  organization     Organization           @relation(fields: [organizationId], references: [id])
+  clinicLocation   Location               @relation(fields: [clinicLocationId], references: [id])
+  parent           StockLocation?         @relation("StockLocationTree", fields: [parentId], references: [id])
+  children         StockLocation[]        @relation("StockLocationTree")
+  lots             InventoryLot[]
+  balances         StockBalance[]
+  transactions     InventoryTransaction[]
+
+  @@unique([clinicLocationId, parentId, name])
+  @@index([organizationId, clinicLocationId])
+}
+
+model InventoryLot {
+  id               String                 @id @default(uuid()) @db.Uuid
+  organizationId   String
+  itemId           String                 @db.Uuid
+  stockLocationId  String                 @db.Uuid
+  lotNumber        String?
+  expirationDate   DateTime?              @db.Date
+  receivedDate     DateTime?              @db.Date
+  receivedUnitCost Decimal?               @db.Decimal(19, 4)
+  status           InventoryLotStatus     @default(AVAILABLE)
+  quantity         Decimal                @default(0) @db.Decimal(20, 6)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  item             CatalogItem            @relation(fields: [itemId], references: [id])
+  stockLocation    StockLocation          @relation(fields: [stockLocationId], references: [id])
+  balances         StockBalance[]
+  transactions     InventoryTransaction[]
+
+  @@unique([itemId, stockLocationId, lotNumber])
+  @@index([organizationId, expirationDate, status])
+}
+
+model StockBalance {
+  id              String        @id @default(uuid()) @db.Uuid
+  organizationId  String
+  itemId          String        @db.Uuid
+  stockLocationId String        @db.Uuid
+  lotId           String?       @db.Uuid
+  onHand          Decimal       @default(0) @db.Decimal(20, 6)
+  quarantined     Decimal       @default(0) @db.Decimal(20, 6)
+  expired         Decimal       @default(0) @db.Decimal(20, 6)
+  reserved        Decimal       @default(0) @db.Decimal(20, 6)
+  updatedAt       DateTime      @updatedAt
+  item            CatalogItem   @relation(fields: [itemId], references: [id])
+  stockLocation   StockLocation @relation(fields: [stockLocationId], references: [id])
+  lot             InventoryLot? @relation(fields: [lotId], references: [id])
+
+  @@unique([itemId, stockLocationId, lotId])
+  @@index([organizationId, itemId])
+}
+
+model InventoryTransaction {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  organizationId        String
+  clinicLocationId      String
+  itemId                String                   @db.Uuid
+  lotId                 String?                  @db.Uuid
+  stockLocationId       String                   @db.Uuid
+  transactionGroupId    String                   @db.Uuid
+  transactionType       InventoryTransactionType
+  quantityDelta         Decimal                  @db.Decimal(20, 6)
+  previousBalance       Decimal                  @db.Decimal(20, 6)
+  resultingBalance      Decimal                  @db.Decimal(20, 6)
+  reason                String
+  userId                String
+  patientId             String?
+  visitId               String?
+  invoiceId             String?
+  purchaseOrderId       String?
+  otherReference        String?
+  notes                 String?
+  reversesTransactionId String?                  @unique @db.Uuid
+  createdAt             DateTime                 @default(now())
+  organization          Organization             @relation(fields: [organizationId], references: [id])
+  clinicLocation        Location                 @relation(fields: [clinicLocationId], references: [id])
+  item                  CatalogItem              @relation(fields: [itemId], references: [id])
+  lot                   InventoryLot?            @relation(fields: [lotId], references: [id])
+  stockLocation         StockLocation            @relation(fields: [stockLocationId], references: [id])
+  user                  User                     @relation(fields: [userId], references: [id])
+  reverses              InventoryTransaction?    @relation("InventoryReversal", fields: [reversesTransactionId], references: [id])
+  reversedBy            InventoryTransaction?    @relation("InventoryReversal")
+
+  @@index([organizationId, clinicLocationId, createdAt])
+  @@index([itemId, createdAt])
+}
+
+model ItemDocument {
+  id           String           @id @default(uuid()) @db.Uuid
+  itemId       String           @db.Uuid
+  type         ItemDocumentType
+  name         String
+  url          String
+  mimeType     String?
+  uploadedById String?
+  createdAt    DateTime         @default(now())
+  item         CatalogItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
 }

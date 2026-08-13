@@ -6,7 +6,7 @@ test.describe('inventory workspace polish', () => {
     await page.context().addCookies([
       {
         name: 'sparki_session',
-        value: 'development-e2e',
+        value: 'dev:dev-user',
         url: `http://127.0.0.1:${port}`,
       },
     ]);

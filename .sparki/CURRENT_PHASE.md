@@ -60,7 +60,9 @@ Establish deterministic, isolated, and honest repository verification. Phase 1 m
     },
     "pnpm typecheck",
     "pnpm test",
-    "pnpm build"
+    "pnpm build",
+    "pnpm test:integration",
+    "pnpm test:e2e"
   ]
 }
 -->

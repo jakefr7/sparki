@@ -115,6 +115,11 @@ try {
   const extensionSchema = extension.rows[0]?.nspname;
   const quoteIdentifier = (identifier) => `"${identifier.replaceAll('"', '""')}"`;
   const searchPath = [schema, extensionSchema].filter(Boolean).map(quoteIdentifier).join(',');
+  // Prisma uses the `schema` parameter to select the PostgreSQL namespace,
+  // while `options` keeps extension operators (for example pg_trgm) visible.
+  // The guarded Vitest and Playwright entry points also verify this explicit
+  // marker so they cannot be run accidentally against a shared database.
+  parsed.searchParams.set('schema', schema);
   parsed.searchParams.set('options', `-c search_path=${searchPath}`);
   const isolatedUrl = parsed.toString();
   const env = {

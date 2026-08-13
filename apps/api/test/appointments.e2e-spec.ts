@@ -20,6 +20,7 @@ describe('Appointments (e2e)', () => {
   let wellnessAppointmentTypeId: string;
   const availabilityBlockIds: string[] = [];
   const addedProviderAssignmentIds: string[] = [];
+  const createdAppointmentTypeIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -34,6 +35,40 @@ describe('Appointments (e2e)', () => {
     // providers and schedule blocks. Give this suite deterministic, isolated
     // availability instead of depending on whichever local demo schedule is
     // present in the shared development database.
+    const appointmentTypeFixtures = [
+      ['WellnessPreventiveCare', 'Wellness / Preventive Care', 30],
+      ['SickVisit', 'Sick Visit', 30],
+      ['Recheck', 'Follow-Up', 30],
+      ['TechnicianAppointment', 'Technician Appointment', 30],
+      ['Vaccination', 'Vaccination', 30],
+      ['SurgeryProcedure', 'Surgery Consultation', 60],
+      ['DropOff', 'Drop-Off', 30],
+      ['EmergencyUrgent', 'Urgent Visit', 30],
+      ['Telemedicine', 'Telemedicine', 30],
+      ['Euthanasia', 'Euthanasia', 60],
+      ['BoardingNonMedical', 'Boarding / Non-medical', 30],
+    ] as const;
+    for (const [appointmentType, name, defaultDurationMinutes] of appointmentTypeFixtures) {
+      const existing = await prisma.appointmentTypeSetting.findFirst({
+        where: { locationId: DEV_LOCATION_ID, appointmentType },
+        select: { id: true },
+      });
+      if (!existing) {
+        const created = await prisma.appointmentTypeSetting.create({
+          data: {
+            organizationId: DEV_ORGANIZATION_ID,
+            locationId: DEV_LOCATION_ID,
+            appointmentType,
+            name,
+            defaultDurationMinutes,
+            color: appointmentType === 'EmergencyUrgent' ? '#DC2626' : '#2563EB',
+            sortOrder: createdAppointmentTypeIds.length * 10 + 10,
+          },
+          select: { id: true },
+        });
+        createdAppointmentTypeIds.push(created.id);
+      }
+    }
     const appointmentTypes = await prisma.appointmentTypeSetting.findMany({
       where: {
         organizationId: DEV_ORGANIZATION_ID,
@@ -140,6 +175,9 @@ describe('Appointments (e2e)', () => {
         providerId: DEV_USER_ID,
         appointmentTypeId: { in: addedProviderAssignmentIds },
       },
+    });
+    await prisma.appointmentTypeSetting.deleteMany({
+      where: { id: { in: createdAppointmentTypeIds } },
     });
     await prisma.patientClient.deleteMany({ where: { patientId } });
     await prisma.patient.deleteMany({ where: { id: patientId } });

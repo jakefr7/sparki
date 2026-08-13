@@ -92,7 +92,7 @@ Run from the repo root (Turborepo fans these out to every app/package):
 | `pnpm lint`                    | ESLint across the workspace                                                   |
 | `pnpm typecheck`               | `tsc --noEmit` across the workspace                                           |
 | `pnpm test`                    | Database-free Vitest unit tests across the workspace                          |
-| `pnpm test:integration`        | API integration tests in a disposable, per-run PostgreSQL schema              |
+| `pnpm test:integration`        | API integration tests in a disposable, per-run PostgreSQL database            |
 | `pnpm test:e2e`                | Playwright with disposable data and managed API/web servers                   |
 | `pnpm format` / `format:check` | Prettier write/check (code only — `docs/` is excluded, see `.prettierignore`) |
 
@@ -102,10 +102,13 @@ Scope any of these to one package with `pnpm --filter @sparki/api <script>`.
 
 `apps/api` has database-free unit tests (`src/**/*.spec.ts`) and integration tests
 (`test/*.e2e-spec.ts`, run through a real Nest application via Supertest). `pnpm test` runs only
-the unit tests. `pnpm test:integration` requires PostgreSQL and creates a uniquely named
-`sparki_test_*` schema, applies migrations, runs files serially, and drops the schema afterward.
-Set `TEST_DATABASE_URL` to a disposable local or CI database; the runner refuses non-loopback
-hosts outside CI. It never uses or cleans the configured development schema.
+the unit tests. `pnpm test:integration` requires PostgreSQL with database-creation privileges and
+creates a uniquely named `sparki_test_*` database, enables `pg_trgm`, applies the unchanged
+migration history, runs files serially, and drops only that database afterward. Set
+`TEST_DATABASE_URL` to a local administrative database (or a CI PostgreSQL service database); the
+runner refuses non-loopback hosts outside CI and refuses test-owned URLs as its administrative
+target. PostgreSQL must make `pg_trgm` available. The runner never migrates or cleans the configured
+development database.
 
 `apps/web/e2e/*.spec.ts` are Playwright browser tests covering the Patient Search workflow
 end-to-end (real API, real Postgres, real browser — no mocking). Run with `pnpm test:e2e`; the

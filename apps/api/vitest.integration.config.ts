@@ -1,15 +1,15 @@
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
-const isolatedSchema = process.env.SPARKI_ISOLATED_TEST_SCHEMA;
-const configuredSchema = process.env.DATABASE_URL
-  ? new URL(process.env.DATABASE_URL).searchParams.get('schema')
+const isolatedDatabase = process.env.SPARKI_ISOLATED_TEST_DATABASE;
+const configuredDatabase = process.env.DATABASE_URL
+  ? decodeURIComponent(new URL(process.env.DATABASE_URL).pathname.slice(1))
   : undefined;
 
 if (
-  !isolatedSchema ||
-  configuredSchema !== isolatedSchema ||
-  !isolatedSchema.startsWith('sparki_test_integration_')
+  !isolatedDatabase ||
+  configuredDatabase !== isolatedDatabase ||
+  !/^sparki_test_integration_[a-f0-9]{32}$/.test(isolatedDatabase)
 ) {
   throw new Error('Integration tests require an isolated DATABASE_URL. Run pnpm test:integration.');
 }

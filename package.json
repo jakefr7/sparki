@@ -11,7 +11,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test && node --test scripts/run-isolated-tests.test.mjs",
     "test:integration": "dotenv -e .env -- node scripts/run-isolated-tests.mjs integration",
     "test:e2e": "dotenv -e .env -- node scripts/run-isolated-tests.mjs playwright",
     "format": "prettier --write .",
@@ -28,7 +28,8 @@
     "sparki:plan": "node scripts/agent/orchestrator.mjs plan",
     "sparki:execute": "CLAUDE_BIN=./scripts/agent/claude-sparki node scripts/agent/orchestrator.mjs execute",
     "sparki:review": "CLAUDE_BIN=./scripts/agent/claude-sparki node scripts/agent/orchestrator.mjs review",
-    "test:agent": "node --test scripts/agent/*.test.mjs"
+    "test:agent": "node --test scripts/agent/*.test.mjs",
+    "test:verification-infrastructure": "node --test scripts/run-isolated-tests.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

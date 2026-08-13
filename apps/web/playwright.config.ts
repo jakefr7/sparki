@@ -5,15 +5,15 @@ import { defineConfig, devices } from '@playwright/test';
 // NODE_ENV isn't set here (unlike vitest.config.ts): Next.js's ambient types
 // declare it read-only, and DevelopmentAuthGuard treats every non-production
 // value the same way, so the zod schema's 'development' default is fine.
-const isolatedSchema = process.env.SPARKI_ISOLATED_TEST_SCHEMA;
-const configuredSchema = process.env.DATABASE_URL
-  ? new URL(process.env.DATABASE_URL).searchParams.get('schema')
+const isolatedDatabase = process.env.SPARKI_ISOLATED_TEST_DATABASE;
+const configuredDatabase = process.env.DATABASE_URL
+  ? decodeURIComponent(new URL(process.env.DATABASE_URL).pathname.slice(1))
   : undefined;
 
 if (
-  !isolatedSchema ||
-  configuredSchema !== isolatedSchema ||
-  !isolatedSchema.startsWith('sparki_test_playwright_')
+  !isolatedDatabase ||
+  configuredDatabase !== isolatedDatabase ||
+  !/^sparki_test_playwright_[a-f0-9]{32}$/.test(isolatedDatabase)
 ) {
   throw new Error('Playwright requires an isolated DATABASE_URL. Run pnpm test:e2e.');
 }

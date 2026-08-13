@@ -576,6 +576,74 @@ test('a clean integration pass does not require a deferred-failure signature', a
   assert.equal(result.results[1].command, 'pnpm test:e2e');
 });
 
+test('exact identity-based Playwright debt is accepted for the phase', async () => {
+  const check = {
+    command: 'pnpm test:e2e',
+    expectedExitCodes: [0, 1],
+    classification: 'KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT',
+    requiredFailureIdentities: ['patient search failure', 'inventory workflow failure'],
+    requiredFailureSummary: { failed: 24, passed: 5, didNotRun: 1 },
+  };
+  const result = await runVerification('/repo', [check], async () => ({
+    code: 1,
+    stdout:
+      'patient search failure\ninventory workflow failure\n24 failed\n5 passed\n1 did not run',
+    stderr: '',
+  }));
+  assert.equal(result.pass, true);
+  assert.equal(result.results[0].state, 'COMPLETE_WITH_KNOWN_DEBT');
+  assert.deepEqual(result.results[0].deferredFailure, {
+    classification: 'KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT',
+    exitCode: 1,
+  });
+});
+
+test('Playwright debt classification rejects a changed failure identity at the same count', async () => {
+  const result = await runVerification(
+    '/repo',
+    [
+      {
+        command: 'pnpm test:e2e',
+        expectedExitCodes: [0, 1],
+        classification: 'KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT',
+        requiredFailureIdentities: ['known patient failure', 'known inventory failure'],
+        requiredFailureSummary: { failed: 24, passed: 5, didNotRun: 1 },
+      },
+    ],
+    async () => ({
+      code: 1,
+      stdout:
+        'known patient failure\nnew Phase 2 organization-isolation failure\n24 failed\n5 passed\n1 did not run',
+      stderr: '',
+    }),
+  );
+  assert.equal(result.pass, false);
+  assert.equal(result.results[0].state, 'FAILED');
+});
+
+test('Playwright debt classification rejects an additional Phase 2 failure', async () => {
+  const result = await runVerification(
+    '/repo',
+    [
+      {
+        command: 'pnpm test:e2e',
+        expectedExitCodes: [0, 1],
+        classification: 'KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT',
+        requiredFailureIdentities: ['known patient failure', 'known inventory failure'],
+        requiredFailureSummary: { failed: 24, passed: 5, didNotRun: 1 },
+      },
+    ],
+    async () => ({
+      code: 1,
+      stdout:
+        'known patient failure\nknown inventory failure\nPhase 2 SSR identity failure\n25 failed\n5 passed\n1 did not run',
+      stderr: '',
+    }),
+  );
+  assert.equal(result.pass, false);
+  assert.equal(result.results[0].state, 'FAILED');
+});
+
 test('founder escalation stops automation', async () => {
   const result = await runControlLoop({
     verify: async () => ({ pass: true }),

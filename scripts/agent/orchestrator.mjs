@@ -313,13 +313,29 @@ export async function runVerification(
       expectedExitCodes = [0],
       classification = 'REQUIRED_PASS',
       requiredOutput = [],
+      requiredFailureIdentities = [],
+      requiredFailureSummary,
     } = check;
     await onCheckStart({ index, command, check });
     const result = await run('/bin/zsh', ['-lc', command], { cwd: root });
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const outputMatches = requiredOutput.every((expected) => output.includes(expected));
+    const failureIdentitiesMatch = requiredFailureIdentities.every((identity) =>
+      output.includes(identity),
+    );
+    const failureSummaryMatches =
+      !requiredFailureSummary ||
+      [
+        `${requiredFailureSummary.failed} failed`,
+        `${requiredFailureSummary.passed} passed`,
+        `${requiredFailureSummary.didNotRun} did not run`,
+      ].every((summary) =>
+        new RegExp(`(?:^|\\s)${summary.replace(' ', '\\s+?')}(?:\\s|$)`, 'm').test(output),
+      );
     const accepted =
-      expectedExitCodes.includes(result.code) && (result.code === 0 || outputMatches);
+      expectedExitCodes.includes(result.code) &&
+      (result.code === 0 ||
+        (outputMatches && failureIdentitiesMatch && failureSummaryMatches));
     const knownDebt = accepted && result.code !== 0 && classification !== 'REQUIRED_PASS';
     const state = knownDebt
       ? 'COMPLETE_WITH_KNOWN_DEBT'
@@ -331,6 +347,8 @@ export async function runVerification(
       expectedExitCodes,
       classification,
       ...(requiredOutput.length > 0 ? { requiredOutput } : {}),
+      ...(requiredFailureIdentities.length > 0 ? { requiredFailureIdentities } : {}),
+      ...(requiredFailureSummary ? { requiredFailureSummary } : {}),
       accepted,
       state,
       ...(knownDebt

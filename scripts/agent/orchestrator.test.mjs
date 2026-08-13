@@ -6,15 +6,17 @@ import test from 'node:test';
 import {
   configuredClaudeBin,
   detectCli,
+  artifactMarkdown,
   invokeClaude,
   normalizePlanningStatus,
   normalizeRemediationStatus,
   phaseStatusForOutcome,
   runControlLoop,
+  runCli,
   runVerification,
   validateRepository,
 } from './orchestrator.mjs';
-import { parseJsonOutput } from './utilities.mjs';
+import { parseJsonOutput, writeArtifact } from './utilities.mjs';
 
 const pass = (summary = 'ok') => ({ status: 'PASS', summary, findings: [] });
 const changes = () => ({
@@ -599,6 +601,48 @@ test('FAILED review stops automation without remediation', async () => {
   assert.equal(result.status, 'FAILED');
   assert.equal(result.agent, failure);
   assert.equal(remediated, false);
+});
+
+for (const review of [pass('Approved with no blocking findings.'), changes()]) {
+  test(`${review.status} Claude review prints markdown without dumping raw JSON`, async () => {
+    const output = {
+      text: '',
+      write(value) {
+        this.text += value;
+      },
+    };
+    const markdown = artifactMarkdown('Independent Review', review);
+    const state = { phaseStatus: review.status === 'PASS' ? 'APPROVED' : review.status };
+    await runCli('review', {
+      output,
+      errorOutput: output,
+      execute: async (_command, { presentReview }) => {
+        await presentReview(markdown);
+        return state;
+      },
+    });
+    assert.match(output.text, new RegExp(`Status: ${review.status}`));
+    assert.match(output.text, new RegExp(review.summary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    if (review.status === 'CHANGES_REQUIRED') {
+      assert.match(output.text, /requiredCorrection/);
+      assert.match(output.text, /repair the behavior/);
+    }
+    assert.equal(output.text.includes(JSON.stringify(review)), false);
+    assert.equal(output.text.includes(`"status":"${review.status}"`), false);
+    assert.match(output.text, new RegExp(`Sparki status: ${state.phaseStatus}`));
+  });
+}
+
+test('review presentation preserves the structured JSON artifact and matching markdown artifact', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'sparki-review-artifact-test-'));
+  const review = changes();
+  const markdown = artifactMarkdown('Review 1', review);
+  await writeArtifact(directory, 'review-1.md', markdown, review);
+  assert.deepEqual(
+    JSON.parse(await readFile(path.join(directory, 'review-1.json'), 'utf8')),
+    review,
+  );
+  assert.equal((await readFile(path.join(directory, 'review-1.md'), 'utf8')).trim(), markdown);
 });
 
 async function repositoryFixture() {

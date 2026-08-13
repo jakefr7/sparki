@@ -122,7 +122,7 @@ function requiredReading() {
   return MEMORY_FILES.map((file) => `.sparki/${file}`).join(', ');
 }
 
-function artifactMarkdown(title, status) {
+export function artifactMarkdown(title, status) {
   const findings = status.findings.length
     ? status.findings
         .map((item) => `- ${typeof item === 'string' ? item : JSON.stringify(item)}`)
@@ -359,6 +359,7 @@ export async function main(
     now,
     clock = () => new Date(),
     progressOutput = process.stderr,
+    presentReview = async () => {},
   } = {},
 ) {
   if (!['plan', 'execute', 'review'].includes(command))
@@ -503,12 +504,8 @@ export async function main(
       progress.removeSignalHandlers();
       throw error;
     }
-    await writeArtifact(
-      currentRun.directory,
-      'review-1.md',
-      artifactMarkdown('Independent Review', review),
-      review,
-    );
+    const reviewMarkdown = artifactMarkdown('Independent Review', review);
+    await writeArtifact(currentRun.directory, 'review-1.md', reviewMarkdown, review);
     state.reviewState = review.status;
     if (review.status === 'FOUNDER_DECISION_REQUIRED') {
       await founderDecision(currentRun.directory, review);
@@ -529,6 +526,7 @@ export async function main(
       runActive: false,
       completed: true,
     });
+    await presentReview(reviewMarkdown);
     progress.removeSignalHandlers();
     return state;
   }
@@ -634,12 +632,8 @@ export async function main(
         });
         throw error;
       }
-      await writeArtifact(
-        currentRun.directory,
-        `review-${reviewIndex}.md`,
-        artifactMarkdown(`Review ${reviewIndex}`, result),
-        result,
-      );
+      const reviewMarkdown = artifactMarkdown(`Review ${reviewIndex}`, result);
+      await writeArtifact(currentRun.directory, `review-${reviewIndex}.md`, reviewMarkdown, result);
       state.reviewState = result.status;
       await progress.update({
         stage: 'review',
@@ -658,6 +652,7 @@ export async function main(
                 ? 'Founder decision required.'
                 : 'Claude review failed.',
       });
+      await presentReview(reviewMarkdown);
       return result;
     },
     remediate: async (failure) => {
@@ -762,11 +757,23 @@ export async function main(
   return state;
 }
 
-if (process.argv[1] === new URL(import.meta.url).pathname) {
-  main(process.argv[2])
-    .then((state) => console.log(JSON.stringify(state, null, 2)))
-    .catch((error) => {
-      console.error(error.message);
-      process.exitCode = 1;
+export async function runCli(
+  command,
+  { output = process.stdout, errorOutput = process.stderr, execute = main } = {},
+) {
+  try {
+    const state = await execute(command, {
+      presentReview: async (markdown) => output.write(`\n${markdown.trim()}\n`),
     });
+    output.write(`\nSparki status: ${state.phaseStatus}\n`);
+    return state;
+  } catch (error) {
+    errorOutput.write(`${error.message}\n`);
+    process.exitCode = 1;
+    return undefined;
+  }
+}
+
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+  await runCli(process.argv[2]);
 }

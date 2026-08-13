@@ -2,6 +2,8 @@
 
 Status: APPROVED
 
+Founder decision status: CLEARED
+
 ## Objective
 
 Establish deterministic, isolated, and honest repository verification. Phase 1 must make supported checks reproducible and record their results so later phases can distinguish test-infrastructure failures from product defects.
@@ -22,6 +24,8 @@ Establish deterministic, isolated, and honest repository verification. Phase 1 m
 - Reproduce and classify the 43 lint errors, five `@ts-nocheck` bypasses, two API behavioral failures, teardown failures, and blocked Playwright run.
 - Correct verification infrastructure only; record product defects for their assigned later phases.
 - Add or adjust tests only where necessary to prove the verification infrastructure itself.
+- Replace or adjust per-schema integration-test isolation with a disposable per-run PostgreSQL database strategy, or another test-only isolation mechanism, when needed to replay the existing migration history unchanged with `pg_trgm` available before migrations requiring `gin_trgm_ops`.
+- Ensure every integration run uses isolated disposable state and cleanup removes only test-owned disposable resources.
 
 ## Out of scope
 
@@ -42,6 +46,8 @@ Establish deterministic, isolated, and honest repository verification. Phase 1 m
 - The reproducible 43-error API lint baseline and inventory `@ts-nocheck` debt are recorded Phase 4 blockers. Their known nonzero lint result does not fail Phase 1 when it is reproduced exactly; any different lint result remains a verification failure.
 - Every correction is limited to verification infrastructure and tied to a reproduced baseline failure.
 - No Prisma schema or migration changes exist in the phase diff.
+- All existing applied migration files remain unchanged, including `prisma/migrations/20260706025500_add_trigram_search_indexes/migration.sql`.
+- Integration migrations replay unchanged in isolated disposable state, with `pg_trgm` available before any migration requiring `gin_trgm_ops` runs, and cleanup removes only resources owned by that test run.
 - No test assertion is weakened merely to make verification pass.
 - Remaining environment or product-policy blockers are escalated, not guessed around.
 

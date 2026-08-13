@@ -28,6 +28,19 @@ const changes = () => ({
     },
   ],
 });
+const sandboxUnavailable = (resource) => ({
+  status: 'PASS',
+  summary: `Implementation complete; ${resource} was unavailable in the managed sandbox.`,
+  findings: [
+    {
+      severity: 'medium',
+      fileOrSystem: 'Codex managed sandbox',
+      problem: `${resource} was unavailable.`,
+      whyItMatters: 'The implementer could not run the runtime-dependent check.',
+      requiredCorrection: 'Delegate the check to orchestrator-owned local verification.',
+    },
+  ],
+});
 
 const schemaPath = new URL('./agent-response.schema.json', import.meta.url);
 
@@ -145,7 +158,7 @@ test('execute remediates an implementer CHANGES_REQUIRED result before verificat
   const calls = [];
   const implementation = changes();
   const result = await runControlLoop({
-    initialFailure: { kind: 'implementation', implementation },
+    implementation,
     remediate: async (failure) => {
       calls.push(['remediate', failure]);
       return pass();
@@ -160,6 +173,71 @@ test('execute remediates an implementer CHANGES_REQUIRED result before verificat
   assert.equal(result.remediationCount, 1);
   assert.deepEqual(calls[0], ['remediate', { kind: 'implementation', implementation }]);
   assert.deepEqual(calls[1], ['verify']);
+});
+
+for (const resource of ['PostgreSQL connection', 'loopback port binding']) {
+  test(`completed implementation with unavailable ${resource} proceeds to local verification`, async () => {
+    const calls = [];
+    const result = await runControlLoop({
+      implementation: sandboxUnavailable(resource),
+      verify: async () => {
+        calls.push('verify');
+        return { pass: true };
+      },
+      review: async () => {
+        calls.push('review');
+        return pass();
+      },
+      remediate: async () => {
+        calls.push('remediate');
+        return pass();
+      },
+    });
+    assert.equal(result.status, 'PASS');
+    assert.deepEqual(calls, ['verify', 'review']);
+  });
+}
+
+test('actual implementation failure stops before local verification', async () => {
+  let verified = false;
+  const implementation = {
+    status: 'FAILED',
+    summary: 'Required source edit could not be completed.',
+    findings: [],
+  };
+  const result = await runControlLoop({
+    implementation,
+    verify: async () => {
+      verified = true;
+      return { pass: true };
+    },
+    review: async () => pass(),
+    remediate: async () => pass(),
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.agent, implementation);
+  assert.equal(verified, false);
+});
+
+test('implementation founder escalation stops before local verification', async () => {
+  let verified = false;
+  const implementation = {
+    status: 'FOUNDER_DECISION_REQUIRED',
+    summary: 'The requested edit requires a policy decision.',
+    findings: [],
+  };
+  const result = await runControlLoop({
+    implementation,
+    verify: async () => {
+      verified = true;
+      return { pass: true };
+    },
+    review: async () => pass(),
+    remediate: async () => pass(),
+  });
+  assert.equal(result.status, 'FOUNDER_DECISION_REQUIRED');
+  assert.equal(result.agent, implementation);
+  assert.equal(verified, false);
 });
 
 test('CHANGES_REQUIRED invokes remediation, verification, and another review', async () => {
@@ -233,7 +311,7 @@ test('malformed agent response never counts as PASS', () => {
   );
 });
 
-test('verification failure triggers remediation and rerun', async () => {
+test('local verification failure triggers remediation and rerun', async () => {
   let checks = 0;
   let remediations = 0;
   const result = await runControlLoop({
@@ -248,6 +326,28 @@ test('verification failure triggers remediation and rerun', async () => {
   assert.equal(result.status, 'PASS');
   assert.equal(checks, 2);
   assert.equal(remediations, 1);
+});
+
+test('local verification pass proceeds to Claude review', async () => {
+  const calls = [];
+  const result = await runControlLoop({
+    implementation: pass('implementation complete'),
+    verify: async () => {
+      calls.push('verify');
+      return { pass: true };
+    },
+    review: async () => {
+      calls.push('review');
+      return pass('Claude approved');
+    },
+    remediate: async () => {
+      calls.push('remediate');
+      return pass();
+    },
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.review.summary, 'Claude approved');
+  assert.deepEqual(calls, ['verify', 'review']);
 });
 
 test('verification records an exact known product-debt exit without stopping later checks', async () => {

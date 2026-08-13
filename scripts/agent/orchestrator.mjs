@@ -165,20 +165,34 @@ export async function runControlLoop({
   verify,
   review,
   remediate,
-  initialFailure,
+  implementation,
   maxCycles = MAX_CYCLES,
 }) {
   let remediationCount = 0;
   let reviewCount = 0;
-  if (initialFailure) {
-    const remediation = validateAgentStatus(await remediate(initialFailure));
-    remediationCount += 1;
-    if (remediation.status !== 'PASS') {
-      const status =
-        remediation.status === 'FOUNDER_DECISION_REQUIRED'
-          ? 'FOUNDER_DECISION_REQUIRED'
-          : 'FAILED';
-      return { status, remediationCount, reviewCount, agent: remediation };
+  if (implementation) {
+    const implementationResult = validateAgentStatus(implementation);
+    if (implementationResult.status === 'FOUNDER_DECISION_REQUIRED')
+      return {
+        status: implementationResult.status,
+        remediationCount,
+        reviewCount,
+        agent: implementationResult,
+      };
+    if (implementationResult.status === 'FAILED')
+      return { status: 'FAILED', remediationCount, reviewCount, agent: implementationResult };
+    if (implementationResult.status === 'CHANGES_REQUIRED') {
+      const remediation = validateAgentStatus(
+        await remediate({ kind: 'implementation', implementation: implementationResult }),
+      );
+      remediationCount += 1;
+      if (remediation.status !== 'PASS') {
+        const status =
+          remediation.status === 'FOUNDER_DECISION_REQUIRED'
+            ? 'FOUNDER_DECISION_REQUIRED'
+            : 'FAILED';
+        return { status, remediationCount, reviewCount, agent: remediation };
+      }
     }
   }
   let verification = await verify();
@@ -222,9 +236,7 @@ export async function runControlLoop({
     remediationCount += 1;
     if (remediation.status !== 'PASS') {
       const status =
-        remediation.status === 'FOUNDER_DECISION_REQUIRED'
-          ? 'FOUNDER_DECISION_REQUIRED'
-          : 'FAILED';
+        remediation.status === 'FOUNDER_DECISION_REQUIRED' ? 'FOUNDER_DECISION_REQUIRED' : 'FAILED';
       return { status, remediationCount, reviewCount, agent: remediation };
     }
     verification = await verify();
@@ -372,7 +384,7 @@ export async function main(
     root,
     mode: 'implementation',
     outputPath: implementationOutput,
-    prompt: `Act as the implementer defined in .sparki/agents/implementer.md. Read ${requiredReading()} and this run's plan.md. Implement only the approved phase. Do not merge or deploy. Return only schema-valid JSON.`,
+    prompt: `Act as the implementer defined in .sparki/agents/implementer.md. Read ${requiredReading()} and this run's plan.md. Implement only the approved phase. Do not merge or deploy. The orchestrator, not your managed sandbox, owns authoritative verification. Return PASS when the requested implementation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report any checks you could not run in summary and findings for the orchestrator to verify locally. Return FAILED only when the implementation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
   });
   await writeArtifact(
     currentRun.directory,
@@ -380,23 +392,11 @@ export async function main(
     artifactMarkdown('Implementation', implementationResult),
     implementationResult,
   );
-  if (implementationResult.status === 'FOUNDER_DECISION_REQUIRED') {
-    await founderDecision(currentRun.directory, implementationResult);
-    state.phaseStatus = implementationResult.status;
-    state.founderDecisionState = 'REQUIRED';
-    await saveRunState(currentRun.directory, state);
-    return state;
-  }
-  if (implementationResult.status === 'FAILED') throw new Error(implementationResult.summary);
-
   let verificationIndex = 0;
   let reviewIndex = 0;
   let remediationIndex = 0;
   const outcome = await runControlLoop({
-    initialFailure:
-      implementationResult.status === 'CHANGES_REQUIRED'
-        ? { kind: 'implementation', implementation: implementationResult }
-        : undefined,
+    implementation: implementationResult,
     verify: async () => {
       const result = await runVerification(root, phase.config.verification, stream);
       verificationIndex += 1;
@@ -444,7 +444,7 @@ export async function main(
         root,
         mode: 'implementation',
         outputPath,
-        prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. Return only schema-valid JSON.`,
+        prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. The orchestrator owns authoritative verification outside your managed sandbox. Return PASS when the requested remediation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report unavailable checks in summary and findings. Return FAILED only when remediation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
       });
       await writeArtifact(
         currentRun.directory,

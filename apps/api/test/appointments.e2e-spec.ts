@@ -568,9 +568,30 @@ describe('Appointments (e2e)', () => {
   });
 
   describe('records-prep and confirmation status', () => {
+    let recordsStatusPatientId: string;
+
+    beforeAll(async () => {
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Records Status Patient',
+          species: 'Canine',
+          clients: { create: [{ clientId: primaryClientId, isPrimary: true }] },
+        },
+        select: { id: true },
+      });
+      recordsStatusPatientId = patient.id;
+    });
+
+    afterAll(async () => {
+      await prisma.appointment.deleteMany({ where: { patientId: recordsStatusPatientId } });
+      await prisma.patientClient.deleteMany({ where: { patientId: recordsStatusPatientId } });
+      await prisma.patient.delete({ where: { id: recordsStatusPatientId } });
+    });
+
     it('a newly created appointment defaults to NotStarted records prep and NotSent confirmation', async () => {
       const response = await request(app.getHttpServer()).post('/appointments').send({
-        patientId,
+        patientId: recordsStatusPatientId,
         appointmentType: 'WellnessPreventiveCare',
         appointmentTypeId: wellnessAppointmentTypeId,
         visitReason: 'Records prep default check',
@@ -608,7 +629,7 @@ describe('Appointments (e2e)', () => {
     describe('PATCH /appointments/:id/records-prep-status', () => {
       it('saves and returns the updated records-prep status', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Records prep update check',
           startTime: '2027-05-02T15:00:00.000Z',
@@ -627,7 +648,7 @@ describe('Appointments (e2e)', () => {
 
       it('rejects an invalid records-prep status with 400', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Invalid records prep check',
           startTime: '2027-05-02T16:00:00.000Z',
@@ -644,7 +665,7 @@ describe('Appointments (e2e)', () => {
     describe('PATCH /appointments/:id/confirmation-status', () => {
       it('saves and returns the updated confirmation status', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Confirmation status update check',
           startTime: '2027-05-03T15:00:00.000Z',
@@ -663,7 +684,7 @@ describe('Appointments (e2e)', () => {
 
       it('rejects an invalid confirmation status with 400', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Invalid confirmation status check',
           startTime: '2027-05-03T16:00:00.000Z',

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { createServer } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import process from 'node:process';
 
 import {
@@ -35,21 +35,32 @@ let cleanupPromise;
 let clientConnected = false;
 let databaseCreated = false;
 
-function assertPortAvailable(port) {
-  return new Promise((resolve, reject) => {
-    const server = createServer();
-    server.once('error', (error) => {
-      reject(
-        error.code === 'EADDRINUSE'
-          ? new Error(
-              `Required test port 127.0.0.1:${port} is already in use. Stop the unrelated service and retry; Sparki will not reuse it.`,
-            )
-          : error,
-      );
+async function findAvailablePort(preferredPort) {
+  for (let port = preferredPort; port < preferredPort + 100; port += 1) {
+    const reachable = await new Promise((resolve) => {
+      const socket = createConnection({ host: '127.0.0.1', port });
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('error', () => resolve(false));
     });
-    server.once('listening', () => server.close(resolve));
-    server.listen(port, '127.0.0.1');
-  });
+    if (reachable) continue;
+
+    const available = await new Promise((resolve, reject) => {
+      const server = createServer();
+      server.once('error', (error) => {
+        if (error.code === 'EADDRINUSE') resolve(false);
+        else reject(error);
+      });
+      server.once('listening', () => server.close(() => resolve(true)));
+      server.listen(port, '127.0.0.1');
+    });
+    if (available) return port;
+  }
+  throw new Error(
+    `No available loopback test port found from ${preferredPort} through ${preferredPort + 99}.`,
+  );
 }
 
 async function cleanup() {
@@ -93,9 +104,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 let exitCode = 1;
-if (mode === 'playwright') {
-  await Promise.all([assertPortAvailable(4000), assertPortAvailable(3001)]);
-}
+const apiPort = mode === 'playwright' ? await findAvailablePort(4000) : 4000;
+const webPort = mode === 'playwright' ? await findAvailablePort(3001) : 3001;
 await client.connect();
 clientConnected = true;
 try {
@@ -114,10 +124,10 @@ try {
     ...process.env,
     NODE_ENV: 'test',
     DATABASE_URL: isolatedUrl,
-    API_PORT: '4000',
-    API_URL: 'http://127.0.0.1:4000',
-    WEB_PORT: '3001',
-    CORS_ORIGIN: 'http://127.0.0.1:3001',
+    API_PORT: String(apiPort),
+    API_URL: `http://127.0.0.1:${apiPort}`,
+    WEB_PORT: String(webPort),
+    CORS_ORIGIN: `http://127.0.0.1:${webPort}`,
     SPARKI_ISOLATED_TEST_DATABASE: databaseName,
   };
   exitCode = await run(

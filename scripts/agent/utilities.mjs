@@ -48,10 +48,40 @@ export function runStreaming(command, args, { cwd, env = process.env } = {}) {
 export function validateAgentStatus(value, allowed = TERMINAL_STATUSES) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('Agent output must be a JSON object');
+  const unexpectedFields = Object.keys(value).filter(
+    (field) => !['status', 'summary', 'findings'].includes(field),
+  );
+  if (unexpectedFields.length)
+    throw new Error(`Agent output has unexpected field: ${unexpectedFields[0]}`);
   if (!allowed.includes(value.status))
     throw new Error(`Invalid agent status: ${String(value.status)}`);
   if (typeof value.summary !== 'string') throw new Error('Agent output requires a string summary');
   if (!Array.isArray(value.findings)) throw new Error('Agent output requires a findings array');
+  const findingFields = [
+    'severity',
+    'fileOrSystem',
+    'problem',
+    'whyItMatters',
+    'requiredCorrection',
+  ];
+  const severities = ['low', 'medium', 'high', 'critical'];
+  for (const [index, finding] of value.findings.entries()) {
+    if (!finding || typeof finding !== 'object' || Array.isArray(finding))
+      throw new Error(`Agent finding ${index} must be a JSON object`);
+    const unexpectedFindingFields = Object.keys(finding).filter(
+      (field) => !findingFields.includes(field),
+    );
+    if (unexpectedFindingFields.length)
+      throw new Error(
+        `Agent finding ${index} has unexpected field: ${unexpectedFindingFields[0]}`,
+      );
+    if (!severities.includes(finding.severity))
+      throw new Error(`Agent finding ${index} has invalid severity`);
+    for (const field of findingFields.slice(1)) {
+      if (typeof finding[field] !== 'string')
+        throw new Error(`Agent finding ${index} requires a string ${field}`);
+    }
+  }
   return value;
 }
 

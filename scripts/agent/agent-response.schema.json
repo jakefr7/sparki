@@ -3,9 +3,32 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "status": { "enum": ["PASS", "CHANGES_REQUIRED", "FOUNDER_DECISION_REQUIRED", "FAILED"] },
+    "status": {
+      "type": "string",
+      "enum": ["PASS", "CHANGES_REQUIRED", "FOUNDER_DECISION_REQUIRED", "FAILED"]
+    },
     "summary": { "type": "string" },
-    "findings": { "type": "array", "items": { "type": "object" } }
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+          "fileOrSystem": { "type": "string" },
+          "problem": { "type": "string" },
+          "whyItMatters": { "type": "string" },
+          "requiredCorrection": { "type": "string" }
+        },
+        "required": [
+          "severity",
+          "fileOrSystem",
+          "problem",
+          "whyItMatters",
+          "requiredCorrection"
+        ]
+      }
+    }
   },
   "required": ["status", "summary", "findings"]
 }

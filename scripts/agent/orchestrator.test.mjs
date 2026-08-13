@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,7 +10,41 @@ const pass = (summary = 'ok') => ({ status: 'PASS', summary, findings: [] });
 const changes = () => ({
   status: 'CHANGES_REQUIRED',
   summary: 'fix it',
-  findings: [{ severity: 'high' }],
+  findings: [
+    {
+      severity: 'high',
+      fileOrSystem: 'agent orchestrator',
+      problem: 'broken behavior',
+      whyItMatters: 'the phase cannot proceed safely',
+      requiredCorrection: 'repair the behavior',
+    },
+  ],
+});
+
+const schemaPath = new URL('./agent-response.schema.json', import.meta.url);
+
+function assertStrictObjectSchemas(schema, location = '$') {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
+  if (schema.type === 'object') {
+    assert.equal(
+      schema.additionalProperties,
+      false,
+      `${location} must set additionalProperties to false`,
+    );
+    assert.deepEqual(
+      [...(schema.required ?? [])].sort(),
+      Object.keys(schema.properties ?? {}).sort(),
+      `${location} must require every declared property`,
+    );
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== 'required' && key !== 'enum') assertStrictObjectSchemas(value, `${location}.${key}`);
+  }
+}
+
+test('structured output schema makes every object strict and requires every property', async () => {
+  const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
+  assertStrictObjectSchemas(schema);
 });
 
 test('PASS transitions directly to founder-review-ready outcome', async () => {
@@ -51,6 +85,20 @@ test('maximum review loop stops after three reviews', async () => {
 test('malformed agent response never counts as PASS', () => {
   assert.throws(() => parseJsonOutput('not json'), /malformed JSON/);
   assert.throws(() => parseJsonOutput('{"status":"PASS"}'), /summary/);
+  assert.throws(
+    () =>
+      parseJsonOutput(
+        JSON.stringify({
+          ...changes(),
+          findings: [{ ...changes().findings[0], unexpected: true }],
+        }),
+      ),
+    /unexpected field/,
+  );
+  assert.throws(
+    () => parseJsonOutput(JSON.stringify({ ...changes(), findings: [{ severity: 'high' }] })),
+    /requires a string fileOrSystem/,
+  );
 });
 
 test('verification failure triggers remediation and rerun', async () => {

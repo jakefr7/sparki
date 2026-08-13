@@ -15,6 +15,8 @@ const requireFromDbPackage = createRequire(new URL('../packages/db/package.json'
 const pg = requireFromDbPackage('pg');
 
 const mode = process.argv[2];
+const rawTestArgs = process.argv.slice(3);
+const testArgs = rawTestArgs[0] === '--' ? rawTestArgs.slice(1) : rawTestArgs;
 if (!['integration', 'playwright'].includes(mode)) {
   throw new Error('Usage: node scripts/run-isolated-tests.mjs <integration|playwright>');
 }
@@ -120,7 +122,7 @@ try {
   } finally {
     await isolatedClient.end();
   }
-  const env = {
+  let env = {
     ...process.env,
     NODE_ENV: 'test',
     DATABASE_URL: isolatedUrl,
@@ -145,10 +147,34 @@ try {
     env,
   );
   if (exitCode === 0) {
+    if (mode === 'playwright') {
+      // A migrated disposable database is intentionally empty. The browser
+      // suite relies on the three role-specific development login accounts
+      // and a small, stable inventory catalog, so establish those fixtures
+      // inside the isolated database before either application server boots.
+      // Omit WorkOS configuration so env validation accepts the optional
+      // values and auth selection uses the local development guard, even
+      // when the developer's .env configures WorkOS.
+      const fixtureEnv = { ...env };
+      delete fixtureEnv.WORKOS_API_KEY;
+      delete fixtureEnv.WORKOS_CLIENT_ID;
+      delete fixtureEnv.WORKOS_COOKIE_PASSWORD;
+      delete fixtureEnv.WORKOS_REDIRECT_URI;
+      // The seeded accounts and their `dev:<user-id>` sessions are local
+      // development-auth fixtures. Keep the API and web servers on those
+      // same semantics even when the developer's .env configures WorkOS.
+      env = fixtureEnv;
+      exitCode = await run('node', ['scripts/seed-auth-users.mjs'], fixtureEnv);
+      if (exitCode === 0) {
+        exitCode = await run('node', ['scripts/seed-inventory-pass-1.mjs'], fixtureEnv);
+      }
+    }
+  }
+  if (exitCode === 0) {
     const args =
       mode === 'integration'
         ? ['--filter', '@sparki/api', 'run', 'test:integration:raw']
-        : ['--filter', '@sparki/web', 'run', 'test:e2e:raw'];
+        : ['--filter', '@sparki/web', 'run', 'test:e2e:raw', '--', ...testArgs];
     exitCode = await run('pnpm', args, env);
   }
 } finally {

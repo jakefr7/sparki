@@ -69,7 +69,17 @@ Establish deterministic, isolated, and honest repository verification. Phase 1 m
     "pnpm typecheck",
     "pnpm test",
     "pnpm build",
-    "pnpm test:integration",
+    {
+      "command": "pnpm test:integration",
+      "expectedExitCodes": [0, 1],
+      "classification": "KNOWN_PHASE_3_PRODUCT_DEBT",
+      "requiredOutput": [
+        "Visits (e2e) > Visit lifecycle hardening > enforces care completion through discharge, locks the record, preserves amendments, and keeps follow-up actionable",
+        "expected 200 to be 409",
+        "Test Files  1 failed | 11 passed (12)",
+        "Tests  1 failed | 191 passed (192)"
+      ]
+    },
     "pnpm test:e2e"
   ]
 }

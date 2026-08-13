@@ -138,5 +138,11 @@ export function redact(text) {
 }
 
 export function formatResult(title, result) {
-  return `# ${title}\n\nExit code: ${result.code}\n\n## Standard output\n\n\`\`\`text\n${redact(result.stdout)}\n\`\`\`\n\n## Standard error\n\n\`\`\`text\n${redact(result.stderr)}\n\`\`\``;
+  const classification = result.state
+    ? `\n\nVerification state: ${result.state}`
+    : '';
+  const deferredFailure = result.deferredFailure
+    ? `\n\nDeferred failure: ${result.deferredFailure.classification} (exit ${result.deferredFailure.exitCode})`
+    : '';
+  return `# ${title}\n\nExit code: ${result.code}${classification}${deferredFailure}\n\n## Standard output\n\n\`\`\`text\n${redact(result.stdout)}\n\`\`\`\n\n## Standard error\n\n\`\`\`text\n${redact(result.stderr)}\n\`\`\``;
 }

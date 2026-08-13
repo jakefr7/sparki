@@ -308,12 +308,37 @@ export async function runVerification(
       typeof configuredCheck === 'string'
         ? { command: configuredCheck, expectedExitCodes: [0], classification: 'REQUIRED_PASS' }
         : configuredCheck;
-    const { command, expectedExitCodes = [0], classification = 'REQUIRED_PASS' } = check;
+    const {
+      command,
+      expectedExitCodes = [0],
+      classification = 'REQUIRED_PASS',
+      requiredOutput = [],
+    } = check;
     await onCheckStart({ index, command, check });
     const result = await run('/bin/zsh', ['-lc', command], { cwd: root });
-    const accepted = expectedExitCodes.includes(result.code);
-    results.push({ command, expectedExitCodes, classification, accepted, ...result });
-    await onCheckComplete({ index, command, check, result, accepted });
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+    const outputMatches = requiredOutput.every((expected) => output.includes(expected));
+    const accepted =
+      expectedExitCodes.includes(result.code) && (result.code === 0 || outputMatches);
+    const knownDebt = accepted && result.code !== 0 && classification !== 'REQUIRED_PASS';
+    const state = knownDebt
+      ? 'COMPLETE_WITH_KNOWN_DEBT'
+      : accepted
+        ? 'COMPLETE'
+        : 'FAILED';
+    results.push({
+      command,
+      expectedExitCodes,
+      classification,
+      ...(requiredOutput.length > 0 ? { requiredOutput } : {}),
+      accepted,
+      state,
+      ...(knownDebt
+        ? { deferredFailure: { classification, exitCode: result.code } }
+        : {}),
+      ...result,
+    });
+    await onCheckComplete({ index, command, check, result, accepted, state });
     if (!accepted) break;
   }
   return {
@@ -556,7 +581,8 @@ export async function main(
       await progress.startVerification(Math.max(1, remediationIndex));
       const result = await runVerification(root, phase.config.verification, stream, {
         onCheckStart: ({ index }) => progress.startCheck(index),
-        onCheckComplete: ({ index, accepted }) => progress.completeCheck(index, accepted),
+        onCheckComplete: ({ index, state: checkState }) =>
+          progress.completeCheck(index, checkState),
       });
       verificationIndex += 1;
       const body = result.results

@@ -11,6 +11,8 @@ export const STAGES = [
 
 const SYMBOLS = {
   complete: '✓',
+  COMPLETE: '✓',
+  COMPLETE_WITH_KNOWN_DEBT: '◇',
   running: '●',
   pending: '○',
   failed: '✗',
@@ -141,13 +143,19 @@ export class ProgressReporter {
     });
   }
 
-  async completeCheck(index, passed) {
+  async completeCheck(index, resultState) {
     const check = this.state.verificationChecks[index];
-    check.state = passed ? 'complete' : 'failed';
+    const passed = resultState === true || resultState === 'COMPLETE';
+    const knownDebt = resultState === 'COMPLETE_WITH_KNOWN_DEBT';
+    check.state = knownDebt ? resultState : passed ? 'complete' : 'failed';
     await this.update({
       stage: 'verification',
-      stageState: passed ? 'running' : 'failed',
-      task: passed ? `${check.label} completed.` : `${check.label} failed; preparing remediation.`,
+      stageState: passed || knownDebt ? 'running' : 'failed',
+      task: knownDebt
+        ? `${check.label} completed with known deferred debt.`
+        : passed
+          ? `${check.label} completed.`
+          : `${check.label} failed; preparing remediation.`,
       verificationCheck: check.label,
     });
   }

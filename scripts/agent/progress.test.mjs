@@ -68,6 +68,17 @@ test('verification sub-stage progression shows checks as they run and complete',
   assert.equal(state.currentVerificationCheck, 'Integration');
 });
 
+test('known deferred verification debt is recorded without marking the check failed', async () => {
+  const { state, reporter } = fixture();
+  await reporter.startVerification(1);
+  await reporter.startCheck(1);
+  await reporter.completeCheck(1, 'COMPLETE_WITH_KNOWN_DEBT');
+  assert.equal(state.verificationChecks[1].state, 'COMPLETE_WITH_KNOWN_DEBT');
+  assert.equal(state.stages.verification, 'running');
+  assert.equal(state.currentTask, 'Integration completed with known deferred debt.');
+  assert.match(renderProgress(state, later), /◇ Integration/);
+});
+
 test('remediation cycle is displayed with the configured maximum', async () => {
   const { state, reporter } = fixture();
   await reporter.update({

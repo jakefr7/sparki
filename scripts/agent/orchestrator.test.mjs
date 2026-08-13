@@ -386,6 +386,88 @@ test('local verification pass proceeds to Claude review', async () => {
   assert.deepEqual(calls, ['verify', 'review']);
 });
 
+test('exact deferred integration debt reaches Playwright without consuming remediation', async () => {
+  const commands = [];
+  let remediations = 0;
+  const verify = () =>
+    runVerification(
+      '/repo',
+      [
+        {
+          command: 'pnpm test:integration',
+          expectedExitCodes: [0, 1],
+          classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+          requiredOutput: [
+            'Visit lifecycle hardening',
+            'expected 200 to be 409',
+            'Test Files  1 failed | 11 passed (12)',
+            'Tests  1 failed | 191 passed (192)',
+          ],
+        },
+        'pnpm test:e2e',
+      ],
+      async (_shell, args) => {
+        commands.push(args[1]);
+        return args[1] === 'pnpm test:integration'
+          ? {
+              code: 1,
+              stdout:
+                'Visit lifecycle hardening\nexpected 200 to be 409\nTest Files  1 failed | 11 passed (12)\nTests  1 failed | 191 passed (192)',
+              stderr: '',
+            }
+          : { code: 0, stdout: 'passed', stderr: '' };
+      },
+    );
+  const result = await runControlLoop({
+    verify,
+    review: async () => pass(),
+    remediate: async () => {
+      remediations += 1;
+      return pass();
+    },
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.remediationCount, 0);
+  assert.equal(remediations, 0);
+  assert.deepEqual(commands, ['pnpm test:integration', 'pnpm test:e2e']);
+  assert.equal(result.verification.results[0].state, 'COMPLETE_WITH_KNOWN_DEBT');
+});
+
+test('unexpected integration failure still consumes remediation and blocks Playwright', async () => {
+  const commands = [];
+  let remediations = 0;
+  const result = await runControlLoop({
+    maxCycles: 1,
+    verify: () =>
+      runVerification(
+        '/repo',
+        [
+          {
+            command: 'pnpm test:integration',
+            expectedExitCodes: [0, 1],
+            classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+            requiredOutput: ['expected 200 to be 409', 'Tests  1 failed | 191 passed (192)'],
+          },
+          'pnpm test:e2e',
+        ],
+        async (_shell, args) => {
+          commands.push(args[1]);
+          return { code: 1, stdout: 'different integration failure', stderr: '' };
+        },
+      ),
+    review: async () => pass(),
+    remediate: async () => {
+      remediations += 1;
+      return pass();
+    },
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.reason, 'maximum remediation cycles reached');
+  assert.equal(result.remediationCount, 1);
+  assert.equal(remediations, 1);
+  assert.deepEqual(commands, ['pnpm test:integration', 'pnpm test:integration']);
+});
+
 test('verification records an exact known product-debt exit without stopping later checks', async () => {
   const commands = [];
   const result = await runVerification(
@@ -438,6 +520,58 @@ test('known product-debt verification fails when its result changes unexpectedly
   );
   assert.equal(result.pass, false);
   assert.equal(result.results[0].accepted, false);
+});
+
+test('known product-debt verification requires its configured failure signature', async () => {
+  const check = {
+    command: 'pnpm test:integration',
+    expectedExitCodes: [0, 1],
+    classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+    requiredOutput: [
+      'Visit lifecycle hardening',
+      'expected 200 to be 409',
+      '1 failed | 191 passed',
+    ],
+  };
+  const knownFailure = await runVerification('/repo', [check], async () => ({
+    code: 1,
+    stdout: 'Visit lifecycle hardening\n1 failed | 191 passed',
+    stderr: 'expected 200 to be 409',
+  }));
+  const differentFailure = await runVerification('/repo', [check], async () => ({
+    code: 1,
+    stdout: 'Visit lifecycle hardening\n2 failed | 190 passed',
+    stderr: 'expected 200 to be 409',
+  }));
+  assert.equal(knownFailure.pass, true);
+  assert.equal(knownFailure.results[0].state, 'COMPLETE_WITH_KNOWN_DEBT');
+  assert.deepEqual(knownFailure.results[0].deferredFailure, {
+    classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+    exitCode: 1,
+  });
+  assert.equal(differentFailure.pass, false);
+  assert.equal(differentFailure.results[0].state, 'FAILED');
+  assert.equal(differentFailure.results[0].accepted, false);
+});
+
+test('a clean integration pass does not require a deferred-failure signature', async () => {
+  const result = await runVerification(
+    '/repo',
+    [
+      {
+        command: 'pnpm test:integration',
+        expectedExitCodes: [0, 1],
+        classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+        requiredOutput: ['expected 200 to be 409', 'Tests  1 failed | 191 passed (192)'],
+      },
+      'pnpm test:e2e',
+    ],
+    async () => ({ code: 0, stdout: 'all tests passed', stderr: '' }),
+  );
+  assert.equal(result.pass, true);
+  assert.equal(result.results[0].state, 'COMPLETE');
+  assert.equal('deferredFailure' in result.results[0], false);
+  assert.equal(result.results[1].command, 'pnpm test:e2e');
 });
 
 test('founder escalation stops automation', async () => {

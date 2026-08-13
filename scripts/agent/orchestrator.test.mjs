@@ -352,6 +352,7 @@ test('malformed agent response never counts as PASS', () => {
 test('local verification failure triggers remediation and rerun', async () => {
   let checks = 0;
   let remediations = 0;
+  let reloads = 0;
   const result = await runControlLoop({
     verify: async () => ({ pass: ++checks > 1 }),
     review: async () => pass(),
@@ -360,10 +361,14 @@ test('local verification failure triggers remediation and rerun', async () => {
       remediations += 1;
       return pass();
     },
+    afterRemediation: async () => {
+      reloads += 1;
+    },
   });
   assert.equal(result.status, 'PASS');
   assert.equal(checks, 2);
   assert.equal(remediations, 1);
+  assert.equal(reloads, 1);
 });
 
 test('local verification pass proceeds to Claude review', async () => {
@@ -532,8 +537,8 @@ test('known product-debt verification requires its configured failure signature'
     requiredOutput: [
       'Visit lifecycle hardening',
       'expected 200 to be 409',
-      '1 failed | 191 passed',
     ],
+    requiredFailureSummary: { failed: 1 },
   };
   const knownFailure = await runVerification('/repo', [check], async () => ({
     code: 1,
@@ -556,6 +561,28 @@ test('known product-debt verification requires its configured failure signature'
   assert.equal(differentFailure.results[0].accepted, false);
 });
 
+test('integration debt permits more passing tests but rejects an additional failure', async () => {
+  const check = {
+    command: 'pnpm test:integration',
+    expectedExitCodes: [0, 1],
+    classification: 'KNOWN_PHASE_3_PRODUCT_DEBT',
+    requiredOutput: ['Visit lifecycle hardening', 'expected 200 to be 409'],
+    requiredFailureSummary: { failed: 1 },
+  };
+  const morePasses = await runVerification('/repo', [check], async () => ({
+    code: 1,
+    stdout: 'Visit lifecycle hardening\nTests  1 failed | 250 passed (251)',
+    stderr: 'expected 200 to be 409',
+  }));
+  const additionalFailure = await runVerification('/repo', [check], async () => ({
+    code: 1,
+    stdout: 'Visit lifecycle hardening\nTests  2 failed | 250 passed (252)',
+    stderr: 'expected 200 to be 409',
+  }));
+  assert.equal(morePasses.pass, true);
+  assert.equal(additionalFailure.pass, false);
+});
+
 test('a clean integration pass does not require a deferred-failure signature', async () => {
   const result = await runVerification(
     '/repo',
@@ -576,18 +603,18 @@ test('a clean integration pass does not require a deferred-failure signature', a
   assert.equal(result.results[1].command, 'pnpm test:e2e');
 });
 
-test('exact identity-based Playwright debt is accepted for the phase', async () => {
+test('exact identity-based Playwright debt is accepted with an increased passing count', async () => {
   const check = {
     command: 'pnpm test:e2e',
     expectedExitCodes: [0, 1],
     classification: 'KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT',
     requiredFailureIdentities: ['patient search failure', 'inventory workflow failure'],
-    requiredFailureSummary: { failed: 24, passed: 5, didNotRun: 1 },
+    requiredFailureSummary: { failed: 24, didNotRun: 1 },
   };
   const result = await runVerification('/repo', [check], async () => ({
     code: 1,
     stdout:
-      'patient search failure\ninventory workflow failure\n24 failed\n5 passed\n1 did not run',
+      'patient search failure\ninventory workflow failure\n24 failed\n12 passed\n1 did not run',
     stderr: '',
   }));
   assert.equal(result.pass, true);

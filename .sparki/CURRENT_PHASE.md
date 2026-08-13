@@ -62,10 +62,11 @@ Prove and harden authentication identity propagation, authorization defaults, an
       "classification": "KNOWN_PHASE_3_PRODUCT_DEBT",
       "requiredOutput": [
         "Visits (e2e) > Visit lifecycle hardening > enforces care completion through discharge, locks the record, preserves amendments, and keeps follow-up actionable",
-        "expected 200 to be 409",
-        "Test Files  1 failed | 11 passed (12)",
-        "Tests  1 failed | 191 passed (192)"
-      ]
+        "expected 200 to be 409"
+      ],
+      "requiredFailureSummary": {
+        "failed": 1
+      }
     },
     {
       "command": "pnpm test:e2e",
@@ -73,7 +74,6 @@ Prove and harden authentication identity propagation, authorization defaults, an
       "classification": "KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT",
       "requiredFailureSummary": {
         "failed": 24,
-        "passed": 5,
         "didNotRun": 1
       },
       "requiredFailureIdentities": [
@@ -109,7 +109,8 @@ Prove and harden authentication identity propagation, authorization defaults, an
 
 For the Playwright check, a clean exit remains `COMPLETE`. A nonzero exit is
 `COMPLETE_WITH_KNOWN_DEBT` only when every listed historical failure identity and
-the documented 24 failed / 5 passed / 1 did-not-run summary reproduce. This is an
+the documented 24 failed / 1 did-not-run summary reproduce. The passing-test count
+may increase without invalidating the known-debt match. This is an
 identity-based exception: missing, additional, or materially changed failures are
 verification failures. Phase 2 authentication, authorization, SSR identity,
 organization-isolation, and location-isolation coverage remains required to pass.

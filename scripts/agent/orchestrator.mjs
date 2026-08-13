@@ -191,6 +191,7 @@ export async function runControlLoop({
   review,
   remediate,
   implementation,
+  afterRemediation = async () => {},
   maxCycles = MAX_CYCLES,
 }) {
   let remediationCount = 0;
@@ -218,6 +219,7 @@ export async function runControlLoop({
             : 'FAILED';
         return { status, remediationCount, reviewCount, agent: remediation };
       }
+      await afterRemediation();
     }
   }
   let verification = await verify();
@@ -238,6 +240,7 @@ export async function runControlLoop({
       return { status: remediation.status, remediationCount, reviewCount, agent: remediation };
     if (remediation.status !== 'PASS')
       return { status: 'FAILED', remediationCount, reviewCount, agent: remediation };
+    await afterRemediation();
     verification = await verify();
   }
   while (true) {
@@ -267,6 +270,7 @@ export async function runControlLoop({
         remediation.status === 'FOUNDER_DECISION_REQUIRED' ? 'FOUNDER_DECISION_REQUIRED' : 'FAILED';
       return { status, remediationCount, reviewCount, agent: remediation };
     }
+    await afterRemediation();
     verification = await verify();
     while (!verification.pass) {
       if (remediationCount >= maxCycles)
@@ -291,6 +295,7 @@ export async function runControlLoop({
           reviewCount,
           agent: verificationRemediation,
         };
+      await afterRemediation();
       verification = await verify();
     }
   }
@@ -323,13 +328,16 @@ export async function runVerification(
     const failureIdentitiesMatch = requiredFailureIdentities.every((identity) =>
       output.includes(identity),
     );
-    const failureSummaryMatches =
-      !requiredFailureSummary ||
-      [
-        `${requiredFailureSummary.failed} failed`,
-        `${requiredFailureSummary.passed} passed`,
-        `${requiredFailureSummary.didNotRun} did not run`,
-      ].every((summary) =>
+    const requiredSummaries = requiredFailureSummary
+      ? [
+          ['failed', 'failed'],
+          ['passed', 'passed'],
+          ['didNotRun', 'did not run'],
+        ]
+          .filter(([key]) => requiredFailureSummary[key] !== undefined)
+          .map(([key, label]) => `${requiredFailureSummary[key]} ${label}`)
+      : [];
+    const failureSummaryMatches = requiredSummaries.every((summary) =>
         new RegExp(`(?:^|\\s)${summary.replace(' ', '\\s+?')}(?:\\s|$)`, 'm').test(output),
       );
     const accepted =
@@ -384,7 +392,7 @@ export async function main(
     throw new Error('Usage: orchestrator.mjs <plan|execute|review>');
   const implementation = command === 'execute';
   const repository = await validateRepository(root, { implementation, run });
-  const phase = await readPhase(root);
+  let phase = await readPhase(root);
   if (implementation && phase.config.status !== 'APPROVED')
     throw new Error(`Phase status must be APPROVED, got ${phase.config.status}`);
   if (implementation && repository.branch !== phase.config.branch)
@@ -593,6 +601,9 @@ export async function main(
   let remediationIndex = 0;
   const outcome = await runControlLoop({
     implementation: implementationResult,
+    afterRemediation: async () => {
+      phase = await readPhase(root);
+    },
     verify: async () => {
       await progress.startVerification(Math.max(1, remediationIndex));
       const result = await runVerification(root, phase.config.verification, stream, {

@@ -8,8 +8,13 @@ import type { Page } from '@playwright/test';
  */
 export async function loginAs(
   page: Page,
-  email: 'testrecept@gmail.com' | 'testtech@gmail.com' | 'testvet@gmail.com' = 'testrecept@gmail.com',
+  email:
+    'testrecept@gmail.com' | 'testtech@gmail.com' | 'testvet@gmail.com' = 'testrecept@gmail.com',
 ): Promise<void> {
+  // Playwright supplies a receptionist development session for specs that
+  // are not testing login. Remove it here so role-specific login exercises
+  // the actual form and receives the requested seeded user's dev session.
+  await page.context().clearCookies();
   await page.goto('/login');
   // Wait past hydration — clicking "Sign in" before the client bundle
   // attaches the onSubmit handler falls back to a native form GET (visible

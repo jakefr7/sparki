@@ -174,7 +174,7 @@ try {
     const args =
       mode === 'integration'
         ? ['--filter', '@sparki/api', 'run', 'test:integration:raw']
-        : ['--filter', '@sparki/web', 'run', 'test:e2e:raw', '--', ...testArgs];
+        : ['--filter', '@sparki/web', 'run', 'test:e2e:raw', ...testArgs];
     exitCode = await run('pnpm', args, env);
   }
 } finally {

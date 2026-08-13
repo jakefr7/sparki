@@ -34,6 +34,26 @@ export default defineConfig({
   use: {
     baseURL: WEB_URL,
     trace: 'on-first-retry',
+    // Most product-flow specs exercise application behavior rather than the
+    // login form. Give each fresh browser context the seeded receptionist's
+    // real development session: Next middleware checks cookie presence while
+    // the API guard resolves this same value to the role-dependent identity.
+    // Role-specific auth specs deliberately clear it and log in explicitly.
+    storageState: {
+      cookies: [
+        {
+          name: 'sparki_session',
+          value: 'dev:staff-test-receptionist',
+          domain: '127.0.0.1',
+          path: '/',
+          expires: -1,
+          httpOnly: true,
+          secure: false,
+          sameSite: 'Lax',
+        },
+      ],
+      origins: [],
+    },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   // Boots the real API (dev-auth guard, real Postgres) and the real web app

@@ -85,7 +85,9 @@ export async function invokeCodex({ root, prompt, mode, outputPath, run = runStr
 }
 
 export async function invokeClaude({ root, prompt, run = runStreaming }) {
-  const schema = await readFile(outputSchema(root), 'utf8');
+  const sharedSchema = JSON.parse(await readFile(outputSchema(root), 'utf8'));
+  const { $schema: _unsupportedDraftDeclaration, ...claudeSchema } = sharedSchema;
+  const schema = JSON.stringify(claudeSchema);
   const args = [
     '-p',
     '--no-session-persistence',

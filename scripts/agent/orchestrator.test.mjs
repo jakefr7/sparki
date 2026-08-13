@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   detectCli,
+  invokeClaude,
   normalizePlanningStatus,
   runControlLoop,
   validateRepository,
@@ -50,6 +51,36 @@ function assertStrictObjectSchemas(schema, location = '$') {
 test('structured output schema makes every object strict and requires every property', async () => {
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
   assertStrictObjectSchemas(schema);
+});
+
+test('Claude receives the strict schema without the unsupported draft declaration', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'sparki-claude-schema-test-'));
+  await mkdir(path.join(root, 'scripts/agent'), { recursive: true });
+  const sharedSchema = JSON.parse(await readFile(schemaPath, 'utf8'));
+  await writeFile(
+    path.join(root, 'scripts/agent/agent-response.schema.json'),
+    JSON.stringify(sharedSchema),
+  );
+  let suppliedSchema;
+  const result = await invokeClaude({
+    root,
+    prompt: 'review',
+    run: async (_command, args) => {
+      suppliedSchema = JSON.parse(args[args.indexOf('--json-schema') + 1]);
+      return { code: 0, stdout: JSON.stringify(pass()), stderr: '' };
+    },
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal('$schema' in suppliedSchema, false);
+  assert.deepEqual(suppliedSchema, (({ $schema: _, ...schema }) => schema)(sharedSchema));
+  assertStrictObjectSchemas(suppliedSchema);
+  assert.deepEqual(suppliedSchema.required.sort(), ['findings', 'status', 'summary']);
+  assert.deepEqual(suppliedSchema.properties.status.enum, [
+    'PASS',
+    'CHANGES_REQUIRED',
+    'FOUNDER_DECISION_REQUIRED',
+    'FAILED',
+  ]);
 });
 
 test('PM planning treats a concrete implementation plan as PASS even if labeled CHANGES_REQUIRED', () => {

@@ -131,6 +131,7 @@ try {
     WEB_PORT: String(webPort),
     CORS_ORIGIN: `http://127.0.0.1:${webPort}`,
     SPARKI_ISOLATED_TEST_DATABASE: databaseName,
+    SPARKI_DEVELOPMENT_AUTH: 'fixed',
   };
   exitCode = await run(
     'pnpm',

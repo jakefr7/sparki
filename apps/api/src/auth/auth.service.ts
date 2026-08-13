@@ -45,9 +45,9 @@ export class AuthService {
 
     // Fail at boot, not at request time: a production deploy with WorkOS
     // misconfigured should never come up and start 503-ing every request.
-    if (this.config.nodeEnv === 'production' && !this.isConfigured) {
+    if (!this.isConfigured && this.config.developmentAuthMode !== 'fixed') {
       throw new Error(
-        'WorkOS AuthKit is not configured (WORKOS_API_KEY / WORKOS_CLIENT_ID / WORKOS_COOKIE_PASSWORD) and NODE_ENV=production — refusing to start.',
+        'WorkOS AuthKit is not configured and fixed development auth was not explicitly enabled — refusing to start.',
       );
     }
   }
@@ -87,7 +87,7 @@ export class AuthService {
   }
 
   async login(email: string, password: string): Promise<LoginResult> {
-    if (!this.isConfigured && this.config.nodeEnv !== 'production') {
+    if (!this.isConfigured && this.config.developmentAuthMode === 'fixed') {
       return this.loginDevelopmentUser(email, password);
     }
 
@@ -114,7 +114,7 @@ export class AuthService {
   }
 
   async verifySession(sealedSession: string | undefined): Promise<SessionResult> {
-    if (!this.isConfigured && this.config.nodeEnv !== 'production') {
+    if (!this.isConfigured && this.config.developmentAuthMode === 'fixed') {
       return this.verifyDevelopmentSession(sealedSession);
     }
 

@@ -6,10 +6,11 @@ import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel'
 import { PostExamReview } from '../../../components/post-exam-review';
 import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
+import { authenticatedServerFetch } from '../../../lib/server-api';
 import { clientDisplayName, type VisitDetail } from '../../../lib/patient-types';
 
 async function getVisit(id: string): Promise<VisitDetail | null> {
-  const response = await fetch(new URL(`/visits/${id}`, env.API_URL), { cache: 'no-store' });
+  const response = await authenticatedServerFetch(new URL(`/visits/${id}`, env.API_URL));
   if (response.status === 404) {
     return null;
   }

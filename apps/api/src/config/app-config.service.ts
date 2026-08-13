@@ -21,6 +21,10 @@ export class AppConfigService {
     return this.env.CORS_ORIGIN;
   }
 
+  get developmentAuthMode(): ApiEnv['SPARKI_DEVELOPMENT_AUTH'] {
+    return this.env.SPARKI_DEVELOPMENT_AUTH;
+  }
+
   get workos(): {
     apiKey: string | undefined;
     clientId: string | undefined;

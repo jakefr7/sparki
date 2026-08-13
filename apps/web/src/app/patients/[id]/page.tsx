@@ -14,6 +14,7 @@ import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
 import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
+import { authenticatedServerFetch } from '../../../lib/server-api';
 import { appointmentStatusLabel, formatAge, visitStateLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
@@ -24,9 +25,9 @@ import {
 } from '../../../lib/patient-types';
 
 async function getWorkspace(id: string): Promise<PatientWorkspace | null> {
-  const response = await fetch(new URL(`/patients/${id}/workspace`, env.API_URL), {
-    cache: 'no-store',
-  });
+  const response = await authenticatedServerFetch(
+    new URL(`/patients/${id}/workspace`, env.API_URL),
+  );
   if (response.status === 404) {
     return null;
   }

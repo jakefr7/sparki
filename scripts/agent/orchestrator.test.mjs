@@ -163,27 +163,55 @@ test('execute remediates an implementer CHANGES_REQUIRED result before verificat
 });
 
 test('CHANGES_REQUIRED invokes remediation, verification, and another review', async () => {
-  let reviews = 0;
-  let verifications = 0;
+  const calls = [];
   const result = await runControlLoop({
-    verify: async () => ({ pass: ++verifications > 0 }),
-    review: async () => (++reviews === 1 ? changes() : pass()),
-    remediate: async () => pass(),
+    verify: async () => {
+      calls.push('verify');
+      return { pass: true };
+    },
+    review: async () => {
+      calls.push('review');
+      return calls.filter((call) => call === 'review').length === 1 ? changes() : pass();
+    },
+    remediate: async () => {
+      calls.push('remediate');
+      return pass();
+    },
   });
   assert.equal(result.status, 'PASS');
   assert.equal(result.reviewCount, 2);
   assert.equal(result.remediationCount, 1);
-  assert.equal(verifications, 2);
+  assert.deepEqual(calls, ['verify', 'review', 'remediate', 'verify', 'review']);
 });
 
-test('maximum review loop stops after three reviews', async () => {
+test('maximum remediation cycles stop before an additional remediation', async () => {
+  let remediations = 0;
   const result = await runControlLoop({
     verify: async () => ({ pass: true }),
     review: async () => changes(),
-    remediate: async () => pass(),
+    remediate: async () => {
+      remediations += 1;
+      return pass();
+    },
+    maxCycles: 2,
   });
   assert.equal(result.status, 'FAILED');
+  assert.equal(result.reason, 'maximum remediation cycles reached');
   assert.equal(result.reviewCount, 3);
+  assert.equal(result.remediationCount, 2);
+  assert.equal(remediations, 2);
+});
+
+test('CHANGES_REQUIRED remediation result is a failure, not a successful remediation', async () => {
+  const result = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => changes(),
+    remediate: async () => changes(),
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.agent.status, 'CHANGES_REQUIRED');
+  assert.equal(result.reviewCount, 1);
+  assert.equal(result.remediationCount, 1);
 });
 
 test('malformed agent response never counts as PASS', () => {
@@ -264,6 +292,22 @@ test('founder escalation stops automation', async () => {
     },
   });
   assert.equal(result.status, 'FOUNDER_DECISION_REQUIRED');
+});
+
+test('FAILED review stops automation without remediation', async () => {
+  let remediated = false;
+  const failure = { status: 'FAILED', summary: 'review infrastructure failed', findings: [] };
+  const result = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => failure,
+    remediate: async () => {
+      remediated = true;
+      return pass();
+    },
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.agent, failure);
+  assert.equal(remediated, false);
 });
 
 async function repositoryFixture() {

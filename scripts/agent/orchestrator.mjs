@@ -114,7 +114,7 @@ export async function invokeClaude({
   ];
   const result = await run(executable, args, { cwd: root });
   if (result.code !== 0) throw new Error(`Claude failed: ${result.stderr || result.stdout}`);
-  return parseJsonOutput(result.stdout, ['PASS', 'CHANGES_REQUIRED', 'FOUNDER_DECISION_REQUIRED']);
+  return parseJsonOutput(result.stdout);
 }
 
 function requiredReading() {
@@ -171,14 +171,15 @@ export async function runControlLoop({
   let remediationCount = 0;
   let reviewCount = 0;
   if (initialFailure) {
-    const remediation = validateAgentStatus(await remediate(initialFailure), [
-      'PASS',
-      'FOUNDER_DECISION_REQUIRED',
-      'FAILED',
-    ]);
+    const remediation = validateAgentStatus(await remediate(initialFailure));
     remediationCount += 1;
-    if (remediation.status !== 'PASS')
-      return { status: remediation.status, remediationCount, reviewCount, agent: remediation };
+    if (remediation.status !== 'PASS') {
+      const status =
+        remediation.status === 'FOUNDER_DECISION_REQUIRED'
+          ? 'FOUNDER_DECISION_REQUIRED'
+          : 'FAILED';
+      return { status, remediationCount, reviewCount, agent: remediation };
+    }
   }
   let verification = await verify();
   while (!verification.pass) {
@@ -192,42 +193,40 @@ export async function runControlLoop({
       };
     const remediation = validateAgentStatus(
       await remediate({ kind: 'verification', verification }),
-      ['PASS', 'FOUNDER_DECISION_REQUIRED', 'FAILED'],
     );
     remediationCount += 1;
     if (remediation.status === 'FOUNDER_DECISION_REQUIRED')
       return { status: remediation.status, remediationCount, reviewCount, agent: remediation };
-    if (remediation.status === 'FAILED')
+    if (remediation.status !== 'PASS')
       return { status: 'FAILED', remediationCount, reviewCount, agent: remediation };
     verification = await verify();
   }
-  while (reviewCount < maxCycles) {
-    const result = validateAgentStatus(await review(), [
-      'PASS',
-      'CHANGES_REQUIRED',
-      'FOUNDER_DECISION_REQUIRED',
-    ]);
+  while (true) {
+    const result = validateAgentStatus(await review());
     reviewCount += 1;
     if (result.status === 'PASS')
       return { status: 'PASS', remediationCount, reviewCount, verification, review: result };
     if (result.status === 'FOUNDER_DECISION_REQUIRED')
       return { status: result.status, remediationCount, reviewCount, agent: result };
-    if (reviewCount >= maxCycles)
+    if (result.status === 'FAILED')
+      return { status: 'FAILED', remediationCount, reviewCount, agent: result };
+    if (remediationCount >= maxCycles)
       return {
         status: 'FAILED',
-        reason: 'maximum review cycles reached',
+        reason: 'maximum remediation cycles reached',
         remediationCount,
         reviewCount,
         review: result,
       };
-    const remediation = validateAgentStatus(await remediate({ kind: 'review', review: result }), [
-      'PASS',
-      'FOUNDER_DECISION_REQUIRED',
-      'FAILED',
-    ]);
+    const remediation = validateAgentStatus(await remediate({ kind: 'review', review: result }));
     remediationCount += 1;
-    if (remediation.status !== 'PASS')
-      return { status: remediation.status, remediationCount, reviewCount, agent: remediation };
+    if (remediation.status !== 'PASS') {
+      const status =
+        remediation.status === 'FOUNDER_DECISION_REQUIRED'
+          ? 'FOUNDER_DECISION_REQUIRED'
+          : 'FAILED';
+      return { status, remediationCount, reviewCount, agent: remediation };
+    }
     verification = await verify();
     while (!verification.pass) {
       if (remediationCount >= maxCycles)
@@ -240,12 +239,14 @@ export async function runControlLoop({
         };
       const verificationRemediation = validateAgentStatus(
         await remediate({ kind: 'verification', verification }),
-        ['PASS', 'FOUNDER_DECISION_REQUIRED', 'FAILED'],
       );
       remediationCount += 1;
       if (verificationRemediation.status !== 'PASS')
         return {
-          status: verificationRemediation.status,
+          status:
+            verificationRemediation.status === 'FOUNDER_DECISION_REQUIRED'
+              ? 'FOUNDER_DECISION_REQUIRED'
+              : 'FAILED',
           remediationCount,
           reviewCount,
           agent: verificationRemediation,
@@ -253,12 +254,6 @@ export async function runControlLoop({
       verification = await verify();
     }
   }
-  return {
-    status: 'FAILED',
-    reason: 'maximum review cycles reached',
-    remediationCount,
-    reviewCount,
-  };
 }
 
 export async function runVerification(root, commands, run = runStreaming) {

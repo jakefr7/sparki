@@ -15,7 +15,7 @@ relevant file in [`agents/`](./agents/README.md) before making changes.
 ## Prerequisites
 
 - Node.js 20+ (see `.nvmrc`)
-- pnpm 8.7+ (`corepack enable` will pick up the version pinned in `package.json`)
+- pnpm 10.34.3 (`corepack enable` will pick up the version pinned in `package.json`)
 - Docker (for local Postgres)
 
 ## Setup
@@ -91,23 +91,33 @@ Run from the repo root (Turborepo fans these out to every app/package):
 | `pnpm build`                   | Build every app/package                                                       |
 | `pnpm lint`                    | ESLint across the workspace                                                   |
 | `pnpm typecheck`               | `tsc --noEmit` across the workspace                                           |
-| `pnpm test`                    | Vitest (unit + e2e) across the workspace                                      |
+| `pnpm test`                    | Database-free Vitest unit tests across the workspace                          |
+| `pnpm test:integration`        | API integration tests in a disposable, per-run PostgreSQL schema              |
+| `pnpm test:e2e`                | Playwright with disposable data and managed API/web servers                   |
 | `pnpm format` / `format:check` | Prettier write/check (code only — `docs/` is excluded, see `.prettierignore`) |
 
 Scope any of these to one package with `pnpm --filter @sparki/api <script>`.
 
 ## Testing
 
-`apps/api` has both unit tests (`*.spec.ts`) and e2e tests (`test/*.e2e-spec.ts`, run through a
-real Nest application instance via Supertest). The e2e suite hits real Postgres tables (patients,
-clients, etc.), so **migrations must be applied** (`pnpm --filter @sparki/db run migrate`) and
-**Postgres must be running** (`docker compose up -d`) before `pnpm test`.
+`apps/api` has database-free unit tests (`src/**/*.spec.ts`) and integration tests
+(`test/*.e2e-spec.ts`, run through a real Nest application via Supertest). `pnpm test` runs only
+the unit tests. `pnpm test:integration` requires PostgreSQL and creates a uniquely named
+`sparki_test_*` schema, applies migrations, runs files serially, and drops the schema afterward.
+Set `TEST_DATABASE_URL` to a disposable local or CI database; the runner refuses non-loopback
+hosts outside CI. It never uses or cleans the configured development schema.
 
 `apps/web/e2e/*.spec.ts` are Playwright browser tests covering the Patient Search workflow
 end-to-end (real API, real Postgres, real browser — no mocking). Run with `pnpm test:e2e`; the
-Playwright config boots `apps/api` and `apps/web` in dev mode automatically
-(`apps/web/playwright.config.ts`), so no separate `pnpm dev` is needed first. First run only:
+Playwright config boots `apps/api` and `apps/web` on `127.0.0.1:4000` and
+`127.0.0.1:3001`, does not reuse processes already occupying those ports, and runs one worker
+against its disposable schema. A port conflict therefore fails clearly instead of attaching to
+an unrelated server. No separate `pnpm dev` is needed first. First run only:
 `pnpm --filter @sparki/web exec playwright install --with-deps chromium`.
+
+For deliberately pre-started servers, use `PLAYWRIGHT_SKIP_WEB_SERVER=1` only with
+`pnpm --filter @sparki/web run test:e2e:raw` and supply the same isolated `DATABASE_URL`,
+`API_URL`, and `WEB_PORT` to both servers. This advanced path does not provision or clean data.
 
 ## Authentication
 
@@ -158,4 +168,5 @@ needs it (`dev`, `start`, `migrate`, `migrate:deploy`, `generate`, `studio`) is 
 sufficient — no exporting env vars by hand. In CI, `.env` doesn't exist at all; `dotenv-cli`
 silently no-ops when the file is missing and the job's real environment variables (set in
 `ci.yml`) pass through untouched.
+
 # sparki

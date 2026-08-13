@@ -1,64 +1,51 @@
-# Phase 1 — Trustworthy Engineering Baseline
+# Phase 2 — Authentication & Tenant Safety
 
 Status: APPROVED
 
-Founder decision status: CLEARED — visit-discharge policy conflict deferred to Phase 3
+Previous phase: Phase 1 — Trustworthy Engineering Baseline is `READY_FOR_FOUNDER_REVIEW`; see [PHASE_1_CLOSEOUT.md](./PHASE_1_CLOSEOUT.md).
 
 ## Objective
 
-Establish deterministic, isolated, and honest repository verification. Phase 1 must make supported checks reproducible and record their results so later phases can distinguish test-infrastructure failures from product defects.
+Prove and harden authentication identity propagation, authorization defaults, and organization/location tenant isolation without weakening the verified engineering baseline.
 
 ## Known problems
 
-- Root `pnpm typecheck` reruns the Next.js build and is nondeterministic even though direct `tsc --noEmit` passed.
-- `pnpm lint` reports 43 API errors, while five large inventory services bypass typechecking with `@ts-nocheck`.
-- The audited API run passed 279 of 281 tests, but integration suites share persistent development data and patient/client teardown fails on relational cleanup.
-- Playwright could not run because port `3001` was occupied.
-- See `BASELINE_SITREP.md` for the complete verified audit record and later-phase findings.
+- Patient and visit server-rendered pages appear to call the API without forwarding the authenticated request cookie.
+- In non-production environments without complete WorkOS configuration, development authentication can silently grant the fixed `OWNER` identity.
+- Production WorkOS behavior and organization/location isolation require deterministic verification.
+- See [BASELINE_SITREP.md](./BASELINE_SITREP.md) for the verified audit record.
 
 ## Scope
 
-- Define deterministic, single-purpose lint, typecheck, build, unit, integration, and end-to-end commands.
-- Isolate integration data and teardown so repeated runs start and finish predictably.
-- Make end-to-end port and server prerequisites deterministic and document required local services or environment variables.
-- Reproduce and classify the 43 lint errors, five `@ts-nocheck` bypasses, two API behavioral failures, teardown failures, and blocked Playwright run.
-- Correct verification infrastructure only; record product defects for their assigned later phases.
-- Add or adjust tests only where necessary to prove the verification infrastructure itself.
-- Replace or adjust per-schema integration-test isolation with a disposable per-run PostgreSQL database strategy, or another test-only isolation mechanism, when needed to replay the existing migration history unchanged with `pg_trgm` available before migrations requiring `gin_trgm_ops`.
-- Ensure every integration run uses isolated disposable state and cleanup removes only test-owned disposable resources.
+- Verify identity and session propagation across browser, server-rendered web, and API boundaries.
+- Make development authentication defaults explicit and safe.
+- Prove authorization and organization/location isolation for authenticated workflows.
+- Add deterministic authentication and tenant-safety verification where needed.
+- Preserve Phase 1's isolated verification infrastructure.
 
 ## Out of scope
 
-- Product behavior changes, schema changes, migrations, production data, deployment, and merging.
-- Authentication or tenant architecture changes.
-- Fixing SSR cookie forwarding or development-auth privilege behavior, except test scaffolding strictly necessary to validate verification infrastructure.
-- Changing appointment or visit-discharge product behavior.
-- Schema, migration, clinical, controlled-substance, inventory, financial, SMS, payment, billing, or external-integration behavior or policy.
-- Weakening or deleting tests to obtain a passing result.
+- Clinical discharge behavior and policy assigned to Phase 3.
+- Inventory lint, type-safety, and integrity debt assigned to Phase 4.
+- External communication, payment, billing, and ledger behavior assigned to Phase 5.
+- Prisma schema or migration changes unless separately authorized by the founder.
+- Production data changes, deployment, merging, and Phase 3 or Phase 4 remediation.
 
 ## Acceptance criteria
 
-- Each supported verification command is single-purpose, repeatable, and produces the same classification from the same clean test state.
-- Integration tests use isolated, deterministic data and complete teardown without relational-cleanup errors.
-- Playwright can start using a documented, deterministic server and port lifecycle.
-- The known audit results are reproduced or explicitly superseded by recorded evidence.
-- Product-behavior failures remain failing/recorded or are deferred to the correct later phase; Phase 1 does not silently redefine expected behavior.
-- The exact deterministic visit-discharge mismatch—`assertVisitReadyForDischarge` permits discharge preparation with open care work while the existing integration assertion expects a blocking `409`—is classified as `KNOWN_PHASE_3_PRODUCT_DEBT` and as a deferred product failure, not a verification-infrastructure failure, when reproduced exactly as documented. Any materially different integration failure fails Phase 1 verification.
-- Phase 1 does not change visit-discharge behavior, the existing integration-test assertion, or clinical workflow policy.
-- The reproducible 43-error API lint baseline and inventory `@ts-nocheck` debt are recorded Phase 4 blockers. Their known nonzero lint result does not fail Phase 1 when it is reproduced exactly; any different lint result remains a verification failure.
-- Every correction is limited to verification infrastructure and tied to a reproduced baseline failure.
-- No Prisma schema or migration changes exist in the phase diff.
-- All existing applied migration files remain unchanged, including `prisma/migrations/20260706025500_add_trigram_search_indexes/migration.sql`.
-- Integration migrations replay unchanged in isolated disposable state, with `pg_trgm` available before any migration requiring `gin_trgm_ops` runs, and cleanup removes only resources owned by that test run.
-- No test assertion is weakened merely to make verification pass.
-- Remaining environment or product-policy blockers are escalated, not guessed around.
+- Authenticated identity is propagated correctly through supported browser, server-rendered, and API paths.
+- Missing or incomplete authentication configuration cannot silently create elevated access in an environment that may be externally reachable.
+- Organization and location boundaries are enforced and covered by deterministic tests.
+- Authorization behavior remains owned by Sparki's application model while WorkOS remains the authentication boundary.
+- Phase 1 verification remains reproducible, and deferred Phase 3 and Phase 4 findings are not silently reclassified or remediated.
+- Any product-policy, schema, migration, or production-data decision outside this scope is escalated.
 
 ## Phase configuration
 
 <!-- sparki-phase-config
 {
-  "id": "phase-1-trustworthy-engineering-baseline",
-  "branch": "codex/phase-1-trustworthy-engineering-baseline",
+  "id": "phase-2-authentication-tenant-safety",
+  "branch": "codex/phase-2-authentication-tenant-safety",
   "status": "APPROVED",
   "verification": [
     {

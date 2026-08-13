@@ -8,6 +8,8 @@ import {
   detectCli,
   invokeClaude,
   normalizePlanningStatus,
+  normalizeRemediationStatus,
+  phaseStatusForOutcome,
   runControlLoop,
   runVerification,
   validateRepository,
@@ -262,7 +264,7 @@ test('CHANGES_REQUIRED invokes remediation, verification, and another review', a
   assert.deepEqual(calls, ['verify', 'review', 'remediate', 'verify', 'review']);
 });
 
-test('maximum remediation cycles stop before an additional remediation', async () => {
+test('maximum remediation cycles preserve unresolved review changes without another remediation', async () => {
   let remediations = 0;
   const result = await runControlLoop({
     verify: async () => ({ pass: true }),
@@ -273,11 +275,45 @@ test('maximum remediation cycles stop before an additional remediation', async (
     },
     maxCycles: 2,
   });
-  assert.equal(result.status, 'FAILED');
+  assert.equal(result.status, 'CHANGES_REQUIRED');
   assert.equal(result.reason, 'maximum remediation cycles reached');
   assert.equal(result.reviewCount, 3);
   assert.equal(result.remediationCount, 2);
   assert.equal(remediations, 2);
+});
+
+test('PASS verification plus CHANGES_REQUIRED review never becomes FAILED phase state', async () => {
+  const outcome = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => changes(),
+    remediate: async () => pass(),
+    maxCycles: 1,
+  });
+  assert.equal(outcome.status, 'CHANGES_REQUIRED');
+  assert.equal(outcome.verification.pass, true);
+  assert.equal(outcome.review.status, 'CHANGES_REQUIRED');
+  assert.equal(phaseStatusForOutcome(outcome), 'CHANGES_REQUIRED');
+});
+
+test('completed remediation blocked only by managed sandbox continues as PASS', () => {
+  const result = normalizeRemediationStatus({
+    status: 'FAILED',
+    summary:
+      'Scoped remediation edits are complete, but the required commit could not be created because the managed sandbox has read-only access to .git.',
+    findings: [],
+  });
+  assert.equal(result.status, 'PASS');
+  assert.match(result.summary, /authoritative local verification remains with the orchestrator/);
+});
+
+test('genuine remediation failure remains FAILED', () => {
+  const result = normalizeRemediationStatus({
+    status: 'FAILED',
+    summary: 'The required source edit could not be completed.',
+    findings: [],
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(phaseStatusForOutcome(result), 'FAILED');
 });
 
 test('CHANGES_REQUIRED remediation result is a failure, not a successful remediation', async () => {

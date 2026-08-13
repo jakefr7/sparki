@@ -141,6 +141,30 @@ export function normalizePlanningStatus(plan) {
   };
 }
 
+export function normalizeRemediationStatus(remediation) {
+  const validated = validateAgentStatus(remediation);
+  if (
+    validated.status === 'FAILED' &&
+    /\b(?:edits?|implementation|remediation)(?:\s+\w+){0,3}\s+(?:are|is)\s+complete\b/i.test(
+      validated.summary,
+    )
+  ) {
+    return {
+      ...validated,
+      status: 'PASS',
+      summary: `Remediation edits are complete; authoritative local verification remains with the orchestrator. ${validated.summary}`,
+    };
+  }
+  return validated;
+}
+
+export function phaseStatusForOutcome(outcome) {
+  if (outcome.status === 'PASS') return 'READY_FOR_FOUNDER_REVIEW';
+  if (outcome.status === 'FOUNDER_DECISION_REQUIRED') return 'FOUNDER_DECISION_REQUIRED';
+  if (outcome.status === 'CHANGES_REQUIRED') return 'CHANGES_REQUIRED';
+  return 'FAILED';
+}
+
 async function saveRunState(runDirectory, state) {
   await writeFile(
     path.join(runDirectory, 'run-state.json'),
@@ -183,7 +207,7 @@ export async function runControlLoop({
     if (implementationResult.status === 'FAILED')
       return { status: 'FAILED', remediationCount, reviewCount, agent: implementationResult };
     if (implementationResult.status === 'CHANGES_REQUIRED') {
-      const remediation = validateAgentStatus(
+      const remediation = normalizeRemediationStatus(
         await remediate({ kind: 'implementation', implementation: implementationResult }),
       );
       remediationCount += 1;
@@ -206,7 +230,7 @@ export async function runControlLoop({
         reviewCount,
         verification,
       };
-    const remediation = validateAgentStatus(
+    const remediation = normalizeRemediationStatus(
       await remediate({ kind: 'verification', verification }),
     );
     remediationCount += 1;
@@ -227,13 +251,16 @@ export async function runControlLoop({
       return { status: 'FAILED', remediationCount, reviewCount, agent: result };
     if (remediationCount >= maxCycles)
       return {
-        status: 'FAILED',
+        status: 'CHANGES_REQUIRED',
         reason: 'maximum remediation cycles reached',
         remediationCount,
         reviewCount,
+        verification,
         review: result,
       };
-    const remediation = validateAgentStatus(await remediate({ kind: 'review', review: result }));
+    const remediation = normalizeRemediationStatus(
+      await remediate({ kind: 'review', review: result }),
+    );
     remediationCount += 1;
     if (remediation.status !== 'PASS') {
       const status =
@@ -250,7 +277,7 @@ export async function runControlLoop({
           reviewCount,
           verification,
         };
-      const verificationRemediation = validateAgentStatus(
+      const verificationRemediation = normalizeRemediationStatus(
         await remediate({ kind: 'verification', verification }),
       );
       remediationCount += 1;
@@ -626,7 +653,7 @@ export async function main(
           root,
           mode: 'implementation',
           outputPath,
-          prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. The orchestrator owns authoritative verification outside your managed sandbox. Return PASS when the requested remediation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report unavailable checks in summary and findings. Return FAILED only when remediation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
+          prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. Work in the repository working tree; do not create a commit during an orchestrated remediation, and do not treat read-only .git access as a remediation failure. The orchestrator owns authoritative verification outside your managed sandbox. Return PASS when the requested remediation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report unavailable checks in summary and findings. Return FAILED only when remediation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
         });
       } catch (error) {
         await progress.update({
@@ -665,10 +692,9 @@ export async function main(
 
   if (outcome.status === 'FOUNDER_DECISION_REQUIRED') {
     await founderDecision(currentRun.directory, outcome.agent);
-    state.phaseStatus = outcome.status;
     state.founderDecisionState = 'REQUIRED';
-  } else if (outcome.status === 'PASS') state.phaseStatus = 'READY_FOR_FOUNDER_REVIEW';
-  else state.phaseStatus = 'FAILED';
+  }
+  state.phaseStatus = phaseStatusForOutcome(outcome);
   if (outcome.status === 'PASS') {
     await progress.update({
       stage: 'founderReview',
@@ -683,6 +709,15 @@ export async function main(
       stage: state.progress.currentStage,
       stageState: 'founder',
       task: 'Founder decision required.',
+      runActive: false,
+      completed: true,
+      verificationCheck: null,
+    });
+  } else if (outcome.status === 'CHANGES_REQUIRED') {
+    await progress.update({
+      stage: 'review',
+      stageState: 'pending',
+      task: 'Maximum remediation cycles reached; review changes remain unresolved.',
       runActive: false,
       completed: true,
       verificationCheck: null,

@@ -373,6 +373,27 @@ test('verification records an exact known product-debt exit without stopping lat
   assert.equal(result.results[0].accepted, true);
 });
 
+test('verification reports each local check start and completion in order', async () => {
+  const events = [];
+  const result = await runVerification(
+    '/repo',
+    ['pnpm test', 'pnpm test:integration'],
+    async () => ({ code: 0, stdout: '', stderr: '' }),
+    {
+      onCheckStart: async ({ command }) => events.push(`start:${command}`),
+      onCheckComplete: async ({ command, accepted }) =>
+        events.push(`complete:${command}:${accepted}`),
+    },
+  );
+  assert.equal(result.pass, true);
+  assert.deepEqual(events, [
+    'start:pnpm test',
+    'complete:pnpm test:true',
+    'start:pnpm test:integration',
+    'complete:pnpm test:integration:true',
+  ]);
+});
+
 test('known product-debt verification fails when its result changes unexpectedly', async () => {
   const result = await runVerification(
     '/repo',

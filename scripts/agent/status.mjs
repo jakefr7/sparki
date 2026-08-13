@@ -4,8 +4,9 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { readPhase, runFile } from './utilities.mjs';
+import { formatElapsed, STAGES } from './progress.mjs';
 
-export async function collectStatus(root = process.cwd()) {
+export async function collectStatus(root = process.cwd(), now = new Date()) {
   const phase = await readPhase(root);
   const branch =
     (await runFile('git', ['branch', '--show-current'], { cwd: root })).stdout.trim() || 'UNKNOWN';
@@ -23,6 +24,13 @@ export async function collectStatus(root = process.cwd()) {
       state = {};
     }
   }
+  const progress = state.progress ?? {};
+  const elapsedEnd = progress.runActive
+    ? now
+    : new Date(progress.completedAt ?? progress.updatedAt ?? now);
+  const elapsed = progress.startedAt
+    ? formatElapsed(elapsedEnd.getTime() - new Date(progress.startedAt).getTime())
+    : 'UNKNOWN';
   return {
     currentPhase: phase.config.id,
     phaseStatus: state.phaseStatus ?? phase.config.status,
@@ -31,6 +39,12 @@ export async function collectStatus(root = process.cwd()) {
     verificationState: state.verificationState ?? 'NOT_RUN',
     reviewState: state.reviewState ?? 'NOT_RUN',
     founderDecisionState: state.founderDecisionState ?? 'NOT_REQUIRED',
+    runActive: progress.runActive ?? false,
+    currentStage:
+      STAGES.find(([key]) => key === progress.currentStage)?.[1] ?? progress.currentStage ?? 'NONE',
+    currentVerificationCheck: progress.currentVerificationCheck ?? 'NONE',
+    cycle: progress.cycle ?? 'NONE',
+    elapsed,
   };
 }
 

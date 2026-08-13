@@ -13,6 +13,7 @@ import {
   validateAgentStatus,
   writeArtifact,
 } from './utilities.mjs';
+import { createProgressState, ProgressReporter } from './progress.mjs';
 
 const MAX_CYCLES = 3;
 const DEFAULT_CLAUDE_BIN = 'claude-sparki';
@@ -268,17 +269,24 @@ export async function runControlLoop({
   }
 }
 
-export async function runVerification(root, commands, run = runStreaming) {
+export async function runVerification(
+  root,
+  commands,
+  run = runStreaming,
+  { onCheckStart = async () => {}, onCheckComplete = async () => {} } = {},
+) {
   const results = [];
-  for (const configuredCheck of commands) {
+  for (const [index, configuredCheck] of commands.entries()) {
     const check =
       typeof configuredCheck === 'string'
         ? { command: configuredCheck, expectedExitCodes: [0], classification: 'REQUIRED_PASS' }
         : configuredCheck;
     const { command, expectedExitCodes = [0], classification = 'REQUIRED_PASS' } = check;
+    await onCheckStart({ index, command, check });
     const result = await run('/bin/zsh', ['-lc', command], { cwd: root });
     const accepted = expectedExitCodes.includes(result.code);
     results.push({ command, expectedExitCodes, classification, accepted, ...result });
+    await onCheckComplete({ index, command, check, result, accepted });
     if (!accepted) break;
   }
   return {
@@ -297,6 +305,8 @@ export async function main(
     run = runFile,
     stream = runStreaming,
     now,
+    clock = () => new Date(),
+    progressOutput = process.stderr,
   } = {},
 ) {
   if (!['plan', 'execute', 'review'].includes(command))
@@ -328,42 +338,119 @@ export async function main(
   }
 
   const currentRun = await createRun(root, now);
+  const startedAt = (now ?? clock()).toISOString();
+  const phaseName =
+    phase.markdown.match(/^#\s+(.+)$/m)?.[1].split(/\s+[—-]\s+/)[0] ?? phase.config.id;
   const state = {
     phaseStatus: phase.config.status,
     verificationState: 'NOT_RUN',
     reviewState: 'NOT_RUN',
     founderDecisionState: 'NOT_REQUIRED',
+    progress: createProgressState({
+      phaseName,
+      verificationCommands: phase.config.verification.map((check) =>
+        typeof check === 'string' ? check : check.command,
+      ),
+      startedAt,
+      maxCycles: MAX_CYCLES,
+      initialStage: command === 'review' ? 'review' : 'planning',
+    }),
   };
-  await saveRunState(currentRun.directory, state);
+  const progress = new ProgressReporter({
+    state: state.progress,
+    persist: async () => saveRunState(currentRun.directory, state),
+    output: progressOutput,
+    now: clock,
+  });
+  progress.installSignalHandlers();
+  await progress.update({});
 
   if (command === 'plan' || command === 'execute') {
     const planOutput = path.join(currentRun.directory, '.plan-output.json');
-    const plan = normalizePlanningStatus(
-      await codex({
-        root,
-        mode: 'plan',
-        outputPath: planOutput,
-        prompt: `Act as the read-only PM defined in .sparki/agents/pm.md. Read ${requiredReading()}. Inspect repository state without editing. Produce a concrete plan for the current phase. For this planning stage, PASS means the approved phase has enough information to execute, the plan is concrete and scoped, and no founder decision is required; unresolved implementation work does not make the plan CHANGES_REQUIRED. CHANGES_REQUIRED is reserved for post-implementation review/remediation and must never be returned by the PM. Return only schema-valid JSON.`,
-      }),
-    );
+    let plan;
+    try {
+      plan = normalizePlanningStatus(
+        await codex({
+          root,
+          mode: 'plan',
+          outputPath: planOutput,
+          prompt: `Act as the read-only PM defined in .sparki/agents/pm.md. Read ${requiredReading()}. Inspect repository state without editing. Produce a concrete plan for the current phase. For this planning stage, PASS means the approved phase has enough information to execute, the plan is concrete and scoped, and no founder decision is required; unresolved implementation work does not make the plan CHANGES_REQUIRED. CHANGES_REQUIRED is reserved for post-implementation review/remediation and must never be returned by the PM. Return only schema-valid JSON.`,
+        }),
+      );
+    } catch (error) {
+      await progress.update({
+        stage: 'planning',
+        stageState: 'failed',
+        task: 'PM planning failed.',
+        runActive: false,
+        completed: true,
+      });
+      progress.removeSignalHandlers();
+      throw error;
+    }
     await writeArtifact(currentRun.directory, 'plan.md', artifactMarkdown('Plan', plan), plan);
     if (plan.status === 'FOUNDER_DECISION_REQUIRED') {
       await founderDecision(currentRun.directory, plan);
       state.phaseStatus = plan.status;
       state.founderDecisionState = 'REQUIRED';
-      await saveRunState(currentRun.directory, state);
+      await progress.update({
+        stage: 'planning',
+        stageState: 'founder',
+        task: 'Founder decision required during planning.',
+        runActive: false,
+        completed: true,
+      });
+      progress.removeSignalHandlers();
       return state;
     }
-    if (plan.status !== 'PASS') throw new Error(`Planning did not pass: ${plan.summary}`);
-    if (command === 'plan') return state;
+    if (plan.status !== 'PASS') {
+      await progress.update({
+        stage: 'planning',
+        stageState: 'failed',
+        task: 'PM planning did not pass.',
+        runActive: false,
+        completed: true,
+      });
+      progress.removeSignalHandlers();
+      throw new Error(`Planning did not pass: ${plan.summary}`);
+    }
+    await progress.update({
+      stage: 'planning',
+      stageState: 'complete',
+      task: command === 'plan' ? 'PM planning complete.' : 'Starting Codex implementation...',
+      runActive: command !== 'plan',
+      completed: command === 'plan',
+    });
+    if (command === 'plan') {
+      progress.removeSignalHandlers();
+      return state;
+    }
+    await progress.update({
+      stage: 'implementation',
+      stageState: 'running',
+      task: 'Codex is implementing the approved phase...',
+    });
   }
 
   if (command === 'review') {
-    const review = await claude({
-      root,
-      executable: claudeBin,
-      prompt: `Perform the read-only review in .sparki/agents/reviewer.md. Read ${requiredReading()}, inspect the current git diff and tests, and return only schema-valid JSON.`,
-    });
+    let review;
+    try {
+      review = await claude({
+        root,
+        executable: claudeBin,
+        prompt: `Perform the read-only review in .sparki/agents/reviewer.md. Read ${requiredReading()}, inspect the current git diff and tests, and return only schema-valid JSON.`,
+      });
+    } catch (error) {
+      await progress.update({
+        stage: 'review',
+        stageState: 'failed',
+        task: 'Claude review failed.',
+        runActive: false,
+        completed: true,
+      });
+      progress.removeSignalHandlers();
+      throw error;
+    }
     await writeArtifact(
       currentRun.directory,
       'review-1.md',
@@ -375,30 +462,75 @@ export async function main(
       await founderDecision(currentRun.directory, review);
       state.founderDecisionState = 'REQUIRED';
     }
-    await saveRunState(currentRun.directory, state);
+    await progress.update({
+      stage: 'review',
+      stageState:
+        review.status === 'FOUNDER_DECISION_REQUIRED'
+          ? 'founder'
+          : review.status === 'FAILED'
+            ? 'failed'
+            : 'complete',
+      task:
+        review.status === 'FOUNDER_DECISION_REQUIRED'
+          ? 'Founder decision required.'
+          : 'Claude review complete.',
+      runActive: false,
+      completed: true,
+    });
+    progress.removeSignalHandlers();
     return state;
   }
 
   const implementationOutput = path.join(currentRun.directory, '.implementation-output.json');
-  const implementationResult = await codex({
-    root,
-    mode: 'implementation',
-    outputPath: implementationOutput,
-    prompt: `Act as the implementer defined in .sparki/agents/implementer.md. Read ${requiredReading()} and this run's plan.md. Implement only the approved phase. Do not merge or deploy. The orchestrator, not your managed sandbox, owns authoritative verification. Return PASS when the requested implementation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report any checks you could not run in summary and findings for the orchestrator to verify locally. Return FAILED only when the implementation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
-  });
+  let implementationResult;
+  try {
+    implementationResult = await codex({
+      root,
+      mode: 'implementation',
+      outputPath: implementationOutput,
+      prompt: `Act as the implementer defined in .sparki/agents/implementer.md. Read ${requiredReading()} and this run's plan.md. Implement only the approved phase. Do not merge or deploy. The orchestrator, not your managed sandbox, owns authoritative verification. Return PASS when the requested implementation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report any checks you could not run in summary and findings for the orchestrator to verify locally. Return FAILED only when the implementation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
+    });
+  } catch (error) {
+    await progress.update({
+      stage: 'implementation',
+      stageState: 'failed',
+      task: 'Codex implementation failed.',
+      runActive: false,
+      completed: true,
+    });
+    progress.removeSignalHandlers();
+    throw error;
+  }
   await writeArtifact(
     currentRun.directory,
     'implementation.md',
     artifactMarkdown('Implementation', implementationResult),
     implementationResult,
   );
+  await progress.update({
+    stage: 'implementation',
+    stageState:
+      implementationResult.status === 'FOUNDER_DECISION_REQUIRED'
+        ? 'founder'
+        : implementationResult.status === 'FAILED'
+          ? 'failed'
+          : 'complete',
+    task:
+      implementationResult.status === 'PASS'
+        ? 'Codex implementation complete; starting verification.'
+        : 'Codex implementation returned an actionable result.',
+  });
   let verificationIndex = 0;
   let reviewIndex = 0;
   let remediationIndex = 0;
   const outcome = await runControlLoop({
     implementation: implementationResult,
     verify: async () => {
-      const result = await runVerification(root, phase.config.verification, stream);
+      await progress.startVerification(Math.max(1, remediationIndex));
+      const result = await runVerification(root, phase.config.verification, stream, {
+        onCheckStart: ({ index }) => progress.startCheck(index),
+        onCheckComplete: ({ index, accepted }) => progress.completeCheck(index, accepted),
+      });
       verificationIndex += 1;
       const body = result.results
         .map((item) =>
@@ -414,16 +546,41 @@ export async function main(
         body,
       );
       state.verificationState = result.pass ? 'PASS' : 'FAILED';
-      await saveRunState(currentRun.directory, state);
+      await progress.update({
+        stage: 'verification',
+        stageState: result.pass ? 'complete' : 'failed',
+        task: result.pass
+          ? 'Local verification complete; starting Claude review.'
+          : 'Local verification failed; starting remediation.',
+        verificationCheck: null,
+      });
       return result;
     },
     review: async () => {
       reviewIndex += 1;
-      const result = await claude({
-        root,
-        executable: claudeBin,
-        prompt: `Perform review ${reviewIndex} per .sparki/agents/reviewer.md. Read ${requiredReading()}, the run artifacts in ${path.relative(root, currentRun.directory)}, git diff, architecture, and tests. Return only schema-valid JSON.`,
+      await progress.update({
+        stage: 'review',
+        stageState: 'running',
+        task: `Claude is reviewing cycle ${Math.max(1, remediationIndex)}...`,
+        verificationCheck: null,
       });
+      let result;
+      try {
+        result = await claude({
+          root,
+          executable: claudeBin,
+          prompt: `Perform review ${reviewIndex} per .sparki/agents/reviewer.md. Read ${requiredReading()}, the run artifacts in ${path.relative(root, currentRun.directory)}, git diff, architecture, and tests. Return only schema-valid JSON.`,
+        });
+      } catch (error) {
+        await progress.update({
+          stage: 'review',
+          stageState: 'failed',
+          task: 'Claude review failed.',
+          runActive: false,
+          completed: true,
+        });
+        throw error;
+      }
       await writeArtifact(
         currentRun.directory,
         `review-${reviewIndex}.md`,
@@ -431,27 +588,77 @@ export async function main(
         result,
       );
       state.reviewState = result.status;
-      await saveRunState(currentRun.directory, state);
+      await progress.update({
+        stage: 'review',
+        stageState:
+          result.status === 'FOUNDER_DECISION_REQUIRED'
+            ? 'founder'
+            : result.status === 'FAILED'
+              ? 'failed'
+              : 'complete',
+        task:
+          result.status === 'PASS'
+            ? 'Claude review passed.'
+            : result.status === 'CHANGES_REQUIRED'
+              ? 'Claude requested remediation.'
+              : result.status === 'FOUNDER_DECISION_REQUIRED'
+                ? 'Founder decision required.'
+                : 'Claude review failed.',
+      });
       return result;
     },
     remediate: async (failure) => {
       remediationIndex += 1;
+      await progress.update({
+        stage: 'remediation',
+        stageState: 'running',
+        task: `Codex is applying remediation cycle ${remediationIndex}...`,
+        cycle: remediationIndex,
+        verificationCheck: null,
+      });
       const outputPath = path.join(
         currentRun.directory,
         `.remediation-${remediationIndex}-output.json`,
       );
-      const result = await codex({
-        root,
-        mode: 'implementation',
-        outputPath,
-        prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. The orchestrator owns authoritative verification outside your managed sandbox. Return PASS when the requested remediation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report unavailable checks in summary and findings. Return FAILED only when remediation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
-      });
+      let result;
+      try {
+        result = await codex({
+          root,
+          mode: 'implementation',
+          outputPath,
+          prompt: `Act as remediation per .sparki/agents/remediation.md. Read ${requiredReading()} and correct only this failure: ${JSON.stringify(failure)}. The orchestrator owns authoritative verification outside your managed sandbox. Return PASS when the requested remediation edits are complete, even if PostgreSQL, loopback ports, Playwright servers, or other local runtime resources are unavailable in your sandbox; report unavailable checks in summary and findings. Return FAILED only when remediation itself could not be completed, and preserve FOUNDER_DECISION_REQUIRED for genuine escalation. Return only schema-valid JSON.`,
+        });
+      } catch (error) {
+        await progress.update({
+          stage: 'remediation',
+          stageState: 'failed',
+          task: `Remediation cycle ${remediationIndex} failed.`,
+          runActive: false,
+          completed: true,
+        });
+        throw error;
+      }
       await writeArtifact(
         currentRun.directory,
         `remediation-${remediationIndex}.md`,
         artifactMarkdown(`Remediation ${remediationIndex}`, result),
         result,
       );
+      await progress.update({
+        stage: 'remediation',
+        stageState:
+          result.status === 'FOUNDER_DECISION_REQUIRED'
+            ? 'founder'
+            : result.status === 'PASS'
+              ? 'complete'
+              : 'failed',
+        task:
+          result.status === 'PASS'
+            ? `Remediation cycle ${remediationIndex} complete; rerunning verification.`
+            : result.status === 'FOUNDER_DECISION_REQUIRED'
+              ? 'Founder decision required during remediation.'
+              : `Remediation cycle ${remediationIndex} failed.`,
+      });
       return result;
     },
   });
@@ -462,7 +669,35 @@ export async function main(
     state.founderDecisionState = 'REQUIRED';
   } else if (outcome.status === 'PASS') state.phaseStatus = 'READY_FOR_FOUNDER_REVIEW';
   else state.phaseStatus = 'FAILED';
-  await saveRunState(currentRun.directory, state);
+  if (outcome.status === 'PASS') {
+    await progress.update({
+      stage: 'founderReview',
+      stageState: 'pending',
+      task: 'Ready for founder review.',
+      runActive: false,
+      completed: true,
+      verificationCheck: null,
+    });
+  } else if (outcome.status === 'FOUNDER_DECISION_REQUIRED') {
+    await progress.update({
+      stage: state.progress.currentStage,
+      stageState: 'founder',
+      task: 'Founder decision required.',
+      runActive: false,
+      completed: true,
+      verificationCheck: null,
+    });
+  } else {
+    await progress.update({
+      stage: state.progress.currentStage,
+      stageState: 'failed',
+      task: outcome.reason ?? 'Orchestration failed.',
+      runActive: false,
+      completed: true,
+      verificationCheck: null,
+    });
+  }
+  progress.removeSignalHandlers();
   return state;
 }
 

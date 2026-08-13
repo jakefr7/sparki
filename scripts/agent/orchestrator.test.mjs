@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  configuredClaudeBin,
   detectCli,
   invokeClaude,
   normalizePlanningStatus,
@@ -63,15 +64,19 @@ test('Claude receives the strict schema without the unsupported draft declaratio
     JSON.stringify(sharedSchema),
   );
   let suppliedSchema;
+  let suppliedExecutable;
   const result = await invokeClaude({
     root,
     prompt: 'review',
-    run: async (_command, args) => {
+    executable: 'claude-team-profile',
+    run: async (command, args) => {
+      suppliedExecutable = command;
       suppliedSchema = JSON.parse(args[args.indexOf('--json-schema') + 1]);
       return { code: 0, stdout: JSON.stringify(pass()), stderr: '' };
     },
   });
   assert.equal(result.status, 'PASS');
+  assert.equal(suppliedExecutable, 'claude-team-profile');
   assert.equal('$schema' in suppliedSchema, false);
   assert.deepEqual(suppliedSchema, (({ $schema: _, ...schema }) => schema)(sharedSchema));
   assertStrictObjectSchemas(suppliedSchema);
@@ -81,6 +86,28 @@ test('Claude receives the strict schema without the unsupported draft declaratio
     'CHANGES_REQUIRED',
     'FOUNDER_DECISION_REQUIRED',
     'FAILED',
+  ]);
+});
+
+test('Sparki defaults Claude to its authenticated profile and supports CLAUDE_BIN', () => {
+  assert.equal(configuredClaudeBin({}), 'claude-sparki');
+  assert.equal(configuredClaudeBin({ CLAUDE_BIN: 'claude-custom' }), 'claude-custom');
+});
+
+test('custom Claude executable uses Claude authentication semantics', async () => {
+  const calls = [];
+  const result = await detectCli('claude-custom', {
+    kind: 'claude',
+    run: async (command, args) => {
+      calls.push([command, args]);
+      if (args[0] === '--version') return { code: 0, stdout: '1.0.0', stderr: '' };
+      return { code: 0, stdout: JSON.stringify({ loggedIn: true }), stderr: '' };
+    },
+  });
+  assert.equal(result.authenticated, true);
+  assert.deepEqual(calls, [
+    ['claude-custom', ['--version']],
+    ['claude-custom', ['auth', 'status']],
   ]);
 });
 

@@ -15,6 +15,7 @@ import {
 } from './utilities.mjs';
 
 const MAX_CYCLES = 3;
+const DEFAULT_CLAUDE_BIN = 'claude-sparki';
 const MEMORY_FILES = [
   'PROJECT_STATE.md',
   'CURRENT_PHASE.md',
@@ -43,15 +44,22 @@ export async function validateRepository(root, { implementation = false, run = r
   return { branch, dirty };
 }
 
-export async function detectCli(name, { root = process.cwd(), run = runFile } = {}) {
+export function configuredClaudeBin(env = process.env) {
+  return env.CLAUDE_BIN?.trim() || DEFAULT_CLAUDE_BIN;
+}
+
+export async function detectCli(
+  name,
+  { root = process.cwd(), run = runFile, kind = name === 'codex' ? 'codex' : 'claude' } = {},
+) {
   const version = await run(name, ['--version'], { cwd: root });
   if (version.code !== 0)
     return { installed: false, authenticated: false, detail: `${name} CLI not found` };
-  const authArgs = name === 'codex' ? ['login', 'status'] : ['auth', 'status'];
+  const authArgs = kind === 'codex' ? ['login', 'status'] : ['auth', 'status'];
   const auth = await run(name, authArgs, { cwd: root });
   const combined = `${auth.stdout}\n${auth.stderr}`;
   let authenticated = auth.code === 0 && /logged in|authenticated/i.test(combined);
-  if (name === 'claude') {
+  if (kind === 'claude') {
     try {
       authenticated = auth.code === 0 && JSON.parse(auth.stdout).loggedIn === true;
     } catch {
@@ -84,7 +92,12 @@ export async function invokeCodex({ root, prompt, mode, outputPath, run = runStr
   return parseJsonOutput(await readFile(outputPath, 'utf8'));
 }
 
-export async function invokeClaude({ root, prompt, run = runStreaming }) {
+export async function invokeClaude({
+  root,
+  prompt,
+  executable = configuredClaudeBin(),
+  run = runStreaming,
+}) {
   const sharedSchema = JSON.parse(await readFile(outputSchema(root), 'utf8'));
   const { $schema: _unsupportedDraftDeclaration, ...claudeSchema } = sharedSchema;
   const schema = JSON.stringify(claudeSchema);
@@ -99,7 +112,7 @@ export async function invokeClaude({ root, prompt, run = runStreaming }) {
     schema,
     prompt,
   ];
-  const result = await run('claude', args, { cwd: root });
+  const result = await run(executable, args, { cwd: root });
   if (result.code !== 0) throw new Error(`Claude failed: ${result.stderr || result.stdout}`);
   return parseJsonOutput(result.stdout, ['PASS', 'CHANGES_REQUIRED', 'FOUNDER_DECISION_REQUIRED']);
 }
@@ -257,6 +270,7 @@ export async function main(
     root = process.cwd(),
     codex = invokeCodex,
     claude = invokeClaude,
+    claudeBin = configuredClaudeBin(),
     run = runFile,
     stream = runStreaming,
     now,
@@ -273,13 +287,20 @@ export async function main(
     throw new Error(`Switch to the dedicated phase branch: ${phase.config.branch}`);
 
   const required =
-    command === 'review' ? ['claude'] : command === 'plan' ? ['codex'] : ['codex', 'claude'];
-  for (const name of required) {
-    const cli = await detectCli(name, { root, run });
-    if (!cli.installed) throw new Error(`${name} CLI is required. Install it and retry.`);
+    command === 'review'
+      ? [{ executable: claudeBin, kind: 'claude' }]
+      : command === 'plan'
+        ? [{ executable: 'codex', kind: 'codex' }]
+        : [
+            { executable: 'codex', kind: 'codex' },
+            { executable: claudeBin, kind: 'claude' },
+          ];
+  for (const { executable, kind } of required) {
+    const cli = await detectCli(executable, { root, run, kind });
+    if (!cli.installed) throw new Error(`${executable} CLI is required. Install it and retry.`);
     if (!cli.authenticated)
       throw new Error(
-        `${name} CLI is not authenticated. Run '${name === 'codex' ? 'codex login' : 'claude auth login'}' once and retry.`,
+        `${executable} CLI is not authenticated. Run '${kind === 'codex' ? `${executable} login` : `${executable} auth login`}' once and retry.`,
       );
   }
 
@@ -317,6 +338,7 @@ export async function main(
   if (command === 'review') {
     const review = await claude({
       root,
+      executable: claudeBin,
       prompt: `Perform the read-only review in .sparki/agents/reviewer.md. Read ${requiredReading()}, inspect the current git diff and tests, and return only schema-valid JSON.`,
     });
     await writeArtifact(
@@ -384,6 +406,7 @@ export async function main(
       reviewIndex += 1;
       const result = await claude({
         root,
+        executable: claudeBin,
         prompt: `Perform review ${reviewIndex} per .sparki/agents/reviewer.md. Read ${requiredReading()}, the run artifacts in ${path.relative(root, currentRun.directory)}, git diff, architecture, and tests. Return only schema-valid JSON.`,
       });
       await writeArtifact(

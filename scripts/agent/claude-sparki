@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
+  CLAUDE_CONFIG_DIR="${HOME}/.claude-sparki"
+  export CLAUDE_CONFIG_DIR
+fi
+
+exec claude "$@"

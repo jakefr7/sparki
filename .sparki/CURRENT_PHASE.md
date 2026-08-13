@@ -2,7 +2,7 @@
 
 Status: APPROVED
 
-Founder decision status: CLEARED
+Founder decision status: CLEARED — visit-discharge policy conflict deferred to Phase 3
 
 ## Objective
 
@@ -43,6 +43,8 @@ Establish deterministic, isolated, and honest repository verification. Phase 1 m
 - Playwright can start using a documented, deterministic server and port lifecycle.
 - The known audit results are reproduced or explicitly superseded by recorded evidence.
 - Product-behavior failures remain failing/recorded or are deferred to the correct later phase; Phase 1 does not silently redefine expected behavior.
+- The exact deterministic visit-discharge mismatch—`assertVisitReadyForDischarge` permits discharge preparation with open care work while the existing integration assertion expects a blocking `409`—is classified as `KNOWN_PHASE_3_PRODUCT_DEBT` and as a deferred product failure, not a verification-infrastructure failure, when reproduced exactly as documented. Any materially different integration failure fails Phase 1 verification.
+- Phase 1 does not change visit-discharge behavior, the existing integration-test assertion, or clinical workflow policy.
 - The reproducible 43-error API lint baseline and inventory `@ts-nocheck` debt are recorded Phase 4 blockers. Their known nonzero lint result does not fail Phase 1 when it is reproduced exactly; any different lint result remains a verification failure.
 - Every correction is limited to verification infrastructure and tied to a reproduced baseline failure.
 - No Prisma schema or migration changes exist in the phase diff.

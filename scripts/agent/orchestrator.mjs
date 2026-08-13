@@ -161,9 +161,25 @@ async function founderDecision(runDirectory, status) {
   );
 }
 
-export async function runControlLoop({ verify, review, remediate, maxCycles = MAX_CYCLES }) {
+export async function runControlLoop({
+  verify,
+  review,
+  remediate,
+  initialFailure,
+  maxCycles = MAX_CYCLES,
+}) {
   let remediationCount = 0;
   let reviewCount = 0;
+  if (initialFailure) {
+    const remediation = validateAgentStatus(await remediate(initialFailure), [
+      'PASS',
+      'FOUNDER_DECISION_REQUIRED',
+      'FAILED',
+    ]);
+    remediationCount += 1;
+    if (remediation.status !== 'PASS')
+      return { status: remediation.status, remediationCount, reviewCount, agent: remediation };
+  }
   let verification = await verify();
   while (!verification.pass) {
     if (remediationCount >= maxCycles)
@@ -382,6 +398,10 @@ export async function main(
   let reviewIndex = 0;
   let remediationIndex = 0;
   const outcome = await runControlLoop({
+    initialFailure:
+      implementationResult.status === 'CHANGES_REQUIRED'
+        ? { kind: 'implementation', implementation: implementationResult }
+        : undefined,
     verify: async () => {
       const result = await runVerification(root, phase.config.verification, stream);
       verificationIndex += 1;

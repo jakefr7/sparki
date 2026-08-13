@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { createServer } from 'node:net';
 import process from 'node:process';
 
 const requireFromDbPackage = createRequire(new URL('../packages/db/package.json', import.meta.url));
@@ -31,24 +32,91 @@ if (!parsed.pathname || parsed.pathname === '/')
   throw new Error('Test database URL must name a database.');
 
 const schema = `sparki_test_${mode}_${randomUUID().replaceAll('-', '')}`;
-parsed.searchParams.set('schema', schema);
-const isolatedUrl = parsed.toString();
+parsed.searchParams.delete('schema');
 const adminUrl = new URL(baseUrl);
 adminUrl.searchParams.delete('schema');
 const client = new pg.Client({ connectionString: adminUrl.toString() });
+let activeChild;
+let cleanupPromise;
+let clientConnected = false;
+let schemaCreated = false;
+
+function assertPortAvailable(port) {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', (error) => {
+      reject(
+        error.code === 'EADDRINUSE'
+          ? new Error(
+              `Required test port 127.0.0.1:${port} is already in use. Stop the unrelated service and retry; Sparki will not reuse it.`,
+            )
+          : error,
+      );
+    });
+    server.once('listening', () => server.close(resolve));
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+async function cleanup() {
+  if (!cleanupPromise) {
+    cleanupPromise = (async () => {
+      if (activeChild && activeChild.exitCode === null && activeChild.signalCode === null) {
+        activeChild.kill('SIGTERM');
+      }
+      if (clientConnected && schemaCreated) {
+        await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+        schemaCreated = false;
+      }
+      if (clientConnected) {
+        await client.end();
+        clientConnected = false;
+      }
+    })();
+  }
+  return cleanupPromise;
+}
 
 function run(command, args, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: process.cwd(), env, stdio: 'inherit' });
+    activeChild = child;
     child.on('error', reject);
-    child.on('exit', (code, signal) => resolve(code ?? (signal ? 1 : 0)));
+    child.on('exit', (code, signal) => {
+      activeChild = undefined;
+      resolve(code ?? (signal ? 1 : 0));
+    });
+  });
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.once(signal, () => {
+    cleanup()
+      .catch((error) => console.error(`Test cleanup failed: ${error.message}`))
+      .finally(() => process.exit(128 + (signal === 'SIGINT' ? 2 : 15)));
   });
 }
 
 let exitCode = 1;
+if (mode === 'playwright') {
+  await Promise.all([assertPortAvailable(4000), assertPortAvailable(3001)]);
+}
 await client.connect();
+clientConnected = true;
 try {
   await client.query(`CREATE SCHEMA "${schema}"`);
+  schemaCreated = true;
+  const extension = await client.query(
+    `SELECT namespace.nspname
+       FROM pg_extension extension
+       JOIN pg_namespace namespace ON namespace.oid = extension.extnamespace
+      WHERE extension.extname = 'pg_trgm'`,
+  );
+  const extensionSchema = extension.rows[0]?.nspname;
+  const quoteIdentifier = (identifier) => `"${identifier.replaceAll('"', '""')}"`;
+  const searchPath = [schema, extensionSchema].filter(Boolean).map(quoteIdentifier).join(',');
+  parsed.searchParams.set('options', `-c search_path=${searchPath}`);
+  const isolatedUrl = parsed.toString();
   const env = {
     ...process.env,
     NODE_ENV: 'test',
@@ -57,6 +125,7 @@ try {
     API_URL: 'http://127.0.0.1:4000',
     WEB_PORT: '3001',
     CORS_ORIGIN: 'http://127.0.0.1:3001',
+    SPARKI_ISOLATED_TEST_SCHEMA: schema,
   };
   exitCode = await run(
     'pnpm',
@@ -80,7 +149,6 @@ try {
     exitCode = await run('pnpm', args, env);
   }
 } finally {
-  await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-  await client.end();
+  await cleanup();
 }
 process.exitCode = exitCode;

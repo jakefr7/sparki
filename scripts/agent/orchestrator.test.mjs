@@ -46,7 +46,8 @@ function assertStrictObjectSchemas(schema, location = '$') {
     );
   }
   for (const [key, value] of Object.entries(schema)) {
-    if (key !== 'required' && key !== 'enum') assertStrictObjectSchemas(value, `${location}.${key}`);
+    if (key !== 'required' && key !== 'enum')
+      assertStrictObjectSchemas(value, `${location}.${key}`);
   }
 }
 
@@ -138,6 +139,27 @@ test('PASS transitions directly to founder-review-ready outcome', async () => {
   assert.equal(result.status, 'PASS');
   assert.equal(result.reviewCount, 1);
   assert.equal(result.remediationCount, 0);
+});
+
+test('execute remediates an implementer CHANGES_REQUIRED result before verification', async () => {
+  const calls = [];
+  const implementation = changes();
+  const result = await runControlLoop({
+    initialFailure: { kind: 'implementation', implementation },
+    remediate: async (failure) => {
+      calls.push(['remediate', failure]);
+      return pass();
+    },
+    verify: async () => {
+      calls.push(['verify']);
+      return { pass: true };
+    },
+    review: async () => pass(),
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.remediationCount, 1);
+  assert.deepEqual(calls[0], ['remediate', { kind: 'implementation', implementation }]);
+  assert.deepEqual(calls[1], ['verify']);
 });
 
 test('CHANGES_REQUIRED invokes remediation, verification, and another review', async () => {

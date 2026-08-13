@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { detectCli, runControlLoop, validateRepository } from './orchestrator.mjs';
+import { parseJsonOutput } from './utilities.mjs';
+
+const pass = (summary = 'ok') => ({ status: 'PASS', summary, findings: [] });
+const changes = () => ({
+  status: 'CHANGES_REQUIRED',
+  summary: 'fix it',
+  findings: [{ severity: 'high' }],
+});
+
+test('PASS transitions directly to founder-review-ready outcome', async () => {
+  const result = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => pass(),
+    remediate: async () => pass(),
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.reviewCount, 1);
+  assert.equal(result.remediationCount, 0);
+});
+
+test('CHANGES_REQUIRED invokes remediation, verification, and another review', async () => {
+  let reviews = 0;
+  let verifications = 0;
+  const result = await runControlLoop({
+    verify: async () => ({ pass: ++verifications > 0 }),
+    review: async () => (++reviews === 1 ? changes() : pass()),
+    remediate: async () => pass(),
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(result.reviewCount, 2);
+  assert.equal(result.remediationCount, 1);
+  assert.equal(verifications, 2);
+});
+
+test('maximum review loop stops after three reviews', async () => {
+  const result = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => changes(),
+    remediate: async () => pass(),
+  });
+  assert.equal(result.status, 'FAILED');
+  assert.equal(result.reviewCount, 3);
+});
+
+test('malformed agent response never counts as PASS', () => {
+  assert.throws(() => parseJsonOutput('not json'), /malformed JSON/);
+  assert.throws(() => parseJsonOutput('{"status":"PASS"}'), /summary/);
+});
+
+test('verification failure triggers remediation and rerun', async () => {
+  let checks = 0;
+  let remediations = 0;
+  const result = await runControlLoop({
+    verify: async () => ({ pass: ++checks > 1 }),
+    review: async () => pass(),
+    remediate: async ({ kind }) => {
+      assert.equal(kind, 'verification');
+      remediations += 1;
+      return pass();
+    },
+  });
+  assert.equal(result.status, 'PASS');
+  assert.equal(checks, 2);
+  assert.equal(remediations, 1);
+});
+
+test('founder escalation stops automation', async () => {
+  const result = await runControlLoop({
+    verify: async () => ({ pass: true }),
+    review: async () => ({ status: 'FOUNDER_DECISION_REQUIRED', summary: 'policy', findings: [] }),
+    remediate: async () => {
+      throw new Error('must not run');
+    },
+  });
+  assert.equal(result.status, 'FOUNDER_DECISION_REQUIRED');
+});
+
+async function repositoryFixture() {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'sparki-agent-test-'));
+  await mkdir(path.join(root, '.sparki'));
+  await writeFile(path.join(root, '.sparki/CURRENT_PHASE.md'), 'phase');
+  await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages: []');
+  return root;
+}
+
+function gitMock(root, { branch = 'feature', dirty = '' } = {}) {
+  return async (_command, args) => {
+    if (args[0] === 'rev-parse') return { code: 0, stdout: `${root}\n`, stderr: '' };
+    if (args[0] === 'branch') return { code: 0, stdout: `${branch}\n`, stderr: '' };
+    if (args[0] === 'status') return { code: 0, stdout: dirty, stderr: '' };
+    throw new Error('unexpected git call');
+  };
+}
+
+test('execution is refused on main', async () => {
+  const root = await repositoryFixture();
+  await assert.rejects(
+    validateRepository(root, { implementation: true, run: gitMock(root, { branch: 'main' }) }),
+    /refused on main/,
+  );
+});
+
+test('execution is refused with dirty tracked source', async () => {
+  const root = await repositoryFixture();
+  await assert.rejects(
+    validateRepository(root, {
+      implementation: true,
+      run: gitMock(root, { dirty: ' M apps/api/source.ts\n' }),
+    }),
+    /dirty tracked files/,
+  );
+});
+
+test('missing CLI is reported without fallback', async () => {
+  const result = await detectCli('codex', {
+    run: async () => ({ code: 127, stdout: '', stderr: 'not found' }),
+  });
+  assert.deepEqual(result, {
+    installed: false,
+    authenticated: false,
+    detail: 'codex CLI not found',
+  });
+});

@@ -22,7 +22,12 @@
     "seed:local-demo": "dotenv -e .env -- node scripts/seed-local-clinic-demo-data.mjs",
     "seed:inventory": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-2.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-3.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-4.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-5.mjs",
     "seed:inventory:refresh-expirations": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs --refresh-expirations",
-    "cleanup:test-debris": "dotenv -e .env -- node scripts/cleanup-local-test-debris.mjs"
+    "cleanup:test-debris": "dotenv -e .env -- node scripts/cleanup-local-test-debris.mjs",
+    "sparki:status": "node scripts/agent/status.mjs",
+    "sparki:plan": "node scripts/agent/orchestrator.mjs plan",
+    "sparki:execute": "node scripts/agent/orchestrator.mjs execute",
+    "sparki:review": "node scripts/agent/orchestrator.mjs review",
+    "test:agent": "node --test scripts/agent/*.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

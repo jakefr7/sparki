@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": { "enum": ["PASS", "CHANGES_REQUIRED", "FOUNDER_DECISION_REQUIRED", "FAILED"] },
+    "summary": { "type": "string" },
+    "findings": { "type": "array", "items": { "type": "object" } }
+  },
+  "required": ["status", "summary", "findings"]
+}

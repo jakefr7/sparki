@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { detectCli, runControlLoop, validateRepository } from './orchestrator.mjs';
+import {
+  detectCli,
+  normalizePlanningStatus,
+  runControlLoop,
+  validateRepository,
+} from './orchestrator.mjs';
 import { parseJsonOutput } from './utilities.mjs';
 
 const pass = (summary = 'ok') => ({ status: 'PASS', summary, findings: [] });
@@ -45,6 +50,24 @@ function assertStrictObjectSchemas(schema, location = '$') {
 test('structured output schema makes every object strict and requires every property', async () => {
   const schema = JSON.parse(await readFile(schemaPath, 'utf8'));
   assertStrictObjectSchemas(schema);
+});
+
+test('PM planning treats a concrete implementation plan as PASS even if labeled CHANGES_REQUIRED', () => {
+  const result = normalizePlanningStatus(changes());
+  assert.equal(result.status, 'PASS');
+  assert.match(result.summary, /Planning completed with an executable scoped plan/);
+  assert.deepEqual(result.findings, changes().findings);
+});
+
+test('PM planning preserves founder decisions and genuine infrastructure failures', () => {
+  const founderDecision = {
+    status: 'FOUNDER_DECISION_REQUIRED',
+    summary: 'policy decision needed',
+    findings: [],
+  };
+  const failure = { status: 'FAILED', summary: 'CLI unavailable', findings: [] };
+  assert.equal(normalizePlanningStatus(founderDecision).status, 'FOUNDER_DECISION_REQUIRED');
+  assert.equal(normalizePlanningStatus(failure).status, 'FAILED');
 });
 
 test('PASS transitions directly to founder-review-ready outcome', async () => {

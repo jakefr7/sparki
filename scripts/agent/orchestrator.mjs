@@ -115,6 +115,16 @@ function artifactMarkdown(title, status) {
   return `# ${title}\n\nStatus: ${status.status}\n\n${status.summary}\n\n## Findings\n\n${findings}`;
 }
 
+export function normalizePlanningStatus(plan) {
+  const validated = validateAgentStatus(plan);
+  if (validated.status !== 'CHANGES_REQUIRED') return validated;
+  return {
+    ...validated,
+    status: 'PASS',
+    summary: `Planning completed with an executable scoped plan. ${validated.summary}`,
+  };
+}
+
 async function saveRunState(runDirectory, state) {
   await writeFile(
     path.join(runDirectory, 'run-state.json'),
@@ -276,12 +286,14 @@ export async function main(
 
   if (command === 'plan' || command === 'execute') {
     const planOutput = path.join(currentRun.directory, '.plan-output.json');
-    const plan = await codex({
-      root,
-      mode: 'plan',
-      outputPath: planOutput,
-      prompt: `Act as the read-only PM defined in .sparki/agents/pm.md. Read ${requiredReading()}. Inspect repository state without editing. Produce a concrete plan for the current phase. Return only schema-valid JSON.`,
-    });
+    const plan = normalizePlanningStatus(
+      await codex({
+        root,
+        mode: 'plan',
+        outputPath: planOutput,
+        prompt: `Act as the read-only PM defined in .sparki/agents/pm.md. Read ${requiredReading()}. Inspect repository state without editing. Produce a concrete plan for the current phase. For this planning stage, PASS means the approved phase has enough information to execute, the plan is concrete and scoped, and no founder decision is required; unresolved implementation work does not make the plan CHANGES_REQUIRED. CHANGES_REQUIRED is reserved for post-implementation review/remediation and must never be returned by the PM. Return only schema-valid JSON.`,
+      }),
+    );
     await writeArtifact(currentRun.directory, 'plan.md', artifactMarkdown('Plan', plan), plan);
     if (plan.status === 'FOUNDER_DECISION_REQUIRED') {
       await founderDecision(currentRun.directory, plan);

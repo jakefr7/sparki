@@ -38,3 +38,8 @@ test-results/
 # uploaded patient photos (local dev storage)
 apps/web/public/uploads/patients/*
 !apps/web/public/uploads/patients/.gitkeep
+
+# Local AI agent artifacts
+.codex_tmp/
+.sparki/runs/*
+!.sparki/runs/.gitkeep

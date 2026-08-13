@@ -8,6 +8,7 @@ import {
   invokeClaude,
   normalizePlanningStatus,
   runControlLoop,
+  runVerification,
   validateRepository,
 } from './orchestrator.mjs';
 import { parseJsonOutput } from './utilities.mjs';
@@ -170,6 +171,39 @@ test('verification failure triggers remediation and rerun', async () => {
   assert.equal(result.status, 'PASS');
   assert.equal(checks, 2);
   assert.equal(remediations, 1);
+});
+
+test('verification records an exact known product-debt exit without stopping later checks', async () => {
+  const commands = [];
+  const result = await runVerification(
+    '/repo',
+    [
+      {
+        command: 'pnpm lint',
+        expectedExitCodes: [1],
+        classification: 'KNOWN_PHASE_4_PRODUCT_DEBT',
+      },
+      'pnpm typecheck',
+    ],
+    async (_shell, args) => {
+      commands.push(args[1]);
+      return { code: args[1] === 'pnpm lint' ? 1 : 0, stdout: '', stderr: '' };
+    },
+  );
+  assert.equal(result.pass, true);
+  assert.deepEqual(commands, ['pnpm lint', 'pnpm typecheck']);
+  assert.equal(result.results[0].classification, 'KNOWN_PHASE_4_PRODUCT_DEBT');
+  assert.equal(result.results[0].accepted, true);
+});
+
+test('known product-debt verification fails when its result changes unexpectedly', async () => {
+  const result = await runVerification(
+    '/repo',
+    [{ command: 'pnpm lint', expectedExitCodes: [1], classification: 'KNOWN_PRODUCT_DEBT' }],
+    async () => ({ code: 2, stdout: '', stderr: 'configuration failure' }),
+  );
+  assert.equal(result.pass, false);
+  assert.equal(result.results[0].accepted, false);
 });
 
 test('founder escalation stops automation', async () => {

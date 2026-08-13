@@ -232,15 +232,21 @@ export async function runControlLoop({ verify, review, remediate, maxCycles = MA
   };
 }
 
-async function runVerification(root, commands, run = runStreaming) {
+export async function runVerification(root, commands, run = runStreaming) {
   const results = [];
-  for (const command of commands) {
+  for (const configuredCheck of commands) {
+    const check =
+      typeof configuredCheck === 'string'
+        ? { command: configuredCheck, expectedExitCodes: [0], classification: 'REQUIRED_PASS' }
+        : configuredCheck;
+    const { command, expectedExitCodes = [0], classification = 'REQUIRED_PASS' } = check;
     const result = await run('/bin/zsh', ['-lc', command], { cwd: root });
-    results.push({ command, ...result });
-    if (result.code !== 0) break;
+    const accepted = expectedExitCodes.includes(result.code);
+    results.push({ command, expectedExitCodes, classification, accepted, ...result });
+    if (!accepted) break;
   }
   return {
-    pass: results.length === commands.length && results.every((item) => item.code === 0),
+    pass: results.length === commands.length && results.every((item) => item.accepted),
     results,
   };
 }
@@ -357,7 +363,14 @@ export async function main(
     verify: async () => {
       const result = await runVerification(root, phase.config.verification, stream);
       verificationIndex += 1;
-      const body = result.results.map((item) => formatResult(item.command, item)).join('\n\n');
+      const body = result.results
+        .map((item) =>
+          formatResult(
+            `${item.command} [${item.classification}; expected exit ${item.expectedExitCodes.join(', ')}]`,
+            item,
+          ),
+        )
+        .join('\n\n');
       await writeArtifact(
         currentRun.directory,
         verificationIndex === 1 ? 'verification.md' : `verification-${verificationIndex}.md`,

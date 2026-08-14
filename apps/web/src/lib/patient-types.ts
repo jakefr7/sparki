@@ -208,9 +208,11 @@ export interface ClinicalAttachmentSummary {
   sizeBytes: number;
   label: string | null;
   createdAt: string;
-  href: string;
+  removedAt?: string | null;
+  supersededById?: string | null;
+  href: string | null;
   uploadedBy?: { displayName: string | null; firstName: string; lastName: string };
-  auditEvents?: Array<{ action: string; reason: string | null; createdAt: string }>;
+  auditEvents?: Array<{ action: string; reason: string | null; createdAt: string; actor?: { displayName: string | null; firstName: string; lastName: string } }>;
 }
 
 export interface UpcomingAppointment {
@@ -347,6 +349,7 @@ export interface PatientWorkspace {
   };
   clients: WorkspaceClient[];
   upcomingAppointments: UpcomingAppointment[];
+  patientAttachments: ClinicalAttachmentSummary[];
   recentVisits: RecentVisitSummary[];
   sections: {
     currentVisit: CurrentVisitSection;

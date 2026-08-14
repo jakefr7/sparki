@@ -1,6 +1,6 @@
 # Phase 6 — Clinic Pilot Core Care Completion
 
-Status: **APPROVED / ACTIVE**
+Status: **READY_FOR_FOUNDER_REVIEW**
 
 Phase type: **PRODUCT WORKFLOW**
 

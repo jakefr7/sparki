@@ -1,6 +1,6 @@
 # Project State
 
-Last reviewed: 2026-08-13
+Last reviewed: 2026-08-14
 
 Risk classification: **HIGH RISK**
 
@@ -19,7 +19,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3 clinical workflow integrity is verified, independently reviewed, and founder-approved; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 inventory integrity hardening is verified, independently reviewed, and founder-approved; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 - Phase 5 honest external and financial workflows are verified, independently reviewed, and founder-approved; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
-- Phase 6 — Clinic Pilot Core Care Completion is founder-selected and **APPROVED / ACTIVE** as a product-workflow phase. Its documentation-only activation defines the bounded visible-UI clinical journey and performs no implementation or verification.
+- Phase 6 — Clinic Pilot Core Care Completion is implemented, verified, and **READY_FOR_FOUNDER_REVIEW**; see [PHASE_6_CLOSEOUT.md](./PHASE_6_CLOSEOUT.md).
 
 ## PARTIAL
 
@@ -40,6 +40,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3's latest independent Claude review passed. Optional direct Today-view lifecycle coverage and the prior placeholder review artifact remain non-blocking follow-up notes only.
 - Phase 4's authoritative integration verification passed 193/193, Claude's independent review passed, and controlled usage now fails before any write when a referenced lot cannot be resolved within the authenticated tenant/location. Its two approved low-severity findings remain optional follow-ups only; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 - Phase 5's authoritative verification passed: lint, typecheck, unit tests, build, and integration tests passed; Playwright matched the exact approved 24-failed/5-passed/1-did-not-run `KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT` baseline with no new, substituted, missing, or materially changed failures; and Claude Review 2 passed after attachment authorization and cleanup coverage was added.
+- Phase 6's manual authoritative verification passed: lint, typecheck, 142 unit/infrastructure tests, build, and all 197 integration tests passed. Playwright added one passing Phase 6 visible-UI journey and otherwise matched the exact approved 24-failed/1-did-not-run historical debt baseline, producing 6 passes with no new or substituted failure.
 
 ## DEFERRED
 
@@ -54,4 +55,4 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 — Inventory Integrity Hardening: **COMPLETE / FOUNDER_APPROVED**. Authoritative integration verification passed 193/193 and Claude's independent review is `PASS`; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 - Phase 5 — Honest External / Financial Workflows: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and Claude Review 2 are `PASS`; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
-- Phase 6 — Clinic Pilot Core Care Completion: **APPROVED / ACTIVE**. Implement the routine outpatient canine/feline journey from Exam through Record in bounded frontend/backend vertical slices; see [CURRENT_PHASE.md](./CURRENT_PHASE.md).
+- Phase 6 — Clinic Pilot Core Care Completion: **READY_FOR_FOUNDER_REVIEW**. Implementation and verification are complete; see [PHASE_6_CLOSEOUT.md](./PHASE_6_CLOSEOUT.md).

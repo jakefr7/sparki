@@ -54,7 +54,11 @@ export class ClinicalAttachmentsService {
     if (!['OWNER', 'PRACTICE_MANAGER', 'VETERINARIAN'].includes(user.role)) throw new ForbiddenException('Only a veterinarian or manager can remove a clinical attachment.');
     const attachment = await prisma.clinicalAttachment.findFirst({ where: { id, organizationId: user.organizationId, locationId: user.locationId, removedAt: null }, include: { visit: { include: { soapNotes: { where: { status: 'Locked' }, take: 1 } } } } });
     if (!attachment) throw new NotFoundException('Attachment not found.');
-    const action = attachment.visit?.soapNotes.length ? 'REMOVED_FROM_FINALIZED_HISTORY' : 'REMOVED';
+    const finalized = Boolean(attachment.visit?.soapNotes.length);
+    if (finalized && !input.auditedFinalizedRemoval) {
+      throw new BadRequestException('A finalized clinical-history attachment cannot be normally removed. Use audited finalized removal.');
+    }
+    const action = finalized ? 'REMOVED_FROM_FINALIZED_HISTORY' : 'REMOVED';
     await prisma.$transaction([
       prisma.clinicalAttachment.update({ where: { id }, data: { removedAt: new Date() } }),
       prisma.clinicalAttachmentEvent.create({ data: { organizationId: user.organizationId, attachmentId: id, actorId: user.id, action, reason: input.reason } }),
@@ -63,7 +67,17 @@ export class ClinicalAttachmentsService {
   }
 
   private publicView(attachment: { id: string; patientId: string | null; visitId: string | null; fileName: string; mimeType: string; sizeBytes: number; label: string | null; createdAt: Date }) {
-    return { ...attachment, href: `/clinical-attachments/${attachment.id}/content` };
+    return {
+      id: attachment.id,
+      patientId: attachment.patientId,
+      visitId: attachment.visitId,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      label: attachment.label,
+      createdAt: attachment.createdAt,
+      href: `/clinical-attachments/${attachment.id}/content`,
+    };
   }
 }
 

@@ -5,11 +5,11 @@
 3. **Phase 3 — Clinical Workflow Integrity (`COMPLETE / FOUNDER_APPROVED`):** lifecycle, discharge blocking, records, and clinical safety behavior reconciled and verified; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 4. **Phase 4 — Inventory Integrity Hardening (`COMPLETE / FOUNDER_APPROVED`):** inventory type safety, persistence guarantees, counts, usage, controlled inventory, and auditability hardened and verified; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 5. **Phase 5 — Honest External / Financial Workflows (`COMPLETE / FOUNDER_APPROVED`):** simulated delivery is labeled honestly, attachments use a controlled private-storage boundary and authenticated access path, checkout uses non-payment balance/disposition semantics, and financial invariants are documented; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
-6. **Phase 6 — Clinic Pilot Core Care Completion (`APPROVED / ACTIVE`):** complete the visible-UI routine outpatient canine/feline journey from Exam through Plan, Client Decision, Care, Discharge, and Record in bounded frontend/backend vertical slices; see [CURRENT_PHASE.md](./CURRENT_PHASE.md).
+6. **Phase 6 — Clinic Pilot Core Care Completion (`READY_FOR_FOUNDER_REVIEW`):** the visible-UI routine outpatient canine/feline journey from Exam through Plan, Client Decision, Care, Discharge, and Record is implemented and verified; see [PHASE_6_CLOSEOUT.md](./PHASE_6_CLOSEOUT.md).
 
 ## Current roadmap state
 
-Phase 6 — Clinic Pilot Core Care Completion is the current founder-approved active implementation phase. This roadmap update activates scope only; implementation and verification have not begun.
+Phase 6 — Clinic Pilot Core Care Completion has completed implementation and verification and is ready for founder review. No successor phase is active.
 
 ## Preserved deferred candidates
 
@@ -18,4 +18,4 @@ Phase 6 — Clinic Pilot Core Care Completion is the current founder-approved ac
 - Consider the optional Phase 4 inventory defense-in-depth follow-ups.
 - Decide whether to implement local-first GitHub PR preparation.
 
-These remain documented gaps and follow-ups outside Phase 6, not approved additions to its scope.
+These remain documented gaps and follow-ups, not an approved successor phase.

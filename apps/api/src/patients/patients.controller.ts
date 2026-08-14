@@ -58,7 +58,7 @@ export class PatientsController {
 
   @Get(':id/workspace')
   getWorkspaceSummary(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.patients.getWorkspaceSummary(id, user.organizationId);
+    return this.patients.getWorkspaceSummary(id, user.organizationId, user.locationId);
   }
 
   @Post(':id/alerts')

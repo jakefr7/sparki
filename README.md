@@ -23,24 +23,33 @@ relevant file in [`agents/`](./agents/README.md) before making changes.
 ```bash
 cp .env.example .env
 pnpm install
-docker compose up -d          # starts Postgres on localhost:55432
-pnpm dev                       # runs apps/api and apps/web together
+pnpm sparki:dev               # checks and starts Postgres, migrations, API, and web
 ```
 
-- API: http://localhost:4000 (health check at `/health/live`, `/health/ready`)
-- Web: http://localhost:3001
+- API: `API_URL` / `API_PORT` (default port 4000; health checks at `/health/live`, `/health/ready`)
+- Web: `WEB_PORT` (default port 3001)
 
-### Local Web Port Safety
+Before startup, `pnpm sparki:dev` requires either complete WorkOS configuration or the explicit
+local-only setting `SPARKI_DEVELOPMENT_AUTH=fixed`. It never enables fixed auth automatically, and
+the application's existing production safeguard continues to reject fixed auth in production.
+Use `pnpm sparki:doctor` for the same configuration, database, migration, Prisma, API URL, and port
+diagnostics without starting PostgreSQL or either application.
 
-Sparki web runs on http://localhost:3001 by default. Port 3000 is reserved for
-other local stacks, especially CRO auth/consent login, and Sparki's dev script
-will refuse to start on port 3000 unless you explicitly opt in.
+### Local startup safety
 
-To intentionally run Sparki on port 3000, use the override only when you are
-sure nothing else depends on that port:
+The single-stack command uses configured `API_PORT` and `WEB_PORT` values, defaulting to 4000 and
+3001 respectively, and requires `API_URL` to match the selected API port. It identifies occupied
+ports as Sparki or unrelated processes, but never kills either or silently selects another port. It
+starts the repository's Compose PostgreSQL service only when the expected local database is
+unreachable, waits for readiness, verifies applied migration checksums, and uses non-interactive
+`prisma migrate deploy` only for ordinary pending migrations. Historical drift or a failed migration
+stops startup; the command never runs `prisma migrate reset` or discards data.
+
+For lower-level, manually managed watch mode, `pnpm dev` remains available. Its web package keeps
+the opt-in port guard:
 
 ```bash
-WEB_PORT=3000 SPARKI_ALLOW_PORT_3000=true pnpm --filter @sparki/web dev
+SPARKI_ALLOW_PORT_3000=true pnpm dev
 ```
 
 ### Database
@@ -87,7 +96,9 @@ Run from the repo root (Turborepo fans these out to every app/package):
 
 | Command                        | What it does                                                                  |
 | ------------------------------ | ----------------------------------------------------------------------------- |
-| `pnpm dev`                     | Run api + web in watch mode                                                   |
+| `pnpm sparki:dev`              | Safely preflight and run the complete local stack on its configured ports     |
+| `pnpm sparki:doctor`           | Diagnose local configuration and dependencies without starting applications   |
+| `pnpm dev`                     | Lower-level api + web watch mode                                              |
 | `pnpm build`                   | Build every app/package                                                       |
 | `pnpm lint`                    | ESLint across the workspace                                                   |
 | `pnpm typecheck`               | `tsc --noEmit` across the workspace                                           |

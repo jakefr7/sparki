@@ -24,6 +24,8 @@
     "seed:inventory": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-2.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-3.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-4.mjs && dotenv -e .env -- node scripts/seed-inventory-pass-5.mjs",
     "seed:inventory:refresh-expirations": "dotenv -e .env -- node scripts/seed-inventory-pass-1.mjs --refresh-expirations",
     "cleanup:test-debris": "dotenv -e .env -- node scripts/cleanup-local-test-debris.mjs",
+    "sparki:dev": "dotenv -e .env -- node scripts/sparki-local.mjs dev",
+    "sparki:doctor": "dotenv -e .env -- node scripts/sparki-local.mjs doctor",
     "sparki:status": "node scripts/agent/status.mjs",
     "sparki:plan": "node scripts/agent/orchestrator.mjs plan",
     "sparki:execute": "CLAUDE_BIN=./scripts/agent/claude-sparki node scripts/agent/orchestrator.mjs execute",

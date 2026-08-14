@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext } from '@playwright/test';
+import { prisma } from '@sparki/db';
 import { cleanupFixture } from './support/cleanup-fixture';
 import { fixtureId } from './support/fixture-id';
 import { loginAs } from './support/login';
@@ -21,6 +22,7 @@ async function createVisit(request: APIRequestContext) {
 
 test('clinical attachment authorization, Medical History visibility, role boundaries, and resume location', async ({ page, request }) => {
   const { patient, visit } = await createVisit(request);
+  await loginAs(page, 'testvet@gmail.com');
   await page.goto(`/visits/${visit.id}?from=command-center&resume=visit-attachments`);
   await expect(page.getByRole('heading', { name: 'Attachments' })).toBeVisible();
   await page.getByLabel('Clinical label').fill('Referral image');
@@ -36,6 +38,22 @@ test('clinical attachment authorization, Medical History visibility, role bounda
   await page.goto(`/patients/${patient.id}`);
   await page.getByRole('tab', { name: 'Medical History' }).click();
   await expect(page.getByRole('link', { name: 'Referral image' })).toBeVisible();
+
+  const veterinarian = await prisma.user.findUniqueOrThrow({ where: { email: 'testvet@gmail.com' } });
+  const record = await prisma.medicalRecord.create({ data: { patientId: patient.id } });
+  await prisma.visit.update({ where: { id: visit.id }, data: { medicalRecordId: record.id } });
+  await prisma.soapNote.create({ data: { medicalRecordId: record.id, visitId: visit.id, authorId: veterinarian.id, veterinarianId: veterinarian.id, status: 'Locked', lockedAt: new Date() } });
+  await page.goto(`/visits/${visit.id}?from=command-center&resume=visit-attachments`);
+  await expect(page.getByRole('button', { name: 'Audited removal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Audited removal' }).click();
+  await page.getByLabel('Reason').fill('Superseded referral image');
+  await page.getByRole('button', { name: 'Confirm audited removal' }).click();
+  await expect(page.getByRole('link', { name: 'Referral image' })).toHaveCount(0);
+  await page.goto(`/patients/${patient.id}`);
+  await page.getByRole('tab', { name: 'Medical History' }).click();
+  await expect(page.getByText('Removed from active clinical history')).toBeVisible();
+  await expect(page.getByText(/Audited removal by .*Superseded referral image/)).toBeVisible();
 
   await loginAs(page, 'testrecept@gmail.com');
   await page.goto(`/visits/${visit.id}?from=command-center&resume=visit-attachments`);

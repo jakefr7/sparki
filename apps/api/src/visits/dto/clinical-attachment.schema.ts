@@ -12,6 +12,9 @@ export const uploadClinicalAttachmentSchema = z.object({
 }).refine((value) => value.patientId || value.visitId, { message: 'Associate the attachment with a patient or visit.' })
   .refine((value) => !value.replacesAttachmentId || value.correctionReason, { message: 'A correction reason is required when replacing an attachment.' });
 
-export const removeClinicalAttachmentSchema = z.object({ reason: z.string().trim().min(1).max(500) });
+export const removeClinicalAttachmentSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+  auditedFinalizedRemoval: z.boolean().optional().default(false),
+});
 export type UploadClinicalAttachmentInput = z.infer<typeof uploadClinicalAttachmentSchema>;
 export type RemoveClinicalAttachmentInput = z.infer<typeof removeClinicalAttachmentSchema>;

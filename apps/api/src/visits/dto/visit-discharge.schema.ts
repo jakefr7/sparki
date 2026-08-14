@@ -20,12 +20,15 @@ export const completeVisitCheckoutSchema = z.object({
   missingAccountInformation: optionalText,
   balanceDisposition: z.enum(['NoBalanceReported', 'OutstandingBalanceRecorded']),
   outstandingBalanceCents: z.number().int().nonnegative().optional().nullable(),
-}).superRefine((value, context) => {
+}).strict().superRefine((value, context) => {
   if (value.balanceDisposition === 'OutstandingBalanceRecorded' && !value.outstandingBalanceCents) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['outstandingBalanceCents'], message: 'Enter the outstanding balance' });
+  }
+  if (value.balanceDisposition === 'NoBalanceReported' && value.outstandingBalanceCents != null) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['outstandingBalanceCents'], message: 'Do not enter an outstanding amount when no balance is reported' });
   }
 });
 export type CompleteVisitCheckoutInput = z.infer<typeof completeVisitCheckoutSchema>;
 
-export const updateVisitBalanceSchema = z.object({ balanceDisposition: z.literal('NoBalanceReported'), note: z.string().trim().min(1).max(1000) });
+export const updateVisitBalanceSchema = z.object({ balanceDisposition: z.literal('NoBalanceReported'), note: z.string().trim().min(1).max(1000) }).strict();
 export type UpdateVisitBalanceInput = z.infer<typeof updateVisitBalanceSchema>;

@@ -67,6 +67,33 @@ describe('loadApiEnv', () => {
     expect(env.WORKOS_API_KEY).toBeUndefined();
     expect(env.WORKOS_COOKIE_PASSWORD).toBeUndefined();
   });
+
+  it('requires complete private attachment storage configuration in production', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+    } as NodeJS.ProcessEnv)).toThrow(/Complete S3-compatible attachment storage configuration is required/);
+
+    resetEnvCacheForTests();
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
+    } as NodeJS.ProcessEnv)).toThrow(/Complete S3-compatible attachment storage configuration is required/);
+  });
+
+  it('accepts complete private attachment storage configuration in production', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
+      ATTACHMENT_S3_REGION: 'us-east-1',
+      ATTACHMENT_S3_BUCKET: 'private-messaging',
+      ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
+      ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.ATTACHMENT_S3_BUCKET).toBe('private-messaging');
+  });
 });
 
 describe('loadWebEnv', () => {

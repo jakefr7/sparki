@@ -18,12 +18,13 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 2 authentication and tenant-safety hardening is verified, independently reviewed, and founder-approved; see [PHASE_2_CLOSEOUT.md](./PHASE_2_CLOSEOUT.md).
 - Phase 3 clinical workflow integrity is verified, independently reviewed, and founder-approved; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 inventory integrity hardening is verified, independently reviewed, and founder-approved; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
+- Phase 5 honest external and financial workflows are verified, independently reviewed, and founder-approved; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
 
 ## PARTIAL
 
 - Authentication and authorization include production-oriented and development paths, but production SSR cookie forwarding appeared incomplete and development auth could silently grant `OWNER` when WorkOS was incomplete.
-- Checkout/payment is a balance-status placeholder; billing is not a financial ledger.
-- Client SMS is simulated without a provider but is represented as delivered.
+- Billing remains intentionally bounded rather than a financial ledger; Phase 5 documents its invariants and uses honest non-payment balance/disposition semantics.
+- Client SMS remains simulated without a provider and is clearly represented as simulated rather than externally delivered.
 
 ## BROKEN
 
@@ -37,11 +38,11 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3's authoritative verification passed: typecheck, unit, build, and all 192 integration tests passed; lint reproduced only approved Phase 4 debt; and Playwright reproduced the exact approved 24-failed/1-did-not-run/5-passed baseline with no changed failure identities.
 - Phase 3's latest independent Claude review passed. Optional direct Today-view lifecycle coverage and the prior placeholder review artifact remain non-blocking follow-up notes only.
 - Phase 4's authoritative integration verification passed 193/193, Claude's independent review passed, and controlled usage now fails before any write when a referenced lot cannot be resolved within the authenticated tenant/location. Its two approved low-severity findings remain optional follow-ups only; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
-- For Phase 5 verification, the founder has authorized the exact documented Playwright baseline of 24 failed, 5 passed, and 1 did not run as `KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT`. The classification is identity-based: no new, substituted, or materially changed failure is accepted, while historical failures that now pass are allowed. The 24 historical failures remain out of Phase 5 remediation scope; all other Phase 5 verification requirements remain unchanged.
+- Phase 5's authoritative verification passed: lint, typecheck, unit tests, build, and integration tests passed; Playwright matched the exact approved 24-failed/5-passed/1-did-not-run `KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT` baseline with no new, substituted, missing, or materially changed failures; and Claude Review 2 passed after attachment authorization and cleanup coverage was added.
 
 ## DEFERRED
 
-- Inventory integrity guarantees are complete. Honest SMS state, checkout/payment behavior, and financial-ledger scope are active Phase 5 work.
+- The historical cross-phase Playwright product/test debt remains deferred and unchanged.
 - Deployment and automated merge behavior are outside the local-first agent system.
 - Phase 4's optional explicit `organizationId` stock-balance filter and multi-component controlled-usage invalid-lot regression test remain deferred, non-blocking follow-ups.
 
@@ -51,4 +52,5 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 — Inventory Integrity Hardening: **COMPLETE / FOUNDER_APPROVED**. Authoritative integration verification passed 193/193 and Claude's independent review is `PASS`; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
-- Phase 5 — Honest External / Financial Workflows: **APPROVED / ACTIVE**. Implementation is preserved and verification is authorized to resume with the exact identity-based Playwright known-debt policy documented in [CURRENT_PHASE.md](./CURRENT_PHASE.md).
+- Phase 5 — Honest External / Financial Workflows: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and Claude Review 2 are `PASS`; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
+- **No implementation phase is currently active.** A future phase requires explicit founder selection and approval.

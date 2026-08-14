@@ -47,8 +47,10 @@ Phase 4 remains one phase, but implementation must proceed through the following
 - Tranche 1 — `controlled.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the authoritative local `pnpm test:integration` passed; and the changes were committed and pushed.
 - Tranche 2 — `purchasing.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the closest inventory unit suite (7/7) passed; the authoritative local `pnpm test:integration` passed; and the changes were committed and pushed.
 - Tranche 3 — `counts.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the closest inventory unit suite (7/7) passed; the authoritative local `inventory-counts` integration test passed; and the changes were committed and pushed.
-- Tranche 4 — `usage.service.ts`: **IMPLEMENTED (LOCAL AUTHORITATIVE BEHAVIORAL VERIFICATION PENDING)**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest inventory unit suite (7/7), and `git diff --check` passed. The directly relevant isolated `inventory-usage.e2e-spec.ts` test was attempted but could not connect to PostgreSQL because the sandbox denied loopback access with `EPERM`; run `pnpm test:integration -- inventory-usage.e2e-spec.ts` outside the sandbox for authoritative behavioral verification.
-- Tranche 5 remains unstarted with the existing `controlled-closeout.service.ts` bypass intact.
+- Tranche 4 — `usage.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest inventory unit suite (7/7), and the authoritative local `inventory-usage` integration test passed; and the changes were committed and pushed.
+- Tranche 5 — `controlled-closeout.service.ts`: **IMPLEMENTED**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest inventory unit suite (7/7), and `git diff --check` passed. The focused `controlled-inventory.e2e-spec.ts` integration run was blocked before test startup solely because the sandbox denied PostgreSQL loopback access with `EPERM`; run `pnpm test:integration -- controlled-inventory.e2e-spec.ts` outside the sandbox for authoritative behavioral verification.
+
+All five Phase 4 implementation tranches are now implemented. Only final Phase 4 verification remains pending; the full verification matrix has not been run as part of tranche implementation.
 
 For every tranche:
 

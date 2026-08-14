@@ -27,7 +27,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 ## BROKEN
 
-- `pnpm lint` reproducibly fails with 43 API errors, and five large inventory services use `@ts-nocheck`; the founder classified this as known Phase 4 product debt rather than a Phase 1 infrastructure failure.
+- The historical Phase 4 baseline had 43 API lint errors and five large inventory services using `@ts-nocheck`. All five inventory tranches are now implemented with the bypasses removed and focused checks passing; final Phase 4 verification is pending.
 - The current product end-to-end suite is not green even though its isolated Playwright harness is operational.
 
 ## VERIFIED WITH DEFERRED FINDINGS
@@ -42,11 +42,11 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 - Inventory integrity guarantees are active in Phase 4. Honest SMS state, checkout/payment behavior, and a financial ledger remain sequenced for later phases.
 - Deployment and automated merge behavior are outside the local-first agent system.
-- Phase 4 retains the exact approved lint and inventory type-safety debt as active scope. Its implementation is staged across five service-level tranches; focused checks may gate each tranche, but final acceptance still requires all five bypasses removed and the full phase verification matrix.
+- Phase 4's five service-level implementation tranches are complete with all five inventory `@ts-nocheck` bypasses removed. Final acceptance still requires the full phase verification matrix.
 
 ## CURRENT PHASE
 
 - Phase 1 — Trustworthy Engineering Baseline: **READY_FOR_FOUNDER_REVIEW**.
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
-- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. Execution is staged in this order: controlled, purchasing, counts, usage, controlled closeout. No Phase 4 implementation or verification has been performed by this planning update.
+- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. All five implementation tranches are implemented; only final Phase 4 verification remains pending.

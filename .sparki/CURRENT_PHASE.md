@@ -45,8 +45,9 @@ Phase 4 remains one phase, but implementation must proceed through the following
 ## Tranche progress
 
 - Tranche 1 — `controlled.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the authoritative local `pnpm test:integration` passed; and the changes were committed and pushed.
-- Tranche 2 — `purchasing.service.ts`: **COMPLETE (LOCAL AUTHORITATIVE BEHAVIORAL VERIFICATION PENDING)**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest available focused inventory unit suite, and `git diff --check` passed. No purchasing/receiving-specific test file exists. The smallest database-backed inventory integration test was attempted but could not connect to the isolated PostgreSQL instance because the sandbox denied loopback access with `EPERM`; run `pnpm test:integration` outside the sandbox for authoritative behavioral verification.
-- Tranches 3–5 remain unstarted with their existing bypasses intact.
+- Tranche 2 — `purchasing.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the closest inventory unit suite (7/7) passed; the authoritative local `pnpm test:integration` passed; and the changes were committed and pushed.
+- Tranche 3 — `counts.service.ts`: **IMPLEMENTED (LOCAL AUTHORITATIVE BEHAVIORAL VERIFICATION PENDING)**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest inventory unit suite (7/7), and `git diff --check` passed. The directly relevant isolated `inventory-counts.e2e-spec.ts` test was attempted but could not connect to PostgreSQL because the sandbox denied loopback access with `EPERM`; run `pnpm test:integration -- inventory-counts.e2e-spec.ts` outside the sandbox for authoritative behavioral verification.
+- Tranches 4–5 remain unstarted with their existing bypasses intact.
 
 For every tranche:
 

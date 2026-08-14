@@ -1,11 +1,10 @@
-// @ts-nocheck -- Zod validates optional inputs before Prisma exact-optional writes.
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, prisma } from '@sparki/db';
+import { type CatalogItemType, Prisma, prisma } from '@sparki/db';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedUser } from '../auth/types';
 import type {
@@ -21,6 +20,20 @@ import type {
 import { canInventory, requireInventory } from './inventory.permissions';
 
 const D = (v: string | number | Prisma.Decimal | null | undefined) => new Prisma.Decimal(v ?? 0);
+type CountConfiguration = CreateCountInput['configuration'];
+type CountSession = Prisma.InventoryCountSessionGetPayload<Record<string, never>>;
+type CountLine = Prisma.InventoryCountLineGetPayload<Record<string, never>>;
+type CountSessionWithLines = Prisma.InventoryCountSessionGetPayload<{ include: { lines: true } }>;
+type CountSessionDetails = Prisma.InventoryCountSessionGetPayload<{
+  include: {
+    lines: { include: { item: { include: { barcodes: true } }; entries: true } };
+    assignments: true;
+    events: { orderBy: { createdAt: 'desc' } };
+  };
+}>;
+type CountDetailLine = CountSessionDetails['lines'][number];
+type CountEventType = Prisma.InventoryCountEventCreateInput['type'];
+
 @Injectable()
 export class CountsService {
   async list(user: AuthenticatedUser) {
@@ -64,8 +77,8 @@ export class CountsService {
           number: `COUNT-${year}-${String(seq.nextValue - 1).padStart(5, '0')}`,
           countType: input.countType,
           status: 'DRAFT',
-          templateId: input.templateId,
-          configurationSnapshot: input.configuration,
+          templateId: input.templateId ?? null,
+          configurationSnapshot: input.configuration as Prisma.InputJsonValue,
           blindCount: input.blindCount,
           requireAllLines: input.requireAllLines,
           requireRecount: input.requireRecount,
@@ -75,7 +88,7 @@ export class CountsService {
           variancePercentThreshold: input.variancePercentThreshold
             ? D(input.variancePercentThreshold)
             : null,
-          notes: input.notes,
+          notes: input.notes ?? null,
           startedById: user.id,
         },
       });
@@ -116,8 +129,10 @@ export class CountsService {
           quantity,
           enteredById: user.id,
           method: input.method,
-          notes: input.notes,
-          deviceMetadata: input.deviceMetadata,
+          notes: input.notes ?? null,
+          ...(input.deviceMetadata === undefined
+            ? {}
+            : { deviceMetadata: input.deviceMetadata as Prisma.InputJsonValue }),
         },
       });
       const variance = quantity.minus(line.expectedQuantitySnapshot),
@@ -264,7 +279,7 @@ export class CountsService {
         data: {
           status: input.action === 'ACCEPT' ? 'ACCEPTED' : 'EXCLUDED',
           recountRequired: false,
-          recountReason: input.reason,
+          recountReason: input.reason ?? null,
           notes: input.reason ?? line.notes,
         },
       });
@@ -373,7 +388,7 @@ export class CountsService {
       data: {
         sessionId: id,
         assignedUserId: input.assignedUserId,
-        stockLocationId: input.stockLocationId,
+        stockLocationId: input.stockLocationId ?? null,
         assignedById: user.id,
       },
     });
@@ -384,7 +399,10 @@ export class CountsService {
         sessionId: id,
         type: 'USER_ASSIGNED',
         actorId: user.id,
-        details: { assignedUserId: input.assignedUserId, stockLocationId: input.stockLocationId },
+        details: {
+          assignedUserId: input.assignedUserId,
+          stockLocationId: input.stockLocationId ?? null,
+        },
       },
     });
     return row;
@@ -403,7 +421,7 @@ export class CountsService {
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         name: input.name,
-        description: input.description,
+        description: input.description ?? null,
         countType: input.countType,
         configuration: input.configuration,
         includeDescendantLocations: input.configuration.includeDescendants,
@@ -424,7 +442,7 @@ export class CountsService {
       },
     });
     if (!session) throw new ConflictException('Only a draft count can begin.');
-    const config = session.configurationSnapshot as any;
+    const config = session.configurationSnapshot as CountConfiguration;
     const allLocations = await tx.stockLocation.findMany({
       where: {
         organizationId: user.organizationId,
@@ -455,7 +473,9 @@ export class CountsService {
         inventoryTracked: true,
         controlledSubstance: false,
         ...(config.itemIds?.length ? { id: { in: config.itemIds } } : {}),
-        ...(config.itemTypes?.length ? { primaryType: { in: config.itemTypes } } : {}),
+        ...(config.itemTypes?.length
+          ? { primaryType: { in: config.itemTypes as CatalogItemType[] } }
+          : {}),
         ...(config.routes?.length ? { route: { in: config.routes } } : {}),
         ...(config.therapeuticClasses?.length
           ? { therapeuticClass: { in: config.therapeuticClasses } }
@@ -468,7 +488,7 @@ export class CountsService {
         balances: { where: { stockLocationId: { in: locationIds } }, include: { lot: true } },
       },
     });
-    const lines = [];
+    const lines: Prisma.InventoryCountLineCreateManyInput[] = [];
     for (const item of items) {
       for (const b of item.balances.filter(
         (b) => config.includeQuarantined || D(b.quarantined).isZero(),
@@ -482,9 +502,9 @@ export class CountsService {
           skuSnapshot: item.sku,
           barcodeSnapshot: item.barcodes.map((x) => x.value),
           baseUnitSnapshot: item.conversions[0]?.stockUnit ?? 'unit',
-          lotNumberSnapshot: b.lot?.lotNumber,
-          expirationSnapshot: b.lot?.expirationDate,
-          lotStatusSnapshot: b.lot?.status,
+          lotNumberSnapshot: b.lot?.lotNumber ?? null,
+          expirationSnapshot: b.lot?.expirationDate ?? null,
+          lotStatusSnapshot: b.lot?.status ?? null,
           expectedQuantitySnapshot: b.onHand,
         });
       if (config.includeZeroBalance && item.balances.length === 0 && locationIds[0])
@@ -515,8 +535,8 @@ export class CountsService {
   private async postLine(
     tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
-    session: any,
-    line: any,
+    session: CountSessionWithLines,
+    line: CountLine,
   ) {
     if (line.finalCountedQuantity === null)
       throw new ConflictException(`Line ${line.itemNameSnapshot} has no final count.`);
@@ -588,7 +608,11 @@ export class CountsService {
       data: { postedTransactionId: tr.id, status: 'ACCEPTED', varianceQuantity: delta },
     });
   }
-  private async adjustedExpected(tx: Prisma.TransactionClient, session: any, line: any) {
+  private async adjustedExpected(
+    tx: Prisma.TransactionClient,
+    session: CountSession,
+    line: CountLine,
+  ) {
     const agg = await tx.inventoryTransaction.aggregate({
       where: {
         organizationId: session.organizationId,
@@ -596,13 +620,13 @@ export class CountsService {
         itemId: line.itemId,
         stockLocationId: line.stockLocationId,
         lotId: line.lotId,
-        createdAt: { gt: session.expectedSnapshotAt },
+        createdAt: { gt: session.expectedSnapshotAt! },
       },
       _sum: { quantityDelta: true },
     });
-    return line.expectedQuantitySnapshot.plus(agg._sum.quantityDelta ?? 0);
+    return line.expectedQuantitySnapshot.plus(agg._sum?.quantityDelta ?? 0);
   }
-  private threshold(session: any, variance: Prisma.Decimal, pct: Prisma.Decimal | null) {
+  private threshold(session: CountSession, variance: Prisma.Decimal, pct: Prisma.Decimal | null) {
     return Boolean(
       (session.varianceQuantityThreshold && variance.abs().gt(session.varianceQuantityThreshold)) ||
       (session.variancePercentThreshold && pct && pct.gt(session.variancePercentThreshold)),
@@ -620,18 +644,23 @@ export class CountsService {
     if (!row) throw new NotFoundException('Inventory count not found');
     return row;
   }
-  private present(user: AuthenticatedUser, row: any) {
+  private present(user: AuthenticatedUser, row: CountSessionDetails) {
     const showExpected =
       !row.blindCount ||
       (['SUBMITTED', 'RECOUNT_REQUIRED', 'APPROVED', 'POSTED'].includes(row.status) &&
         canInventory(user, 'REVIEW_COUNTS'));
     return {
       ...row,
-      lines: row.lines.map((l: any) => this.presentLine(user, row, l, showExpected)),
+      lines: row.lines.map((line) => this.presentLine(user, row, line, showExpected)),
       permissions: this.permissions(user),
     };
   }
-  private presentLine(user: AuthenticatedUser, session: any, line: any, showExpected = false) {
+  private presentLine(
+    user: AuthenticatedUser,
+    session: CountSession,
+    line: CountDetailLine,
+    showExpected = false,
+  ) {
     if (showExpected) return line;
     const {
       expectedQuantitySnapshot: _e,
@@ -656,9 +685,9 @@ export class CountsService {
     tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
     sessionId: string,
-    type: any,
+    type: CountEventType,
     lineId: string | null = null,
-    details: any = null,
+    details: Prisma.InputJsonValue | null = null,
   ) {
     return tx.inventoryCountEvent.create({
       data: {
@@ -668,7 +697,7 @@ export class CountsService {
         lineId,
         type,
         actorId: user.id,
-        details,
+        details: details as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
       },
     });
   }

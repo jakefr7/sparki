@@ -1261,7 +1261,7 @@ describe('Visits (e2e)', () => {
         followUpPlan: 'Reception to call tomorrow morning.',
       });
       expect(discharge.status).toBe(200);
-      const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceStatus: 'Paid' });
+      const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceDisposition: 'NoBalanceReported' });
       expect(checkout.status).toBe(201);
       expect(checkout.body).toMatchObject({
         state: 'RecordCompletionPending',

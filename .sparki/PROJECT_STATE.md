@@ -37,6 +37,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3's authoritative verification passed: typecheck, unit, build, and all 192 integration tests passed; lint reproduced only approved Phase 4 debt; and Playwright reproduced the exact approved 24-failed/1-did-not-run/5-passed baseline with no changed failure identities.
 - Phase 3's latest independent Claude review passed. Optional direct Today-view lifecycle coverage and the prior placeholder review artifact remain non-blocking follow-up notes only.
 - Phase 4's authoritative integration verification passed 193/193, Claude's independent review passed, and controlled usage now fails before any write when a referenced lot cannot be resolved within the authenticated tenant/location. Its two approved low-severity findings remain optional follow-ups only; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
+- For Phase 5 verification, the founder has authorized the exact documented Playwright baseline of 24 failed, 5 passed, and 1 did not run as `KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT`. The classification is identity-based: no new, substituted, or materially changed failure is accepted, while historical failures that now pass are allowed. The 24 historical failures remain out of Phase 5 remediation scope; all other Phase 5 verification requirements remain unchanged.
 
 ## DEFERRED
 
@@ -50,4 +51,4 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 — Inventory Integrity Hardening: **COMPLETE / FOUNDER_APPROVED**. Authoritative integration verification passed 193/193 and Claude's independent review is `PASS`; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
-- Phase 5 — Honest External / Financial Workflows: **APPROVED / ACTIVE**.
+- Phase 5 — Honest External / Financial Workflows: **APPROVED / ACTIVE**. Implementation is preserved and verification is authorized to resume with the exact identity-based Playwright known-debt policy documented in [CURRENT_PHASE.md](./CURRENT_PHASE.md).

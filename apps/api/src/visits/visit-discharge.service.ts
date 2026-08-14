@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type UserRole } from '@sparki/db';
-import type { CompleteVisitCheckoutInput, SaveVisitDischargeInput } from './dto/visit-discharge.schema';
+import type { CompleteVisitCheckoutInput, SaveVisitDischargeInput, UpdateVisitBalanceInput } from './dto/visit-discharge.schema';
 import { assertVisitTransitionRequirements, VisitLifecycleService } from './visit-lifecycle.service';
 import { TERMINAL_VISIT_STATES } from './visit-states';
 
@@ -122,12 +122,13 @@ export class VisitDischargeService {
     if (visit.departedAt || visit.checkout) throw new ConflictException('Checkout has already been completed for this visit.');
     if (!visit.discharge) throw new ConflictException('Complete discharge instructions before checkout.');
     if (!input.clientContactConfirmed) throw new ConflictException('Confirm the client contact information before checkout.');
-    if (input.balanceStatus === 'Outstanding' && !visit.location.allowCheckoutWithOutstandingBalance) {
-      throw new ConflictException('This clinic requires the balance to be resolved before checkout.');
+    const hasOutstandingBalance = input.balanceDisposition === 'OutstandingBalanceRecorded';
+    if (hasOutstandingBalance && !visit.location.allowCheckoutWithOutstandingBalance) {
+      throw new ConflictException('This clinic does not allow checkout while an outstanding balance is recorded.');
     }
 
     const recordAlreadyFinalized = visit.soapNotes.length > 0;
-    const canClose = recordAlreadyFinalized && input.balanceStatus !== 'Outstanding';
+    const canClose = recordAlreadyFinalized && !hasOutstandingBalance;
     const nextState = canClose ? 'Archived' : recordAlreadyFinalized ? 'PaymentPending' : 'RecordCompletionPending';
     return this.lifecycle.transition({
       visitId,
@@ -139,22 +140,22 @@ export class VisitDischargeService {
       toState: nextState,
       toPhase: canClose ? 'Closed' : 'RecordClosure',
       currentOwnerId: visit.primaryVeterinarianId,
-      nextAction: canClose ? null : recordAlreadyFinalized ? 'Resolve outstanding balance' : 'Finalize medical record',
+      nextAction: canClose ? null : recordAlreadyFinalized ? 'Review outstanding balance' : 'Finalize medical record',
       timestamps: { departedAt: new Date(), ...(canClose ? { closedAt: new Date(), archivedAt: new Date() } : {}) },
-      createWorkItems: input.balanceStatus === 'Outstanding' ? [{
+      createWorkItems: hasOutstandingBalance ? [{
         type: 'Payment',
-        title: `Resolve outstanding balance: $${((input.outstandingBalanceCents ?? 0) / 100).toFixed(2)}`,
+        title: `Review outstanding balance: $${((input.outstandingBalanceCents ?? 0) / 100).toFixed(2)}`,
         assigneeRole: 'RECEPTIONIST',
       }] : [],
-      metadata: { balanceStatus: input.balanceStatus, outstandingBalanceCents: input.outstandingBalanceCents ?? null },
+      metadata: { source: 'manual_checkout_observation', balanceDisposition: input.balanceDisposition, outstandingBalanceCents: input.outstandingBalanceCents ?? null },
       prepare: async (tx) => {
         await tx.visitCheckout.create({
           data: {
             visitId,
             clientContactConfirmed: input.clientContactConfirmed,
             missingAccountInformation: input.missingAccountInformation ?? null,
-            balanceStatus: input.balanceStatus,
-            outstandingBalanceCents: input.balanceStatus === 'Outstanding' ? input.outstandingBalanceCents ?? null : null,
+            balanceStatus: hasOutstandingBalance ? 'Outstanding' : 'Paid',
+            outstandingBalanceCents: hasOutstandingBalance ? input.outstandingBalanceCents ?? null : null,
             completedById: userId,
           },
         });
@@ -162,12 +163,13 @@ export class VisitDischargeService {
     });
   }
 
-  async resolveOutstandingBalance(
+  async updateOutstandingBalance(
     visitId: string,
     organizationId: string,
     locationId: string,
     userId: string,
     userRole: UserRole,
+    input: UpdateVisitBalanceInput,
   ) {
     const visit = await prisma.visit.findFirst({
       where: { id: visitId, organizationId, locationId },
@@ -188,7 +190,7 @@ export class VisitDischargeService {
       nextAction: canClose ? null : 'Finalize medical record',
       completeWorkItemTypes: ['Payment'],
       timestamps: canClose ? { closedAt: new Date(), archivedAt: new Date() } : {},
-      metadata: { balanceStatus: 'Paid' },
+      metadata: { source: 'manual_balance_observation', balanceDisposition: input.balanceDisposition, note: input.note, previousOutstandingBalanceCents: visit.checkout.outstandingBalanceCents },
       prepare: async (tx) => {
         await tx.visitCheckout.update({
           where: { visitId },

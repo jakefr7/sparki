@@ -13,7 +13,7 @@ describe('visit lifecycle input contracts', () => {
   });
 
   it('requires an amount for an outstanding balance', () => {
-    expect(completeVisitCheckoutSchema.safeParse({ clientContactConfirmed: true, balanceStatus: 'Outstanding' }).success).toBe(false);
-    expect(completeVisitCheckoutSchema.safeParse({ clientContactConfirmed: true, balanceStatus: 'Outstanding', outstandingBalanceCents: 2500 }).success).toBe(true);
+    expect(completeVisitCheckoutSchema.safeParse({ clientContactConfirmed: true, balanceDisposition: 'OutstandingBalanceRecorded' }).success).toBe(false);
+    expect(completeVisitCheckoutSchema.safeParse({ clientContactConfirmed: true, balanceDisposition: 'OutstandingBalanceRecorded', outstandingBalanceCents: 2500 }).success).toBe(true);
   });
 });

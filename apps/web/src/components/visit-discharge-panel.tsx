@@ -53,7 +53,7 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
         body: JSON.stringify({
           clientContactConfirmed: form.get('clientContactConfirmed') === 'yes',
           missingAccountInformation: form.get('missingAccountInformation'),
-          balanceStatus: form.get('balanceStatus'),
+          balanceDisposition: form.get('balanceDisposition'),
           outstandingBalanceCents: Math.round(dollars * 100),
         }),
       });
@@ -64,10 +64,12 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
     finally { setSaving(false); }
   }
 
-  async function resolveBalance() {
+  async function updateBalance() {
     setSaving(true); setError(null);
     try {
-      const response = await fetch(`/api/visits/${visit.id}/checkout/resolve-balance`, { method: 'POST' });
+      const note = window.prompt('Record the source of this manual balance update:');
+      if (!note?.trim()) { setSaving(false); return; }
+      const response = await fetch(`/api/visits/${visit.id}/checkout/update-balance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ balanceDisposition: 'NoBalanceReported', note }) });
       const body = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(body.message ?? 'Could not resolve the balance.');
       router.refresh();
@@ -95,10 +97,11 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
           <h3>Reception checkout</h3>
           <label className="visit-discharge-check"><input type="checkbox" name="clientContactConfirmed" value="yes" required defaultChecked={visit.checkout?.clientContactConfirmed ?? false} /> Phone, email, and missing account information confirmed</label>
           <label>Missing account information<textarea name="missingAccountInformation" defaultValue={visit.checkout?.missingAccountInformation ?? ''} /></label>
-          <label>Balance status<select name="balanceStatus" defaultValue={visit.checkout?.balanceStatus ?? 'Paid'}><option value="Paid">Paid</option><option value="Outstanding">Outstanding</option></select></label>
+          <p>Sparki records the balance reported by staff. It does not process or verify payments.</p>
+          <label>Manual balance observation<select name="balanceDisposition" defaultValue={visit.checkout?.balanceStatus === 'Outstanding' ? 'OutstandingBalanceRecorded' : 'NoBalanceReported'}><option value="NoBalanceReported">No balance reported</option><option value="OutstandingBalanceRecorded">Outstanding balance recorded</option></select></label>
           <label>Outstanding balance ($)<input type="number" name="outstandingBalance" min="0" step="0.01" defaultValue={visit.checkout?.outstandingBalanceCents ? visit.checkout.outstandingBalanceCents / 100 : ''} /></label>
           <button className="button-primary" disabled={saving || Boolean(visit.checkout)}>{visit.checkout ? 'Checkout Complete' : 'Complete Checkout'}</button>
-          {visit.checkout?.balanceStatus === 'Outstanding' ? <button type="button" className="button-secondary" disabled={saving} onClick={() => void resolveBalance()}>Mark Balance Paid</button> : null}
+          {visit.checkout?.balanceStatus === 'Outstanding' ? <button type="button" className="button-secondary" disabled={saving} onClick={() => void updateBalance()}>Record manual balance update</button> : null}
         </form>
       ) : null}
     </section>

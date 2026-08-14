@@ -39,6 +39,14 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // AddressService). Optional: autocomplete degrades to "no suggestions"
   // rather than erroring when unset, so patient creation is never blocked.
   MAPBOX_ACCESS_TOKEN: z.string().optional(),
+
+  // Private, S3-compatible storage for staff-message attachments. Production
+  // requires the complete set; development/test use a private temporary fake.
+  ATTACHMENT_S3_ENDPOINT: optionalString,
+  ATTACHMENT_S3_REGION: optionalString,
+  ATTACHMENT_S3_BUCKET: optionalString,
+  ATTACHMENT_S3_ACCESS_KEY_ID: optionalString,
+  ATTACHMENT_S3_SECRET_ACCESS_KEY: optionalString,
 }).superRefine((env, ctx) => {
   const workosValues = [env.WORKOS_API_KEY, env.WORKOS_CLIENT_ID, env.WORKOS_COOKIE_PASSWORD];
   const configuredValues = workosValues.filter(Boolean).length;
@@ -55,6 +63,11 @@ export const apiEnvSchema = baseEnvSchema.extend({
       message: 'SPARKI_DEVELOPMENT_AUTH must be disabled in production',
       path: ['SPARKI_DEVELOPMENT_AUTH'],
     });
+  }
+  const storageValues = [env.ATTACHMENT_S3_ENDPOINT, env.ATTACHMENT_S3_REGION, env.ATTACHMENT_S3_BUCKET, env.ATTACHMENT_S3_ACCESS_KEY_ID, env.ATTACHMENT_S3_SECRET_ACCESS_KEY];
+  const storageConfigured = storageValues.filter(Boolean).length;
+  if ((storageConfigured > 0 && storageConfigured < storageValues.length) || (env.NODE_ENV === 'production' && storageConfigured !== storageValues.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Complete S3-compatible attachment storage configuration is required', path: ['ATTACHMENT_S3_ENDPOINT'] });
   }
 });
 

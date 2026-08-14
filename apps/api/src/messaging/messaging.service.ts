@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma, prisma } from '@sparki/db';
 import type { AuthenticatedUser } from '../auth/types';
 import type { CreateConversationInput, CreateMessageInput, UpdateMembershipInput, UpdateMessageInput } from './dto/messaging.schema';
+import { ALLOWED_ATTACHMENT_TYPES, AttachmentStorageService, MAX_ATTACHMENT_BYTES } from './attachment-storage.service';
 
 const staffRoles = ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'] as const;
 const personSelect = { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, statusEmoji: true, statusText: true, role: true, staffProfile: { select: { jobTitle: true, color: true } } } as const;
@@ -12,6 +13,7 @@ function nameOf(user: { firstName: string; lastName: string; displayName: string
 
 @Injectable()
 export class MessagingService {
+  constructor(private readonly attachmentStorage: AttachmentStorageService) {}
   async clientThreads(user: AuthenticatedUser, search?: string) {
     const term = search?.trim();
     return prisma.clientCommunicationThread.findMany({ where: { organizationId: user.organizationId, locationId: user.locationId, ...(term ? { OR: [{ client: { firstName: { contains: term, mode: 'insensitive' } } }, { client: { lastName: { contains: term, mode: 'insensitive' } } }, { patient: { name: { contains: term, mode: 'insensitive' } } }, { phone: { contains: term } }] } : {}) }, include: { client: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, patient: { select: { id: true, name: true, species: true, breed: true } }, assignedTo: { select: personSelect }, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { lastMessageAt: 'desc' }, take: 100 });
@@ -24,7 +26,7 @@ export class MessagingService {
   }
   async sendClientMessage(user: AuthenticatedUser, id: string, body: string) {
     await this.clientThread(user, id);
-    return prisma.$transaction(async (tx) => { const message = await tx.clientCommunicationMessage.create({ data: { organizationId: user.organizationId, threadId: id, senderUserId: user.id, direction: 'OUTBOUND', body: cleanBody(body), deliveredAt: new Date() } }); await tx.clientCommunicationThread.update({ where: { id }, data: { lastMessageAt: message.createdAt, status: 'WAITING', isUnread: false } }); return message; });
+    return prisma.$transaction(async (tx) => { const message = await tx.clientCommunicationMessage.create({ data: { organizationId: user.organizationId, threadId: id, senderUserId: user.id, direction: 'OUTBOUND', body: cleanBody(body) } }); await tx.clientCommunicationThread.update({ where: { id }, data: { lastMessageAt: message.createdAt, status: 'WAITING', isUnread: false } }); return message; });
   }
   async updateClientThread(user: AuthenticatedUser, id: string, body: { status?: 'OPEN' | 'WAITING' | 'CLOSED'; isUnread?: boolean }) {
     await this.clientThread(user, id);
@@ -70,7 +72,7 @@ export class MessagingService {
     });
     return Promise.all(memberships.map(async (membership) => {
       const unread = membership.markedUnread || !membership.lastReadAt ? await prisma.messagingMessage.count({ where: { conversationId: membership.conversationId, senderId: { not: user.id }, deletedAt: null, ...(membership.lastReadAt ? { createdAt: { gt: membership.lastReadAt } } : {}) } }) : 0;
-      return { ...membership.conversation, membership: { id: membership.id, notificationLevel: membership.notificationLevel, isPinned: membership.isPinned, isArchived: membership.isArchived, markedUnread: membership.markedUnread, draft: membership.draft, drawerOpen: membership.drawerOpen, drawerMinimized: membership.drawerMinimized, lastReadAt: membership.lastReadAt }, unreadCount: unread };
+      return { ...membership.conversation, messages: membership.conversation.messages.map((message) => this.withPrivateAttachmentLinks(message)), membership: { id: membership.id, notificationLevel: membership.notificationLevel, isPinned: membership.isPinned, isArchived: membership.isArchived, markedUnread: membership.markedUnread, draft: membership.draft, drawerOpen: membership.drawerOpen, drawerMinimized: membership.drawerMinimized, lastReadAt: membership.lastReadAt }, unreadCount: unread };
     }));
   }
 
@@ -89,7 +91,7 @@ export class MessagingService {
   async messages(user: AuthenticatedUser, conversationId: string, cursor?: string) {
     await this.member(user, conversationId);
     const rows = await prisma.messagingMessage.findMany({ where: { organizationId: user.organizationId, conversationId }, include: messageInclude, orderBy: { createdAt: 'desc' }, take: 40, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
-    return { messages: rows.reverse(), nextCursor: rows.length === 40 ? rows[rows.length - 1]?.id : null };
+    return { messages: rows.reverse().map((message) => this.withPrivateAttachmentLinks(message)), nextCursor: rows.length === 40 ? rows[rows.length - 1]?.id : null };
   }
 
   async createMessage(user: AuthenticatedUser, conversationId: string, input: CreateMessageInput) {
@@ -102,13 +104,39 @@ export class MessagingService {
       if (!reply) throw new BadRequestException('Reply target is not in this conversation.');
     }
     const linked = await Promise.all(input.linkedRecords.map((record) => this.linkedRecord(user, record.recordType, record.recordId)));
-    const message = await prisma.$transaction(async (tx) => {
-      const created = await tx.messagingMessage.upsert({ where: { conversationId_clientNonce: { conversationId, clientNonce: input.clientNonce } }, update: {}, create: { organizationId: user.organizationId, conversationId, senderId: user.id, clientNonce: input.clientNonce, body, replyToId: input.replyToId ?? null, mentions: { create: mentions.map(({ id }) => ({ organizationId: user.organizationId, userId: id })) }, attachments: { create: [...linked.map((entry) => ({ organizationId: user.organizationId, ...entry })), ...input.uploadedAttachments.map((entry) => ({ organizationId: user.organizationId, ...entry }))] } }, include: messageInclude });
+    const uploaded = await Promise.all(input.uploadedAttachments.map(async ({ storageKey }) => {
+      if (!this.attachmentStorage.belongsTo(storageKey, user.organizationId, user.locationId)) throw new ForbiddenException('Attachment is unavailable in this organization or clinic location.');
+      const stored = await this.attachmentStorage.get(storageKey);
+      return { storageKey, mimeType: stored.contentType, sizeBytes: stored.sizeBytes, fileName: stored.fileName, previewLabel: stored.fileName };
+    }));
+    let message;
+    try { message = await prisma.$transaction(async (tx) => {
+      const created = await tx.messagingMessage.upsert({ where: { conversationId_clientNonce: { conversationId, clientNonce: input.clientNonce } }, update: {}, create: { organizationId: user.organizationId, conversationId, senderId: user.id, clientNonce: input.clientNonce, body, replyToId: input.replyToId ?? null, mentions: { create: mentions.map(({ id }) => ({ organizationId: user.organizationId, userId: id })) }, attachments: { create: [...linked.map((entry) => ({ organizationId: user.organizationId, ...entry })), ...uploaded.map((entry) => ({ organizationId: user.organizationId, ...entry }))] } }, include: messageInclude });
       await tx.messagingConversation.update({ where: { id: conversationId }, data: { lastMessageAt: created.createdAt } });
       await tx.messagingConversationMember.update({ where: { conversationId_userId: { conversationId, userId: user.id } }, data: { draft: '', lastReadAt: new Date(), markedUnread: false } });
       return created;
-    });
-    return message;
+    }); } catch (error) { await Promise.allSettled(uploaded.map(({ storageKey }) => this.attachmentStorage.remove(storageKey))); throw error; }
+    return this.withPrivateAttachmentLinks(message);
+  }
+
+  async uploadAttachment(user: AuthenticatedUser, input: { fileName: string; mimeType: string; contentBase64: string }) {
+    if (!ALLOWED_ATTACHMENT_TYPES.has(input.mimeType)) throw new BadRequestException('This attachment type is not allowed.');
+    const body = Buffer.from(input.contentBase64, 'base64');
+    if (!body.length || body.length > MAX_ATTACHMENT_BYTES || body.toString('base64').replace(/=+$/, '') !== input.contentBase64.replace(/=+$/, '')) throw new BadRequestException('Attachment content is invalid or exceeds the 10 MB limit.');
+    const storageKey = this.attachmentStorage.key(user.organizationId, user.locationId);
+    await this.attachmentStorage.put(storageKey, body, input.mimeType, input.fileName);
+    return { storageKey, fileName: input.fileName, mimeType: input.mimeType, sizeBytes: body.length };
+  }
+
+  async downloadAttachment(user: AuthenticatedUser, id: string) {
+    const attachment = await prisma.messagingAttachment.findFirst({ where: { id, organizationId: user.organizationId, storageKey: { not: null }, message: { conversation: { members: { some: { userId: user.id, organizationId: user.organizationId } }, OR: [{ locationId: null }, { locationId: user.locationId }] } } } });
+    if (!attachment?.storageKey || !this.attachmentStorage.belongsTo(attachment.storageKey, user.organizationId, user.locationId)) throw new NotFoundException('Attachment not found.');
+    const stored = await this.attachmentStorage.get(attachment.storageKey);
+    return { ...stored, mimeType: attachment.mimeType ?? stored.contentType, fileName: attachment.fileName ?? 'attachment' };
+  }
+
+  private withPrivateAttachmentLinks<T extends { attachments: Array<{ id: string; storageKey: string | null; href: string | null }> }>(message: T): T {
+    return { ...message, attachments: message.attachments.map((attachment) => attachment.storageKey ? { ...attachment, href: `/api/messaging/attachments/${attachment.id}` } : attachment) };
   }
 
   async updateMembership(user: AuthenticatedUser, conversationId: string, input: UpdateMembershipInput) {

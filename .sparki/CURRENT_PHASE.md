@@ -42,6 +42,12 @@ Phase 4 remains one phase, but implementation must proceed through the following
 4. `usage.service.ts` — make clinical usage and stock-consumption flows type-safe after their `ControlledService` dependency and upstream inventory paths are stable.
 5. `controlled-closeout.service.ts` — make the terminal controlled-inventory reconciliation and closeout flow type-safe after the shared controlled ledger behavior is stable.
 
+## Tranche progress
+
+- Tranche 1 — `controlled.service.ts`: **COMPLETE**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, and the authoritative local `pnpm test:integration` passed; and the changes were committed and pushed.
+- Tranche 2 — `purchasing.service.ts`: **COMPLETE (LOCAL AUTHORITATIVE BEHAVIORAL VERIFICATION PENDING)**. The `@ts-nocheck` bypass was removed; focused ESLint, API typecheck, the closest available focused inventory unit suite, and `git diff --check` passed. No purchasing/receiving-specific test file exists. The smallest database-backed inventory integration test was attempted but could not connect to the isolated PostgreSQL instance because the sandbox denied loopback access with `EPERM`; run `pnpm test:integration` outside the sandbox for authoritative behavioral verification.
+- Tranches 3–5 remain unstarted with their existing bypasses intact.
+
 For every tranche:
 
 - Remove `@ts-nocheck` only from the service in the current tranche. Leave later-tranche bypasses in place until their tranche begins.

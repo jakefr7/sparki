@@ -19,6 +19,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3 clinical workflow integrity is verified, independently reviewed, and founder-approved; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 inventory integrity hardening is verified, independently reviewed, and founder-approved; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 - Phase 5 honest external and financial workflows are verified, independently reviewed, and founder-approved; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
+- Phase 6 — Clinic Pilot Core Care Completion is founder-selected and **APPROVED / ACTIVE** as a product-workflow phase. Its documentation-only activation defines the bounded visible-UI clinical journey and performs no implementation or verification.
 
 ## PARTIAL
 
@@ -53,4 +54,4 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 - Phase 4 — Inventory Integrity Hardening: **COMPLETE / FOUNDER_APPROVED**. Authoritative integration verification passed 193/193 and Claude's independent review is `PASS`; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 - Phase 5 — Honest External / Financial Workflows: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and Claude Review 2 are `PASS`; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
-- **No implementation phase is currently active.** A future phase requires explicit founder selection and approval.
+- Phase 6 — Clinic Pilot Core Care Completion: **APPROVED / ACTIVE**. Implement the routine outpatient canine/feline journey from Exam through Record in bounded frontend/backend vertical slices; see [CURRENT_PHASE.md](./CURRENT_PHASE.md).

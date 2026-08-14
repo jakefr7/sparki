@@ -5,16 +5,17 @@
 3. **Phase 3 — Clinical Workflow Integrity (`COMPLETE / FOUNDER_APPROVED`):** lifecycle, discharge blocking, records, and clinical safety behavior reconciled and verified; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
 4. **Phase 4 — Inventory Integrity Hardening (`COMPLETE / FOUNDER_APPROVED`):** inventory type safety, persistence guarantees, counts, usage, controlled inventory, and auditability hardened and verified; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
 5. **Phase 5 — Honest External / Financial Workflows (`COMPLETE / FOUNDER_APPROVED`):** simulated delivery is labeled honestly, attachments use a controlled private-storage boundary and authenticated access path, checkout uses non-payment balance/disposition semantics, and financial invariants are documented; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
+6. **Phase 6 — Clinic Pilot Core Care Completion (`APPROVED / ACTIVE`):** complete the visible-UI routine outpatient canine/feline journey from Exam through Plan, Client Decision, Care, Discharge, and Record in bounded frontend/backend vertical slices; see [CURRENT_PHASE.md](./CURRENT_PHASE.md).
 
 ## Current roadmap state
 
-No implementation phase is currently active. No Phase 6 has been invented or activated. The next phase requires explicit founder selection and approval.
+Phase 6 — Clinic Pilot Core Care Completion is the current founder-approved active implementation phase. This roadmap update activates scope only; implementation and verification have not begun.
 
-## Founder-selected next-phase candidates
+## Preserved deferred candidates
 
 - Reconcile the known cross-phase Playwright product/test debt.
 - Resolve Phase 1's remaining founder-review status and preserved orchestration bookkeeping note.
 - Consider the optional Phase 4 inventory defense-in-depth follow-ups.
 - Decide whether to implement local-first GitHub PR preparation.
 
-These are existing documented gaps and follow-ups, not approved roadmap phases.
+These remain documented gaps and follow-ups outside Phase 6, not approved additions to its scope.

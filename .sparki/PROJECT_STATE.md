@@ -42,11 +42,11 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 - Inventory integrity guarantees are active in Phase 4. Honest SMS state, checkout/payment behavior, and a financial ledger remain sequenced for later phases.
 - Deployment and automated merge behavior are outside the local-first agent system.
-- Phase 4 retains the exact approved lint and inventory type-safety debt as active scope.
+- Phase 4 retains the exact approved lint and inventory type-safety debt as active scope. Its implementation is staged across five service-level tranches; focused checks may gate each tranche, but final acceptance still requires all five bypasses removed and the full phase verification matrix.
 
 ## CURRENT PHASE
 
 - Phase 1 — Trustworthy Engineering Baseline: **READY_FOR_FOUNDER_REVIEW**.
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
-- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. This closeout performs no Phase 4 implementation or verification.
+- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. Execution is staged in this order: controlled, purchasing, counts, usage, controlled closeout. No Phase 4 implementation or verification has been performed by this planning update.

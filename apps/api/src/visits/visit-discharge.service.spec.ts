@@ -1,43 +1,43 @@
 import { ConflictException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { assertVisitReadyForDischarge } from './visit-discharge.service';
+import { assertVisitTransitionRequirements } from './visit-lifecycle.service';
 
 const complete = { completedAt: new Date() };
 
 describe('visit discharge readiness', () => {
   it('allows a normal visit after intake and exam', () => {
-    expect(() => assertVisitReadyForDischarge({ visitType: 'Scheduled', intake: complete, examFindings: complete, exceptions: [], workItems: [] })).not.toThrow();
+    expect(() => assertVisitTransitionRequirements({ visitType: 'Scheduled', intake: complete, examFindings: complete, exceptions: [], workItems: [] }, 'CheckoutReady')).not.toThrow();
   });
 
   it('allows a technician appointment without a veterinarian exam', () => {
-    expect(() => assertVisitReadyForDischarge({ visitType: 'TechnicianAppointment', intake: complete, examFindings: null, exceptions: [], workItems: [] })).not.toThrow();
+    expect(() => assertVisitTransitionRequirements({ visitType: 'TechnicianAppointment', intake: complete, examFindings: null, exceptions: [], workItems: [] }, 'CheckoutReady')).not.toThrow();
   });
 
   it('blocks discharge when intake is incomplete', () => {
-    expect(() => assertVisitReadyForDischarge({ visitType: 'Scheduled', intake: null, examFindings: complete, exceptions: [], workItems: [] })).toThrow(ConflictException);
+    expect(() => assertVisitTransitionRequirements({ visitType: 'Scheduled', intake: null, examFindings: complete, exceptions: [], workItems: [] }, 'CheckoutReady')).toThrow(ConflictException);
   });
 
   it('blocks normal visits without a completed exam', () => {
-    expect(() => assertVisitReadyForDischarge({ visitType: 'Scheduled', intake: complete, examFindings: null, exceptions: [], workItems: [] })).toThrow(ConflictException);
+    expect(() => assertVisitTransitionRequirements({ visitType: 'Scheduled', intake: complete, examFindings: null, exceptions: [], workItems: [] }, 'CheckoutReady')).toThrow(ConflictException);
   });
 
   it('blocks an unresolved emergency intake exception', () => {
-    expect(() => assertVisitReadyForDischarge({
+    expect(() => assertVisitTransitionRequirements({
       visitType: 'Emergency',
       intake: complete,
       examFindings: complete,
       exceptions: [{ type: 'EmergencyIntakeDeferred' }],
       workItems: [],
-    })).toThrow(ConflictException);
+    }, 'CheckoutReady')).toThrow(ConflictException);
   });
 
-  it('allows the client handoff to be prepared while care remains open', () => {
-    expect(() => assertVisitReadyForDischarge({
+  it('blocks discharge preparation while required care remains open', () => {
+    expect(() => assertVisitTransitionRequirements({
       visitType: 'Scheduled',
       intake: complete,
       examFindings: complete,
       exceptions: [],
       workItems: [{ title: 'Review diagnostic results' }],
-    })).not.toThrow();
+    }, 'CheckoutReady')).toThrow(ConflictException);
   });
 });

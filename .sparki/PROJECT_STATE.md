@@ -35,7 +35,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Manual Phase 1 verification completed outside the latest review run: typecheck, unit/verification-infrastructure tests, and build passed; lint and integration reproduced only their exact approved Phase 4 and Phase 3 debt classifications.
 - The Playwright harness is operational against the actual isolated application. Its authoritative full run discovered 30 tests: 5 passed, 24 failed, and 1 did not run. These are product/test-drift findings, not runner/bootstrap failure.
 - The latest Claude review's `CHANGES_REQUIRED` result reflects its run-local `verificationState: NOT_RUN`; the review run did not inherit the external manual verification evidence. Historical run records remain authoritative for what occurred inside each run.
-- The founder classified the exact identity-based Playwright baseline as cross-phase product/test debt for Phase 2. If all 24 known failures reproduce with the documented 5 passes and 1 test not run, while Phase 2 auth/tenant coverage passes, Playwright is `COMPLETE_WITH_KNOWN_DEBT`. New or materially changed failures still fail verification.
+- The founder approved bounded acceptance of the exact identity-based Playwright baseline as cross-phase product/test debt during Phase 3. If exactly the 24 documented failure identities and 1 did-not-run test reproduce, Playwright is `COMPLETE_WITH_KNOWN_DEBT`; the passing-test count is not part of the match. Any new, additional, missing, or materially changed failure fails verification, and all Phase 3 clinical workflow tests must pass normally.
 
 ## DEFERRED
 
@@ -47,4 +47,4 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 - Phase 1 — Trustworthy Engineering Baseline: **READY_FOR_FOUNDER_REVIEW**.
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
-- Phase 3 — Clinical Workflow Integrity: **APPROVED / ACTIVE**. No Phase 3 implementation, execution, or verification is part of this state transition.
+- Phase 3 — Clinical Workflow Integrity: **APPROVED / ACTIVE**. The founder-decision block for the exact known Playwright baseline is cleared; historical run artifacts remain unchanged, and no Phase 4 work is authorized.

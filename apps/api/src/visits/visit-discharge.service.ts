@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type UserRole } from '@sparki/db';
 import type { CompleteVisitCheckoutInput, SaveVisitDischargeInput } from './dto/visit-discharge.schema';
-import { VisitLifecycleService } from './visit-lifecycle.service';
+import { assertVisitTransitionRequirements, VisitLifecycleService } from './visit-lifecycle.service';
 import { TERMINAL_VISIT_STATES } from './visit-states';
 
 @Injectable()
@@ -34,7 +34,11 @@ export class VisitDischargeService {
       if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
       if (TERMINAL_VISIT_STATES.includes(visit.state)) throw new ConflictException('A closed visit cannot be discharged again.');
       if (visit.checkout || visit.departedAt) throw new ConflictException('Discharge instructions cannot be changed after checkout.');
-      assertVisitReadyForDischarge(visit);
+      // Discharge preparation and the CheckoutReady lifecycle transition share
+      // one clinical-readiness policy. Keeping this call in the lifecycle layer
+      // prevents a direct discharge write from bypassing required care or an
+      // unresolved critical exception.
+      assertVisitTransitionRequirements(visit, 'CheckoutReady');
       const discharge = await tx.visitDischarge.upsert({
         where: { visitId },
         create: {
@@ -192,23 +196,5 @@ export class VisitDischargeService {
         });
       },
     });
-  }
-}
-
-export function assertVisitReadyForDischarge(visit: {
-  visitType: string;
-  intake: { completedAt: Date | null } | null;
-  examFindings: { completedAt: Date | null } | null;
-  exceptions: Array<{ type: string }>;
-  workItems: Array<{ title: string }>;
-}) {
-  if (!visit.intake?.completedAt) {
-    throw new ConflictException('Complete intake before preparing discharge.');
-  }
-  if (visit.visitType !== 'TechnicianAppointment' && !visit.examFindings?.completedAt) {
-    throw new ConflictException('Complete the veterinarian exam before preparing discharge.');
-  }
-  if (visit.exceptions.some((exception) => exception.type === 'EmergencyIntakeDeferred')) {
-    throw new ConflictException('Complete the deferred emergency intake before preparing discharge.');
   }
 }

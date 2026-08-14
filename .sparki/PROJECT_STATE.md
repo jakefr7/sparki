@@ -27,7 +27,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 ## BROKEN
 
-- The historical Phase 4 baseline had 43 API lint errors and five large inventory services using `@ts-nocheck`. All five inventory tranches are now implemented with the bypasses removed and focused checks passing; final Phase 4 verification is pending.
+- The historical Phase 4 baseline had 43 API lint errors and five large inventory services using `@ts-nocheck`. All five inventory tranches are now complete with the bypasses removed and their focused checks passing, including the authoritative local controlled-inventory integration test for Tranche 5; final Phase 4 verification is pending.
 - The current product end-to-end suite is not green even though its isolated Playwright harness is operational.
 
 ## VERIFIED WITH DEFERRED FINDINGS
@@ -37,16 +37,17 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - The latest Claude review's `CHANGES_REQUIRED` result reflects its run-local `verificationState: NOT_RUN`; the review run did not inherit the external manual verification evidence. Historical run records remain authoritative for what occurred inside each run.
 - Phase 3's authoritative verification passed: typecheck, unit, build, and all 192 integration tests passed; lint reproduced only approved Phase 4 debt; and Playwright reproduced the exact approved 24-failed/1-did-not-run/5-passed baseline with no changed failure identities.
 - Phase 3's latest independent Claude review passed. Optional direct Today-view lifecycle coverage and the prior placeholder review artifact remain non-blocking follow-up notes only.
+- Claude's Phase 4 review found the five-service type-safety refactor behaviorally faithful and raised no code defect. Its missing database-backed Tranche 5 verification concern is resolved by the authoritative local `controlled-inventory.e2e-spec.ts` pass; its two low-severity hardening observations remain optional follow-ups.
 
 ## DEFERRED
 
 - Inventory integrity guarantees are active in Phase 4. Honest SMS state, checkout/payment behavior, and a financial ledger remain sequenced for later phases.
 - Deployment and automated merge behavior are outside the local-first agent system.
-- Phase 4's five service-level implementation tranches are complete with all five inventory `@ts-nocheck` bypasses removed. Final acceptance still requires the full phase verification matrix.
+- Phase 4's five service-level implementation tranches are complete with all five inventory `@ts-nocheck` bypasses removed and focused behavioral verification recorded. Final acceptance still requires the full phase verification matrix.
 
 ## CURRENT PHASE
 
 - Phase 1 — Trustworthy Engineering Baseline: **READY_FOR_FOUNDER_REVIEW**.
 - Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
 - Phase 3 — Clinical Workflow Integrity: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification and the latest independent Claude review are `PASS`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
-- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. All five implementation tranches are implemented; only final Phase 4 verification remains pending.
+- Phase 4 — Inventory Integrity Hardening: **APPROVED / ACTIVE**. All five implementation tranches are complete; only final Phase 4 verification and acceptance remain pending.

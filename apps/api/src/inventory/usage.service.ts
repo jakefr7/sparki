@@ -865,6 +865,13 @@ export class UsageService {
     mapping: UsageMapping,
     replaceEventId?: string,
   ) {
+    const preparedLines: Array<{
+      component: UsageComponent;
+      item: ControlledContainerWithDetails['profile']['item'];
+      container: ControlledContainerWithDetails;
+      quantity: Prisma.Decimal;
+      waste: Prisma.Decimal;
+    }> = [];
     const postedLines: Array<{
       component: UsageComponent;
       item: ControlledContainerWithDetails['profile']['item'];
@@ -902,22 +909,33 @@ export class UsageService {
             },
           })
         : null;
+      if (container.lotId && !lot)
+        throw new NotFoundException('Controlled container lot is unavailable');
       const containerWithDetails: ControlledContainerWithDetails = { ...container, lot };
       const calculated = this.calculate(component, input);
       const quantity = confirmation.confirmedQuantity
         ? D(confirmation.confirmedQuantity)
         : calculated;
       const waste = D(confirmation.wastedQuantity);
+      preparedLines.push({
+        component,
+        item: container.profile.item,
+        container: containerWithDetails,
+        quantity,
+        waste,
+      });
+    }
+    for (const prepared of preparedLines) {
       const eventType = input.eventType === 'PRESCRIPTION_DISPENSED' ? 'DISPENSED' : 'ADMINISTERED';
       const ledger = await this.controlled.postEvent(user, {
-        idempotencyKey: `${input.idempotencyKey}:${component.id}`,
-        registrationId: container.registrationId,
-        profileId: container.profileId,
-        containerId: container.id,
-        lotId: container.lotId,
-        stockLocationId: container.stockLocationId,
+        idempotencyKey: `${input.idempotencyKey}:${prepared.component.id}`,
+        registrationId: prepared.container.registrationId,
+        profileId: prepared.container.profileId,
+        containerId: prepared.container.id,
+        lotId: prepared.container.lotId,
+        stockLocationId: prepared.container.stockLocationId,
         eventType,
-        quantity: quantity.toString(),
+        quantity: prepared.quantity.toString(),
         eventAt: input.occurredAt,
         reason: `Clinical source ${input.sourceRecordType}:${input.sourceRecordId}`,
         patientId: input.patientId,
@@ -928,16 +946,16 @@ export class UsageService {
         notes: input.notes,
         attestation: 'Validated automatic clinical inventory usage event',
       });
-      if (waste.gt(0))
+      if (prepared.waste.gt(0))
         await this.controlled.postEvent(user, {
-          idempotencyKey: `${input.idempotencyKey}:${component.id}:waste`,
-          registrationId: container.registrationId,
-          profileId: container.profileId,
-          containerId: container.id,
-          lotId: container.lotId,
-          stockLocationId: container.stockLocationId,
+          idempotencyKey: `${input.idempotencyKey}:${prepared.component.id}:waste`,
+          registrationId: prepared.container.registrationId,
+          profileId: prepared.container.profileId,
+          containerId: prepared.container.id,
+          lotId: prepared.container.lotId,
+          stockLocationId: prepared.container.stockLocationId,
           eventType: 'WASTED_DURING_ADMINISTRATION',
-          quantity: waste.toString(),
+          quantity: prepared.waste.toString(),
           eventAt: input.occurredAt,
           reason: `Waste from ${input.sourceRecordType}:${input.sourceRecordId}`,
           patientId: input.patientId,
@@ -948,12 +966,12 @@ export class UsageService {
           attestation: 'Validated automatic clinical inventory waste event',
         });
       postedLines.push({
-        component,
-        item: container.profile.item,
+        component: prepared.component,
+        item: prepared.item,
         ledger,
-        container: containerWithDetails,
-        quantity,
-        waste,
+        container: prepared.container,
+        quantity: prepared.quantity,
+        waste: prepared.waste,
       });
     }
     return this.serial(async (tx) => {

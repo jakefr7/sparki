@@ -369,7 +369,7 @@ describe('Patients (e2e)', () => {
   });
 
   describe('GET /patients/:id/workspace', () => {
-    it('returns patient identity, client context, and unavailable sections', async () => {
+    it('returns patient identity, client context, and truthful section availability', async () => {
       const created = await request(app.getHttpServer())
         .post('/patients')
         .send({
@@ -412,7 +412,7 @@ describe('Patients (e2e)', () => {
       expect(response.body.sections.workItems).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.communication).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.financial).toMatchObject({ status: 'unavailable' });
-      expect(response.body.sections.attachments).toMatchObject({ status: 'unavailable' });
+      expect(response.body.sections.attachments).toEqual({ status: 'available' });
     });
 
     it("surfaces the primary client's structured address", async () => {
@@ -576,8 +576,8 @@ describe('Patients (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.recentVisits).toEqual([
-        expect.objectContaining({ id: latestVisit.id, reason: 'Recheck' }),
-        expect.objectContaining({ id: olderVisit.id, reason: 'Old checkup' }),
+        expect.objectContaining({ id: latestVisit.id, reason: 'Recheck', attachments: [] }),
+        expect.objectContaining({ id: olderVisit.id, reason: 'Old checkup', attachments: [] }),
       ]);
       expect(response.body.patient.patientAlerts).toEqual([
         expect.objectContaining({

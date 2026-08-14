@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:4000';
+const WEB_URL = `http://127.0.0.1:${process.env.WEB_PORT ?? '3001'}`;
 
 test('creates a clinical usage mapping and exposes review queue destinations', async ({
   page,
@@ -11,7 +12,7 @@ test('creates a clinical usage mapping and exposes review queue destinations', a
     {
       name: 'sparki_session',
       value: 'development-e2e',
-      url: 'http://127.0.0.1:3001',
+      url: WEB_URL,
     },
   ]);
   const sourceReference = `Browser DAPP ${Date.now()}`;

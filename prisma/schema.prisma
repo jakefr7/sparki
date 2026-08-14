@@ -71,6 +71,8 @@ model Organization {
   conversations                MessagingConversation[]
   messages                     MessagingMessage[]
   messageAttachments           MessagingAttachment[]
+  clinicalAttachments          ClinicalAttachment[]
+  clinicalAttachmentEvents     ClinicalAttachmentEvent[]
   clientCommunicationThreads   ClientCommunicationThread[]
   clientCommunicationMessages  ClientCommunicationMessage[]
   visitTransitions             VisitTransition[]
@@ -113,6 +115,7 @@ model Location {
   catalogItems                 CatalogItem[]
   stockLocations               StockLocation[]
   inventoryTransactions        InventoryTransaction[]
+  clinicalAttachments          ClinicalAttachment[]
 
   // Location-level policy: clinics may allow operational checkout while an
   // invoice balance remains open. The balance itself stays visible work.
@@ -219,6 +222,8 @@ model User {
   messageReactions                   MessagingReaction[]
   messageMentions                    MessagingMention[]
   messageEditEvents                  MessagingMessageEdit[]
+  uploadedClinicalAttachments        ClinicalAttachment[]          @relation("ClinicalAttachmentUploadedBy")
+  clinicalAttachmentEvents           ClinicalAttachmentEvent[]     @relation("ClinicalAttachmentEventActor")
   sentClientCommunicationMessages    ClientCommunicationMessage[]
   assignedClientCommunicationThreads ClientCommunicationThread[]
 
@@ -344,6 +349,7 @@ model Client {
   appointments         Appointment[]
   visits               Visit[]
   communicationThreads ClientCommunicationThread[]
+  clinicalAttachments  ClinicalAttachment[]
   // Fuzzy/substring matching for Patient Search's "search by client name";
   // expression index (not a plain column index) because the searchable name
   // is firstName || ' ' || lastName. See migration.sql for the raw
@@ -402,6 +408,7 @@ model Patient {
   patientAlerts        PatientAlert[]
   medications          PatientMedication[]
   communicationThreads ClientCommunicationThread[]
+  ClinicalAttachment   ClinicalAttachment[]
 
   @@index([organizationId])
   @@index([organizationId, name])
@@ -1239,6 +1246,7 @@ model Visit {
   workflowStep        DashboardStatusColorSetting? @relation("VisitWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
   workflowStepId      String?
   workItemChanges     VisitWorkItemChange[]
+  clinicalAttachments ClinicalAttachment[]
 
   @@index([organizationId])
   @@index([patientId])
@@ -1247,6 +1255,53 @@ model Visit {
   @@index([assignedTechnicianId])
   @@index([organizationId, locationId, phase])
   @@index([workflowStepId])
+}
+
+model ClinicalAttachment {
+  id             String    @id @default(cuid())
+  organizationId String
+  locationId     String
+  patientId      String?
+  visitId        String?
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  storageKey     String    @unique
+  label          String?
+  uploadedById   String
+  removedAt      DateTime?
+  supersededById String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id])
+  location     Location                  @relation(fields: [locationId], references: [id])
+  patient      Patient?                  @relation(fields: [patientId], references: [id])
+  visit        Visit?                    @relation(fields: [visitId], references: [id])
+  uploadedBy   User                      @relation("ClinicalAttachmentUploadedBy", fields: [uploadedById], references: [id])
+  events       ClinicalAttachmentEvent[]
+  Client       Client?                   @relation(fields: [clientId], references: [id])
+  clientId     String?
+
+  @@index([organizationId, locationId, patientId, createdAt])
+  @@index([organizationId, locationId, visitId, createdAt])
+}
+
+model ClinicalAttachmentEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  attachmentId   String
+  actorId        String
+  action         String
+  reason         String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  attachment   ClinicalAttachment @relation(fields: [attachmentId], references: [id])
+  actor        User               @relation("ClinicalAttachmentEventActor", fields: [actorId], references: [id])
+
+  @@index([organizationId, attachmentId, createdAt])
 }
 
 enum VisitBalanceStatus {

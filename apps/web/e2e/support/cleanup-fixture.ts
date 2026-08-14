@@ -52,10 +52,17 @@ export async function cleanupFixture({
     OR: [{ patientId: { in: patientIds } }, { clientId: { in: clientIds } }],
   };
 
+  const attachments = await prisma.clinicalAttachment.findMany({ where: { patientId: { in: patientIds } }, select: { id: true } });
+  const records = await prisma.medicalRecord.findMany({ where: { patientId: { in: patientIds } }, select: { id: true } });
+  await deleteWithRetry(() => prisma.clinicalAttachmentEvent.deleteMany({ where: { attachmentId: { in: attachments.map((attachment) => attachment.id) } } }));
+  await deleteWithRetry(() => prisma.clinicalAttachment.deleteMany({ where: { id: { in: attachments.map((attachment) => attachment.id) } } }));
+  await deleteWithRetry(() => prisma.soapNote.deleteMany({ where: { medicalRecordId: { in: records.map((record) => record.id) } } }));
+
   await deleteWithRetry(() => prisma.visit.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.appointment.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.patientAlert.deleteMany({ where: { patientId: { in: patientIds } } }));
   await deleteWithRetry(() => prisma.patientMedication.deleteMany({ where: { patientId: { in: patientIds } } }));
+  await deleteWithRetry(() => prisma.medicalRecord.deleteMany({ where: { id: { in: records.map((record) => record.id) } } }));
   await deleteWithRetry(() => prisma.patientClient.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.patient.deleteMany({ where: { id: { in: patientIds } } }));
   await deleteWithRetry(() => prisma.client.deleteMany({ where: { id: { in: clientIds } } }));

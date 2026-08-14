@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   BadRequestException,
   ConflictException,
@@ -8,6 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma, prisma } from '@sparki/db';
+import type { ControlledCountStatus, ControlledDisposalStatus, ControlledEventType } from '@sparki/db';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -24,7 +24,17 @@ import type {
   DisposalInput,
   ReportQuery,
 } from './dto/controlled-closeout.schema';
-const D = (v: any) => new Prisma.Decimal(v ?? 0);
+type PostTransactionInput = Parameters<ControlledService['postOneTransaction']>[3];
+type PostedTransaction = Awaited<ReturnType<ControlledService['postOneTransaction']>>;
+type CorrectionReplacement = Partial<PostTransactionInput> & {
+  quantityChanged?: Prisma.Decimal.Value;
+};
+type CountProfileSnapshot = {
+  exactCountRequired?: boolean;
+  estimatedCountPermitted?: boolean;
+};
+type ReportBody = Buffer | string | Record<string, unknown>;
+const D = (value: Prisma.Decimal.Value | null | undefined) => new Prisma.Decimal(value ?? 0);
 @Injectable()
 export class ControlledCloseoutService {
   constructor(private readonly controlled: ControlledService) {}
@@ -64,7 +74,7 @@ export class ControlledCloseoutService {
           expectedSnapshotAt: new Date(),
           blindCount: input.blindCount,
           dualReviewRequired: input.dualReviewRequired,
-          notes: input.notes,
+          notes: input.notes ?? null,
         },
       });
       const profiles = await tx.controlledItemProfile.findMany({
@@ -148,7 +158,7 @@ export class ControlledCloseoutService {
       throw new ConflictException('Count is not open for entry');
     const line = s.lines.find((l) => l.id === lineId);
     if (!line) throw new NotFoundException('Count line not found');
-    const snap = line.profileSnapshot as any;
+    const snap = line.profileSnapshot as CountProfileSnapshot;
     if (snap.exactCountRequired && !input.exact)
       throw new BadRequestException('This controlled item requires an exact count.');
     if (!input.exact && !snap.estimatedCountPermitted)
@@ -166,7 +176,7 @@ export class ControlledCloseoutService {
           measuredQuantity: input.measuredQuantity ? D(input.measuredQuantity) : null,
           enteredById: user.id,
           method: input.method,
-          notes: input.notes,
+          notes: input.notes ?? null,
           attestation: { text: input.attestation, version: 'controlled-count-v1' },
         },
       });
@@ -268,13 +278,13 @@ export class ControlledCloseoutService {
           stage,
           reviewerId: user.id,
           decision: input.decision,
-          reason: input.reason,
+          reason: input.reason ?? null,
           idempotencyKey: input.idempotencyKey,
           organizationKey: user.organizationId,
           attestation: { text: input.attestation },
         },
       });
-      let status: any =
+      const status: ControlledCountStatus =
         input.decision === 'RECOUNT'
           ? 'RECOUNT_REQUIRED'
           : input.decision === 'REJECT'
@@ -325,6 +335,7 @@ export class ControlledCloseoutService {
             where: { id: l.profileId },
             include: { item: true },
           });
+          if (!p) throw new NotFoundException('Controlled item profile not found');
           const entry = await this.controlled.postOneTransaction(
             tx,
             user,
@@ -399,7 +410,14 @@ export class ControlledCloseoutService {
         status: 'PENDING_APPROVAL',
         reason: input.reason,
         explanation: input.explanation,
-        proposedReplacement: input.proposedReplacement,
+        ...(input.proposedReplacement === undefined
+          ? {}
+          : {
+              proposedReplacement:
+                input.proposedReplacement === null
+                  ? Prisma.DbNull
+                  : (input.proposedReplacement as Prisma.InputJsonObject),
+            }),
         quantityImpact: D(input.quantityImpact),
         patientImpact: input.patientImpact,
         reportingImpact: input.reportingImpact,
@@ -445,7 +463,7 @@ export class ControlledCloseoutService {
           status: input.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
           approvedById: input.decision === 'APPROVE' ? user.id : null,
           approvedAt: input.decision === 'APPROVE' ? new Date() : null,
-          rejectionReason: input.reason,
+          rejectionReason: input.reason ?? null,
         },
       });
     });
@@ -465,18 +483,20 @@ export class ControlledCloseoutService {
       if (c.status !== 'APPROVED') throw new ConflictException('Correction must be approved.');
       const original = await tx.controlledLedgerEntry.findUnique({
           where: { id: c.originalEntryId },
-        }),
-        p = await tx.controlledItemProfile.findUnique({
+        });
+      if (!original) throw new NotFoundException('Original ledger entry not found');
+      const p = await tx.controlledItemProfile.findUnique({
           where: { id: original.profileId },
           include: { item: true },
         });
-      const base = {
+      if (!p) throw new NotFoundException('Controlled item profile not found');
+      const base: PostTransactionInput = {
         idempotencyKey: `${input.idempotencyKey}:reversal`,
         registrationId: c.registrationId,
         profileId: p.id,
         containerId: original.containerId,
         lotId: original.lotId,
-        stockLocationId: original.sourceStockLocationId ?? original.destinationStockLocationId,
+        stockLocationId: (original.sourceStockLocationId ?? original.destinationStockLocationId)!,
         eventType: 'REVERSAL',
         quantity: original.quantityChanged.abs().toString(),
         eventAt: new Date(),
@@ -495,10 +515,10 @@ export class ControlledCloseoutService {
         where: { id: reversal.id },
         data: { reversesEntryId: original.id },
       });
-      let replacement = null;
+      let replacement: PostedTransaction | null = null;
       if (c.proposedReplacement) {
-        const r: any = c.proposedReplacement,
-          replacement = await this.controlled.postOneTransaction(
+        const r = c.proposedReplacement as CorrectionReplacement;
+        replacement = await this.controlled.postOneTransaction(
             tx,
             user,
             p,
@@ -506,7 +526,7 @@ export class ControlledCloseoutService {
               ...base,
               ...r,
               idempotencyKey: `${input.idempotencyKey}:replacement`,
-              eventType: r.eventType ?? original.eventType,
+              eventType: r.eventType ?? (original.eventType as PostTransactionInput['eventType']),
               reason: `Correction replacement: ${c.reason}`,
             },
             D(r.quantityChanged ?? original.quantityChanged),
@@ -567,17 +587,17 @@ export class ControlledCloseoutService {
         number: `DISP-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`,
         reason: input.reason,
         proposedMethod: input.proposedMethod,
-        authorizedParty: input.authorizedParty,
-        externalReference: input.externalReference,
-        scheduledAt: input.scheduledAt,
+        authorizedParty: input.authorizedParty ?? null,
+        externalReference: input.externalReference ?? null,
+        scheduledAt: input.scheduledAt ?? null,
         createdById: user.id,
-        notes: input.notes,
+        notes: input.notes ?? null,
         lines: {
           create: {
             profileId: input.profileId,
             itemId: input.itemId,
-            lotId: input.lotId,
-            containerId: input.containerId,
+            lotId: input.lotId ?? null,
+            containerId: input.containerId ?? null,
             stockLocationId: input.stockLocationId,
             quantity: D(input.quantity),
             unitSnapshot: input.unit,
@@ -616,6 +636,7 @@ export class ControlledCloseoutService {
             where: { id: l.profileId },
             include: { item: true },
           });
+          if (!p) throw new NotFoundException('Controlled item profile not found');
           const entry =
             existing ??
             (await this.controlled.postOneTransaction(
@@ -669,6 +690,7 @@ export class ControlledCloseoutService {
             where: { id: l.profileId },
             include: { item: true },
           });
+          if (!p) throw new NotFoundException('Controlled item profile not found');
           const entry = await this.controlled.postOneTransaction(
             tx,
             user,
@@ -715,6 +737,7 @@ export class ControlledCloseoutService {
             where: { id: l.profileId },
             include: { item: true },
           });
+          if (!p) throw new NotFoundException('Controlled item profile not found');
           await this.controlled.postOneTransaction(
             tx,
             user,
@@ -729,7 +752,7 @@ export class ControlledCloseoutService {
               eventType: 'RETURNED_TO_STOCK',
               quantity: l.quantity.toString(),
               eventAt: new Date(),
-              reason: input.reason,
+              reason: input.reason!,
               attestation: input.attestation,
             },
             D(0),
@@ -738,11 +761,11 @@ export class ControlledCloseoutService {
         }
         return tx.controlledDisposal.update({
           where: { id },
-          data: { status: 'CANCELLED', notes: input.reason },
+          data: { status: 'CANCELLED', notes: input.reason ?? null },
         });
       });
     }
-    const next: any =
+    const next: ControlledDisposalStatus =
       input.action === 'APPROVE'
         ? 'READY_FOR_COMPLETION'
         : input.action === 'REJECT'
@@ -793,7 +816,7 @@ export class ControlledCloseoutService {
     const rows = await prisma.controlledLedgerEntry.findMany({
       where: {
         registrationId: q.registrationId,
-        ...(q.eventType ? { eventType: q.eventType } : {}),
+        ...(q.eventType ? { eventType: q.eventType as ControlledEventType } : {}),
         ...(q.from || q.to
           ? { eventAt: { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lte: q.to } : {}) } }
           : {}),
@@ -841,7 +864,7 @@ export class ControlledCloseoutService {
       from: q.from?.toISOString() ?? null,
       to: q.to?.toISOString() ?? null,
     };
-    let body: any,
+    let body: ReportBody,
       mime = 'application/json',
       ext = 'json';
     if (q.format === 'csv') {

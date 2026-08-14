@@ -13,6 +13,12 @@ describe('Inventory clinical usage (e2e)', () => {
   let stockLocationId = '';
   let mappingId = '';
   let patientId = '';
+  let controlledItemId = '';
+  let controlledMappingId = '';
+  let controlledContainerId = '';
+  let invalidControlledContainerId = '';
+  let controlledRegistrationId = '';
+  let visitId = '';
 
   beforeAll(async () => {
     const organization = await prisma.organization.create({
@@ -113,6 +119,171 @@ describe('Inventory clinical usage (e2e)', () => {
       ],
     });
     mappingId = mapping.id;
+
+    const controlledItem = await prisma.catalogItem.create({
+      data: {
+        organizationId,
+        locationId: location.id,
+        name: 'Controlled usage fixture',
+        manufacturer: 'Controlled Test Manufacturer',
+        primaryType: 'MEDICATION',
+        status: 'ACTIVE',
+        inventoryTracked: true,
+        controlledSubstance: true,
+        deaSchedule: 'IV',
+        lotTracking: true,
+        expirationTracking: true,
+        conversions: {
+          create: { purchaseUnit: 'vial', stockUnit: 'mL', purchaseToStock: 10 },
+        },
+      },
+    });
+    controlledItemId = controlledItem.id;
+    const controlledLot = await prisma.inventoryLot.create({
+      data: {
+        organizationId,
+        itemId: controlledItem.id,
+        stockLocationId,
+        lotNumber: 'CTRL-USAGE-1',
+        expirationDate: new Date('2029-02-03'),
+        receivedDate: new Date('2026-01-01'),
+        quantity: 5,
+      },
+    });
+    await prisma.stockBalance.create({
+      data: {
+        organizationId,
+        itemId: controlledItem.id,
+        stockLocationId,
+        lotId: controlledLot.id,
+        onHand: 5,
+      },
+    });
+    const registration = await prisma.controlledRegistration.create({
+      data: {
+        organizationId,
+        clinicLocationId: location.id,
+        type: 'DEA',
+        authority: 'Test authority',
+        registrationNumber: `USAGE-${crypto.randomUUID()}`,
+        registrantName: 'Test Registrant',
+        legalName: 'Test Clinic',
+        registeredAddress: 'Test only',
+        effectiveDate: new Date('2026-01-01'),
+        schedules: ['IV'],
+        createdById: actor.id,
+      },
+    });
+    controlledRegistrationId = registration.id;
+    await prisma.controlledAuthorization.create({
+      data: {
+        organizationId,
+        clinicLocationId: location.id,
+        registrationId: registration.id,
+        userId: actor.id,
+        authorizationTypes: ['ADMINISTRATOR', 'AUTHORIZED_PRESCRIBER'],
+        effectiveDate: new Date('2026-01-01'),
+        grantedById: actor.id,
+      },
+    });
+    const profile = await prisma.controlledItemProfile.create({
+      data: {
+        organizationId,
+        clinicLocationId: location.id,
+        registrationId: registration.id,
+        itemId: controlledItem.id,
+        federalSchedule: 'IV',
+        dosageForm: 'injection',
+        strength: '1 mg/mL',
+        baseUnit: 'mL',
+        containerTracking: true,
+        secureStockLocationIds: [stockLocationId],
+        createdById: actor.id,
+      },
+    });
+    const controlledContainer = await prisma.controlledContainer.create({
+      data: {
+        organizationId,
+        clinicLocationId: location.id,
+        registrationId: registration.id,
+        profileId: profile.id,
+        lotId: controlledLot.id,
+        stockLocationId,
+        containerNumber: 'USAGE-C-1',
+        packageQuantity: 1,
+        initialQuantity: 5,
+        currentQuantity: 5,
+      },
+    });
+    controlledContainerId = controlledContainer.id;
+    const otherLocation = await prisma.location.create({
+      data: { organizationId, name: 'Other usage clinic' },
+    });
+    const otherStockLocation = await prisma.stockLocation.create({
+      data: { organizationId, clinicLocationId: otherLocation.id, name: 'Other secure cabinet' },
+    });
+    const outOfScopeLot = await prisma.inventoryLot.create({
+      data: {
+        organizationId,
+        itemId: controlledItem.id,
+        stockLocationId: otherStockLocation.id,
+        lotNumber: 'CTRL-OTHER-LOCATION',
+        quantity: 5,
+      },
+    });
+    const invalidContainer = await prisma.controlledContainer.create({
+      data: {
+        organizationId,
+        clinicLocationId: location.id,
+        registrationId: registration.id,
+        profileId: profile.id,
+        lotId: outOfScopeLot.id,
+        stockLocationId,
+        containerNumber: 'USAGE-C-INVALID-LOT',
+        packageQuantity: 1,
+        initialQuantity: 5,
+        currentQuantity: 5,
+      },
+    });
+    invalidControlledContainerId = invalidContainer.id;
+    const visit = await prisma.visit.create({
+      data: {
+        organizationId,
+        locationId: location.id,
+        patientId,
+        visitType: 'WalkIn',
+        reason: 'Controlled usage test',
+        state: 'Arrived',
+        primaryVeterinarianId: actor.id,
+      },
+    });
+    visitId = visit.id;
+    const controlledMapping = await service.createMapping(user, {
+      sourceType: 'MEDICATION',
+      sourceReference: 'Controlled administration',
+      organizationWide: false,
+      reservationBehavior: 'OFF',
+      deductionEvent: 'MEDICATION_ADMINISTERED',
+      lotSelectionPolicy: 'MANUAL',
+      activate: true,
+      components: [
+        {
+          itemId: controlledItem.id,
+          quantityRule: 'FIXED',
+          fixedQuantity: '1',
+          quantityUnit: 'mL',
+          optional: false,
+          staffConfirmationRequired: true,
+          lotSelectionRequired: true,
+          fallbackBehavior: 'NONE',
+          wasteAllowance: '0',
+          physicalKit: false,
+          deductComponents: true,
+          sequence: 0,
+        },
+      ],
+    });
+    controlledMappingId = controlledMapping.id;
   });
 
   afterAll(async () => {
@@ -122,11 +293,20 @@ describe('Inventory clinical usage (e2e)', () => {
       where: { usageEvent: { organizationId } },
     });
     await prisma.inventoryUsageEvent.deleteMany({ where: { organizationId } });
+    await prisma.visit.deleteMany({ where: { organizationId } });
     await prisma.inventoryReservation.deleteMany({ where: { organizationId } });
     await prisma.inventoryUsageComponent.deleteMany({
       where: { mapping: { organizationId } },
     });
     await prisma.inventoryUsageMapping.deleteMany({ where: { organizationId } });
+    await prisma.controlledLedgerEntry.deleteMany({ where: { organizationId } });
+    await prisma.controlledLedgerSequence.deleteMany({
+      where: { registrationId: controlledRegistrationId },
+    });
+    await prisma.controlledContainer.deleteMany({ where: { organizationId } });
+    await prisma.controlledItemProfile.deleteMany({ where: { organizationId } });
+    await prisma.controlledAuthorization.deleteMany({ where: { organizationId } });
+    await prisma.controlledRegistration.deleteMany({ where: { organizationId } });
     await prisma.inventoryTransaction.deleteMany({ where: { organizationId } });
     await prisma.stockBalance.deleteMany({ where: { organizationId } });
     await prisma.inventoryLot.deleteMany({ where: { organizationId } });
@@ -230,5 +410,69 @@ describe('Inventory clinical usage (e2e)', () => {
       status: 'NEEDS_REVIEW',
       failureCode: 'NO_USAGE_MAPPING',
     });
+  });
+
+  it('posts controlled usage with lot snapshots and rejects an out-of-location container lot without writes', async () => {
+    const posted = await service.postUsage(user, {
+      eventType: 'MEDICATION_ADMINISTERED',
+      sourceRecordType: 'MedicationAdministration',
+      sourceRecordId: 'controlled-administration-1',
+      sourceEventVersion: 1,
+      mappingId: controlledMappingId,
+      patientId,
+      visitId,
+      authorizingVeterinarianId: user.id,
+      occurredAt: new Date('2026-08-13T12:00:00.000Z'),
+      idempotencyKey: `controlled-usage-${crypto.randomUUID()}`,
+      lines: [
+        {
+          itemId: controlledItemId,
+          controlledContainerId,
+          confirmedQuantity: '1',
+          wastedQuantity: '0',
+        },
+      ],
+    });
+
+    const trace = await prisma.patientInventoryTrace.findFirstOrThrow({
+      where: { usageEventId: posted.id, itemId: controlledItemId },
+    });
+    expect(trace.lotNumberSnapshot).toBe('CTRL-USAGE-1');
+    expect(trace.expirationSnapshot?.toISOString().slice(0, 10)).toBe('2029-02-03');
+
+    const countsBefore = {
+      usageEvents: await prisma.inventoryUsageEvent.count({ where: { organizationId } }),
+      ledgerEntries: await prisma.controlledLedgerEntry.count({ where: { organizationId } }),
+      transactions: await prisma.inventoryTransaction.count({ where: { organizationId } }),
+      traces: await prisma.patientInventoryTrace.count({ where: { organizationId } }),
+    };
+    await expect(
+      service.postUsage(user, {
+        eventType: 'MEDICATION_ADMINISTERED',
+        sourceRecordType: 'MedicationAdministration',
+        sourceRecordId: 'controlled-administration-invalid-lot',
+        sourceEventVersion: 1,
+        mappingId: controlledMappingId,
+        patientId,
+        visitId,
+        authorizingVeterinarianId: user.id,
+        occurredAt: new Date('2026-08-13T12:05:00.000Z'),
+        idempotencyKey: `controlled-usage-invalid-${crypto.randomUUID()}`,
+        lines: [
+          {
+            itemId: controlledItemId,
+            controlledContainerId: invalidControlledContainerId,
+            confirmedQuantity: '1',
+            wastedQuantity: '0',
+          },
+        ],
+      }),
+    ).rejects.toThrow('Controlled container lot is unavailable');
+    expect({
+      usageEvents: await prisma.inventoryUsageEvent.count({ where: { organizationId } }),
+      ledgerEntries: await prisma.controlledLedgerEntry.count({ where: { organizationId } }),
+      transactions: await prisma.inventoryTransaction.count({ where: { organizationId } }),
+      traces: await prisma.patientInventoryTrace.count({ where: { organizationId } }),
+    }).toEqual(countsBefore);
   });
 });

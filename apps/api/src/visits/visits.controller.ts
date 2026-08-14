@@ -20,8 +20,10 @@ import { VisitRecordsService } from './visit-records.service';
 import {
   completeVisitCheckoutSchema,
   saveVisitDischargeSchema,
+  updateVisitBalanceSchema,
   type CompleteVisitCheckoutInput,
   type SaveVisitDischargeInput,
+  type UpdateVisitBalanceInput,
 } from './dto/visit-discharge.schema';
 import { VisitDischargeService } from './visit-discharge.service';
 import { VisitsService } from './visits.service';
@@ -193,10 +195,10 @@ export class VisitsController {
     return this.discharge.completeCheckout(id, user.organizationId, user.locationId, user.id, user.role, body);
   }
 
-  @Post(':id/checkout/resolve-balance')
-  resolveOutstandingBalance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  @Post(':id/checkout/update-balance')
+  updateOutstandingBalance(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body(new ZodValidationPipe(updateVisitBalanceSchema)) body: UpdateVisitBalanceInput) {
     requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
-    return this.discharge.resolveOutstandingBalance(id, user.organizationId, user.locationId, user.id, user.role);
+    return this.discharge.updateOutstandingBalance(id, user.organizationId, user.locationId, user.id, user.role, body);
   }
 
   @Post(':id/work-items')

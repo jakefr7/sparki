@@ -1,4 +1,3 @@
-// @ts-nocheck -- every external payload is Zod-validated; Prisma exact optionals are normalized here.
 import {
   BadRequestException,
   ConflictException,
@@ -7,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, prisma } from '@sparki/db';
+import type { InventoryTransactionType } from '@sparki/db';
 import { randomUUID } from 'node:crypto';
 import type { AuthenticatedUser } from '../auth/types';
 import type {
@@ -18,7 +18,20 @@ import type {
   RegistrationInput,
   ReportStatusInput,
 } from './dto/controlled.schema';
-const D = (v: any) => new Prisma.Decimal(v ?? 0);
+type ControlledProfile = Prisma.ControlledItemProfileGetPayload<{ include: { item: true } }>;
+type TransactionEventType = ControlledEventInput['eventType'] | 'TRANSFER_OUT' | 'TRANSFER_IN';
+type TransactionInput = Omit<ControlledEventInput, 'eventType'> & {
+  eventType: TransactionEventType;
+};
+type ReportingConfiguration = {
+  enabled: boolean | undefined;
+  jurisdiction: string | undefined;
+  authority: string | undefined;
+  dueDays: number | undefined;
+};
+type JsonEntry = Prisma.InputJsonValue | null;
+
+const D = (value: Prisma.Decimal.Value | null | undefined) => new Prisma.Decimal(value ?? 0);
 const outbound = new Set([
   'ADMINISTERED',
   'DISPENSED',
@@ -43,7 +56,19 @@ export class ControlledService {
     this.manager(user);
     return prisma.controlledRegistration.create({
       data: {
-        ...input,
+        type: input.type,
+        authority: input.authority,
+        registrationNumber: input.registrationNumber,
+        registrantUserId: input.registrantUserId ?? null,
+        registrantName: input.registrantName,
+        legalName: input.legalName,
+        registeredAddress: input.registeredAddress,
+        effectiveDate: input.effectiveDate,
+        expirationDate: input.expirationDate ?? null,
+        schedules: input.schedules,
+        jurisdiction: input.jurisdiction ?? null,
+        policy: this.jsonObject(input.policy ?? {}),
+        notes: input.notes ?? null,
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         createdById: user.id,
@@ -59,7 +84,11 @@ export class ControlledService {
     if (!target) throw new NotFoundException('User not found');
     return prisma.controlledAuthorization.create({
       data: {
-        ...input,
+        userId: input.userId,
+        authorizationTypes: input.authorizationTypes,
+        effectiveDate: input.effectiveDate,
+        expirationDate: input.expirationDate ?? null,
+        notes: input.notes ?? null,
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         registrationId,
@@ -111,7 +140,26 @@ export class ControlledService {
       });
       return tx.controlledItemProfile.create({
         data: {
-          ...input,
+          registrationId: input.registrationId,
+          itemId: input.itemId,
+          federalSchedule: input.federalSchedule,
+          stateSchedule: input.stateSchedule ?? null,
+          ndc: input.ndc ?? null,
+          deaCode: input.deaCode ?? null,
+          dosageForm: input.dosageForm,
+          strength: input.strength,
+          concentration: input.concentration ?? null,
+          baseUnit: input.baseUnit,
+          containerTracking: input.containerTracking,
+          exactCountRequired: input.exactCountRequired,
+          estimatedCountPermitted: input.estimatedCountPermitted,
+          openContainerTracking: input.openContainerTracking,
+          secureStockLocationIds: input.secureStockLocationIds,
+          administrationPrecision: input.administrationPrecision,
+          dispensingPrecision: input.dispensingPrecision,
+          witnessRules: this.jsonObject(input.witnessRules ?? {}),
+          countFrequencyDays: input.countFrequencyDays ?? null,
+          reportingConfiguration: this.jsonObject(input.reportingConfiguration ?? {}),
           organizationId: user.organizationId,
           clinicLocationId: user.locationId,
           discrepancyThreshold: D(input.discrepancyThreshold),
@@ -268,7 +316,7 @@ export class ControlledService {
           'Both locations must be approved under the same controlled registration.',
         );
       const group = randomUUID();
-      const base = {
+      const base: TransactionInput = {
         ...input,
         eventAt: new Date(),
         patientId: null,
@@ -280,6 +328,7 @@ export class ControlledService {
         authorizingVeterinarianId: null,
         externalReference: null,
         notes: null,
+        witnessId: input.witnessId ?? null,
         stockLocationId: input.sourceStockLocationId,
         eventType: 'TRANSFER_OUT',
         attestation: input.attestation,
@@ -325,7 +374,12 @@ export class ControlledService {
     });
     return prisma.controlledDiscrepancyCase.create({
       data: {
-        ...input,
+        registrationId: input.registrationId,
+        profileId: input.profileId ?? null,
+        containerId: input.containerId ?? null,
+        severity: input.severity,
+        classification: input.classification,
+        investigationNotes: input.investigationNotes ?? null,
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         caseNumber: `CD-${new Date().getFullYear()}-${String(count + 1).padStart(5, '0')}`,
@@ -362,7 +416,7 @@ export class ControlledService {
           fromStatus: report.status,
           toStatus: input.status,
           actorId: user.id,
-          notes: input.notes,
+          notes: input.notes ?? null,
           attestation: { text: input.attestation, recordedAt: new Date().toISOString() },
         },
       });
@@ -370,23 +424,23 @@ export class ControlledService {
         where: { id },
         data: {
           status: input.status,
-          externalConfirmationNumber: input.confirmationNumber,
+          externalConfirmationNumber: input.confirmationNumber ?? null,
           ...(input.status === 'FILED_EXTERNALLY' ? { externallyFiledAt: new Date() } : {}),
-          notes: input.notes,
+          notes: input.notes ?? null,
         },
       });
     });
   }
   async postOneTransaction(
-    tx: any,
+    tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
-    profile: any,
-    input: any,
+    profile: ControlledProfile,
+    input: TransactionInput,
     delta: Prisma.Decimal,
     group: string,
     otherLocation?: string,
   ) {
-    let balance = await tx.stockBalance.findFirst({
+    const balance = await tx.stockBalance.findFirst({
       where: {
         itemId: profile.itemId,
         stockLocationId: input.stockLocationId,
@@ -416,7 +470,7 @@ export class ControlledService {
           organizationId: user.organizationId,
           itemId: profile.itemId,
           stockLocationId: input.stockLocationId,
-          lotId: input.lotId,
+          lotId: input.lotId ?? null,
           onHand: after,
         },
       });
@@ -464,7 +518,7 @@ export class ControlledService {
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         itemId: profile.itemId,
-        lotId: input.lotId,
+        lotId: input.lotId ?? null,
         stockLocationId: input.stockLocationId,
         transactionGroupId: group,
         transactionType: this.inventoryType(input.eventType),
@@ -472,11 +526,11 @@ export class ControlledService {
         previousBalance: before,
         resultingBalance: after,
         reason: `CONTROLLED_${input.eventType}`,
-        patientId: input.patientId,
-        visitId: input.visitId,
-        purchaseOrderId: input.purchaseOrderId,
+        patientId: input.patientId ?? null,
+        visitId: input.visitId ?? null,
+        purchaseOrderId: input.purchaseOrderId ?? null,
         otherReference: input.idempotencyKey,
-        notes: input.notes,
+        notes: input.notes ?? null,
         userId: user.id,
       },
     });
@@ -493,8 +547,8 @@ export class ControlledService {
         registrationId: profile.registrationId,
         profileId: profile.id,
         itemId: profile.itemId,
-        lotId: input.lotId,
-        containerId: input.containerId,
+        lotId: input.lotId ?? null,
+        containerId: input.containerId ?? null,
         inventoryTransactionId: tr.id,
         transactionGroupId: group,
         entryNumber: `CL-${year}-${String(seq.nextValue - 1).padStart(6, '0')}`,
@@ -509,19 +563,19 @@ export class ControlledService {
         strengthSnapshot: profile.strength,
         scheduleSnapshot: profile.stateSchedule ?? profile.federalSchedule,
         reason: input.reason,
-        patientId: input.patientId,
-        clientId: input.clientId,
-        visitId: input.visitId,
-        prescriptionReference: input.prescriptionReference,
-        purchaseOrderId: input.purchaseOrderId,
-        receiptId: input.receiptId,
-        sourceStockLocationId: delta.lt(0) ? input.stockLocationId : otherLocation,
-        destinationStockLocationId: delta.gt(0) ? input.stockLocationId : otherLocation,
+        patientId: input.patientId ?? null,
+        clientId: input.clientId ?? null,
+        visitId: input.visitId ?? null,
+        prescriptionReference: input.prescriptionReference ?? null,
+        purchaseOrderId: input.purchaseOrderId ?? null,
+        receiptId: input.receiptId ?? null,
+        sourceStockLocationId: delta.lt(0) ? input.stockLocationId : (otherLocation ?? null),
+        destinationStockLocationId: delta.gt(0) ? input.stockLocationId : (otherLocation ?? null),
         performedById: user.id,
-        authorizingVeterinarianId: input.authorizingVeterinarianId,
-        witnessId: input.witnessId,
-        externalReference: input.externalReference,
-        notes: input.notes,
+        authorizingVeterinarianId: input.authorizingVeterinarianId ?? null,
+        witnessId: input.witnessId ?? null,
+        externalReference: input.externalReference ?? null,
+        notes: input.notes ?? null,
         attestation: {
           text: input.attestation,
           version: 'controlled-v1',
@@ -529,7 +583,8 @@ export class ControlledService {
         },
       },
     });
-    if (input.eventType === 'DISPENSED' && (profile.reportingConfiguration as any)?.enabled)
+    const reporting = this.reportingConfiguration(profile.reportingConfiguration);
+    if (input.eventType === 'DISPENSED' && reporting.enabled)
       await tx.controlledExternalReport.create({
         data: {
           organizationId: user.organizationId,
@@ -537,19 +592,23 @@ export class ControlledService {
           registrationId: profile.registrationId,
           type: 'STATE_DISPENSING',
           status: 'ACTION_REQUIRED',
-          jurisdiction: (profile.reportingConfiguration as any)?.jurisdiction ?? 'TN',
-          authority:
-            (profile.reportingConfiguration as any)?.authority ?? 'State reporting authority',
+          jurisdiction: reporting.jurisdiction ?? 'TN',
+          authority: reporting.authority ?? 'State reporting authority',
           sourceRecords: { ledgerEntryIds: [ledger.id] },
-          dueAt: (profile.reportingConfiguration as any)?.dueDays
-            ? new Date(Date.now() + (profile.reportingConfiguration as any).dueDays * 86400000)
+          dueAt: reporting.dueDays
+            ? new Date(Date.now() + reporting.dueDays * 86400000)
             : null,
           notes: 'Reporting preparation and status tracking. External filing not yet confirmed.',
         },
       });
     return ledger;
   }
-  private async validateClinical(tx: any, user: AuthenticatedUser, input: any, profile: any) {
+  private async validateClinical(
+    tx: Prisma.TransactionClient,
+    user: AuthenticatedUser,
+    input: ControlledEventInput,
+    _profile: ControlledProfile,
+  ) {
     if (
       input.eventType === 'ADMINISTERED' &&
       (!input.patientId || !input.visitId || !input.authorizingVeterinarianId)
@@ -576,7 +635,7 @@ export class ControlledService {
         tx,
       );
   }
-  private inventoryType(event: string) {
+  private inventoryType(event: TransactionEventType): InventoryTransactionType {
     return event === 'ADMINISTERED'
       ? 'CONTROLLED_ADMINISTERED'
       : event === 'DISPENSED'
@@ -585,7 +644,7 @@ export class ControlledService {
           ? 'CONTROLLED_WASTE'
           : event === 'DISPOSED'
             ? 'CONTROLLED_DISPOSAL'
-            : ['TRANSFER_OUT', 'TRANSFER_IN'].includes(event)
+            : event === 'TRANSFER_OUT' || event === 'TRANSFER_IN'
               ? event
               : event === 'RECEIVED'
                 ? 'PURCHASE'
@@ -603,6 +662,40 @@ export class ControlledService {
             : event === 'COUNT_ADJUSTMENT'
               ? 'RECONCILIATION_REVIEWER'
               : 'CONTROLLED_CUSTODIAN';
+  }
+  private reportingConfiguration(value: Prisma.JsonValue): ReportingConfiguration {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return { enabled: undefined, jurisdiction: undefined, authority: undefined, dueDays: undefined };
+    return {
+      enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
+      jurisdiction: typeof value.jurisdiction === 'string' ? value.jurisdiction : undefined,
+      authority: typeof value.authority === 'string' ? value.authority : undefined,
+      dueDays: typeof value.dueDays === 'number' ? value.dueDays : undefined,
+    };
+  }
+  private jsonObject(value: Record<string, unknown>): Prisma.InputJsonObject {
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, entry]) => {
+        const json = this.jsonValue(entry);
+        return json === undefined ? [] : [[key, json]];
+      }),
+    );
+  }
+  private jsonValue(value: unknown): JsonEntry | undefined {
+    if (
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    )
+      return value;
+    if (Array.isArray(value))
+      return value.flatMap((entry) => {
+        const json = this.jsonValue(entry);
+        return json === undefined ? [] : [json];
+      });
+    if (typeof value === 'object') return this.jsonObject(value as Record<string, unknown>);
+    return undefined;
   }
   private manager(user: AuthenticatedUser) {
     if (!['OWNER', 'PRACTICE_MANAGER'].includes(user.role))
@@ -645,7 +738,7 @@ export class ControlledService {
     registrationId: string,
     type: string,
     targetId = user.id,
-    tx: any = prisma,
+    tx: Prisma.TransactionClient | typeof prisma = prisma,
   ) {
     const auth = await tx.controlledAuthorization.findFirst({
       where: {

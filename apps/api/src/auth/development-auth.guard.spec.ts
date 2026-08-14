@@ -17,7 +17,7 @@ function createContext(cookie?: string): ExecutionContext {
 }
 
 function createConfig(nodeEnv: 'development' | 'test' | 'production'): AppConfigService {
-  return { nodeEnv } as unknown as AppConfigService;
+  return { nodeEnv, developmentAuthMode: 'fixed' } as unknown as AppConfigService;
 }
 
 function createAuthService(): AuthService {
@@ -38,6 +38,16 @@ describe('DevelopmentAuthGuard', () => {
           createAuthService(),
         ),
     ).toThrow(/production/);
+  });
+
+  it('refuses to construct unless fixed development auth is explicit', () => {
+    const reflector = { getAllAndOverride: () => false } as unknown as Reflector;
+    const developmentUser = { getUser: vi.fn() } as unknown as DevelopmentUserService;
+    const config = { nodeEnv: 'test', developmentAuthMode: 'disabled' } as AppConfigService;
+
+    expect(
+      () => new DevelopmentAuthGuard(reflector, config, developmentUser, createAuthService()),
+    ).toThrow(/explicit fixed development auth/);
   });
 
   it('allows public routes without fetching the development user', async () => {
@@ -103,5 +113,45 @@ describe('DevelopmentAuthGuard', () => {
     expect(authService.verifySession).toHaveBeenCalledWith('dev:staff-test-receptionist');
     expect(developmentUser.getUser).not.toHaveBeenCalled();
     expect(context.switchToHttp().getRequest<{ user?: unknown }>().user).toEqual(user);
+  });
+
+  it('resolves the explicit fixed-owner session through the development fixture', async () => {
+    const reflector = { getAllAndOverride: () => false } as unknown as Reflector;
+    const user = { id: 'dev-user', role: 'OWNER' };
+    const developmentUser = {
+      getUser: vi.fn().mockResolvedValue(user),
+    } as unknown as DevelopmentUserService;
+    const authService = { verifySession: vi.fn() } as unknown as AuthService;
+    const guard = new DevelopmentAuthGuard(
+      reflector,
+      createConfig('test'),
+      developmentUser,
+      authService,
+    );
+    const context = createContext(`${SESSION_COOKIE_NAME}=dev%3Adev-user`);
+
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(developmentUser.getUser).toHaveBeenCalledOnce();
+    expect(authService.verifySession).not.toHaveBeenCalled();
+    expect(context.switchToHttp().getRequest<{ user?: unknown }>().user).toEqual(user);
+  });
+
+  it('rejects a stale cookie instead of falling back to the fixed owner', async () => {
+    const reflector = { getAllAndOverride: () => false } as unknown as Reflector;
+    const developmentUser = { getUser: vi.fn() } as unknown as DevelopmentUserService;
+    const authService = {
+      verifySession: vi.fn().mockRejectedValue(new Error('expired')),
+    } as unknown as AuthService;
+    const guard = new DevelopmentAuthGuard(
+      reflector,
+      createConfig('test'),
+      developmentUser,
+      authService,
+    );
+
+    await expect(
+      guard.canActivate(createContext(`${SESSION_COOKIE_NAME}=stale`)),
+    ).rejects.toThrow(/Invalid development session/);
+    expect(developmentUser.getUser).not.toHaveBeenCalled();
   });
 });

@@ -4,12 +4,17 @@ import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { PostExamReview } from '../../../components/post-exam-review';
+import { VisitJourneyStatus } from '../../../components/visit-journey-status';
+import { VisitRecordPanel } from '../../../components/visit-record-panel';
+import { ClinicalAttachmentsPanel } from '../../../components/clinical-attachments-panel';
+import { VisitResumeLocation } from '../../../components/visit-resume-location';
 import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
+import { authenticatedServerFetch } from '../../../lib/server-api';
 import { clientDisplayName, type VisitDetail } from '../../../lib/patient-types';
 
 async function getVisit(id: string): Promise<VisitDetail | null> {
-  const response = await fetch(new URL(`/visits/${id}`, env.API_URL), { cache: 'no-store' });
+  const response = await authenticatedServerFetch(new URL(`/visits/${id}`, env.API_URL));
   if (response.status === 404) {
     return null;
   }
@@ -69,6 +74,7 @@ export default async function VisitWorkspacePage({
   // and implies downstream work should be ordered before the exam is done.
   const showClinicalWork = Boolean(visit.examFindings?.completedAt);
   const showDischarge = Boolean(visit.examFindings?.completedAt);
+  const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
 
   return (
     <DashboardShell
@@ -78,6 +84,7 @@ export default async function VisitWorkspacePage({
       workspace
     >
       <div className="visit-workspace">
+        <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} />
         <VisitIntakeWorkspace
           visitId={visit.id}
           visitType={visit.visitType}
@@ -105,12 +112,16 @@ export default async function VisitWorkspacePage({
           headerOnly={Boolean(visit.examFindings?.completedAt)}
         />
 
+        <VisitJourneyStatus visit={visit} />
+
         {visit.state === 'VeterinarianExamInProgress' ? <ExamFindingsPanel visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
         {showClinicalWork ? <PostExamReview visit={visit} /> : null}
 
         {showClinicalWork ? <VisitWorkItemsPanel visit={visit} /> : null}
         {showDischarge ? <VisitDischargePanel visit={visit} /> : null}
+        {showClinicalWork ? <VisitRecordPanel visit={visit} /> : null}
+        <ClinicalAttachmentsPanel patientId={visit.patient.id} visitId={visit.id} attachments={visit.clinicalAttachments} finalized={visit.soapNotes.some((note) => note.status === 'Locked')} />
       </div>
     </DashboardShell>
   );

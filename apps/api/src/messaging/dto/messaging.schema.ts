@@ -11,7 +11,8 @@ const linkedRecordSchema = z.object({
   recordType: z.enum(['PATIENT', 'CLIENT', 'APPOINTMENT', 'VISIT', 'TASK', 'MEDICAL_RECORD', 'DOCUMENT']),
   recordId: z.string().min(1),
 });
-const uploadedAttachmentSchema = z.object({ fileName: z.string().min(1).max(255), mimeType: z.string().max(120), sizeBytes: z.number().int().nonnegative().max(10 * 1024 * 1024), storageKey: z.string().min(1).max(1000), href: z.string().url().max(2000) });
+const uploadedAttachmentSchema = z.object({ storageKey: z.string().min(1).max(1000) }).strict();
+export const uploadAttachmentSchema = z.object({ fileName: z.string().trim().min(1).max(255), mimeType: z.string().trim().min(1).max(120), contentBase64: z.string().min(1) });
 export const createMessageSchema = z.object({
   body: z.string().trim().max(10000).default(''),
   clientNonce: z.string().min(8).max(120),

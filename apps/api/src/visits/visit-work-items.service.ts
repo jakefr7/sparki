@@ -69,6 +69,16 @@ export class VisitWorkItemsService {
           title: input.title,
           assigneeId: input.assigneeId ?? null,
           assigneeRole: input.assigneeRole ?? null,
+          ...(input.plan
+            ? {
+                result: {
+                  plan: JSON.parse(JSON.stringify(input.plan)) as Prisma.InputJsonValue,
+                  clientDecision: { decision: 'Pending' },
+                  orderedById: actorId,
+                  orderedAt: new Date().toISOString(),
+                },
+              }
+            : {}),
         },
       });
       await tx.visitWorkItemChange.create({
@@ -103,7 +113,28 @@ export class VisitWorkItemsService {
         if (TERMINAL_VISIT_STATES.includes(item.visit.state) && isVisitBoundWork(item.type)) {
           throw new ConflictException('Clinical work on a closed visit cannot be changed.');
         }
-        assertMayUpdateWorkItem(item, actorId, actorRole, input.status);
+        assertMayUpdateWorkItem(
+          item,
+          actorId,
+          actorRole,
+          input.status,
+          Boolean(input.clientDecision),
+        );
+        const priorResult = isJsonObject(item.result) ? item.result : {};
+        const decision = isJsonObject(priorResult.clientDecision)
+          ? priorResult.clientDecision.decision
+          : undefined;
+        const structuredCarePlan = isJsonObject(priorResult.plan);
+        if (
+          structuredCarePlan &&
+          CLINICAL_ORDER_TYPES.includes(item.type) &&
+          ['InProgress', 'Completed'].includes(input.status) &&
+          decision !== 'Authorized'
+        ) {
+          throw new ConflictException(
+            'Only client-authorized care may be performed. Record the client decision first.',
+          );
+        }
         const reopening = item.status === 'Completed' && input.status !== 'Completed';
         if (reopening && !input.reason)
           throw new ConflictException('A reason is required to reopen completed work.');
@@ -117,14 +148,48 @@ export class VisitWorkItemsService {
             'Document how medication stock was reconciled before completing this item.',
           );
         }
+        const workflowMetadata: Prisma.JsonObject = {
+          ...priorResult,
+          ...(input.clientDecision
+            ? {
+                clientDecision: {
+                  ...input.clientDecision,
+                  actorId,
+                  attestedAt: new Date().toISOString(),
+                },
+              }
+            : {}),
+          ...(input.execution
+            ? {
+                execution: {
+                  ...input.execution,
+                  performerId: actorId,
+                  recordedAt: new Date().toISOString(),
+                },
+              }
+            : {}),
+        };
         const metadata = medicationReversal
           ? {
+              ...workflowMetadata,
               requiresInventoryReconciliation: true,
               action: 'Return medication to stock or document waste',
             }
           : pendingInventoryReconciliation && input.status === 'Completed'
-            ? { requiresInventoryReconciliation: false, reconciliationNote: input.reason }
-            : undefined;
+            ? {
+                ...workflowMetadata,
+                requiresInventoryReconciliation: false,
+                reconciliationNote: input.reason,
+              }
+            : item.type === 'Medication' && input.status === 'Completed' && !input.inventoryUsage
+              ? {
+                  ...workflowMetadata,
+                  requiresInventoryReconciliation: true,
+                  action: 'Inventory Reconciliation Required',
+                }
+              : Object.keys(workflowMetadata).length
+                ? workflowMetadata
+                : undefined;
         const changed = await tx.visitWorkItem.updateMany({
           where: { id: item.id, status: item.status },
           data: {
@@ -172,7 +237,7 @@ export class VisitWorkItemsService {
   }
 }
 
-function isJsonObject(value: Prisma.JsonValue | null): value is Prisma.JsonObject {
+function isJsonObject(value: Prisma.JsonValue | null | undefined): value is Prisma.JsonObject {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
@@ -195,12 +260,14 @@ function assertMayUpdateWorkItem(
   actorId: string,
   actorRole: UserRole,
   target: VisitWorkItemStatus,
+  recordingClientDecision = false,
 ) {
   if (actorRole === 'OWNER') return;
   const assigned = item.assigneeId === actorId || item.assigneeRole === actorRole;
   if (CLINICAL_ORDER_TYPES.includes(item.type)) {
     if (
       ['Declined', 'Deferred', 'Cancelled', 'Pending'].includes(target) &&
+      !recordingClientDecision &&
       actorRole !== 'VETERINARIAN'
     ) {
       throw new ForbiddenException(

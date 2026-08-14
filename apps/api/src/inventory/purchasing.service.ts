@@ -1,6 +1,3 @@
-// Prisma's exact optional generated inputs reject Zod's explicit undefined fields; all writes below
-// are runtime-validated and tenant-scoped before entering a transaction.
-// @ts-nocheck
 import {
   BadRequestException,
   ConflictException,
@@ -23,6 +20,12 @@ import { canInventory, requireInventory } from './inventory.permissions';
 
 const dec = (v: string | undefined | null) => (v == null ? null : new Prisma.Decimal(v));
 const normalize = (v: string) => v.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+type PurchaseOrderWithLines = Prisma.PurchaseOrderGetPayload<{ include: { lines: true } }>;
+type PresentableLine = Record<string, unknown> & {
+  orderedQuantity: Prisma.Decimal;
+  receivedQuantity: Prisma.Decimal;
+};
+type PresentableOrder = Record<string, unknown> & { lines?: PresentableLine[] };
 const redact = <T extends Record<string, unknown>>(row: T, allowed: boolean) =>
   allowed
     ? row
@@ -55,7 +58,19 @@ export class PurchasingService {
     try {
       const v = await prisma.inventoryVendor.create({
         data: {
-          ...input,
+          name: input.name,
+          ...(input.contactName !== undefined ? { contactName: input.contactName } : {}),
+          ...(input.email !== undefined ? { email: input.email } : {}),
+          ...(input.phone !== undefined ? { phone: input.phone } : {}),
+          ...(input.address !== undefined ? { address: input.address } : {}),
+          ...(input.website !== undefined ? { website: input.website } : {}),
+          ...(input.orderingWebsite !== undefined
+            ? { orderingWebsite: input.orderingWebsite }
+            : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          ...(input.defaultLeadTimeDays !== undefined
+            ? { defaultLeadTimeDays: input.defaultLeadTimeDays }
+            : {}),
           normalizedName: normalize(input.name),
           organizationId: user.organizationId,
           minimumOrder: dec(input.minimumOrder),
@@ -76,7 +91,19 @@ export class PurchasingService {
     const v = await prisma.inventoryVendor.update({
       where: { id },
       data: {
-        ...input,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.contactName !== undefined ? { contactName: input.contactName } : {}),
+        ...(input.email !== undefined ? { email: input.email } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone } : {}),
+        ...(input.address !== undefined ? { address: input.address } : {}),
+        ...(input.website !== undefined ? { website: input.website } : {}),
+        ...(input.orderingWebsite !== undefined
+          ? { orderingWebsite: input.orderingWebsite }
+          : {}),
+        ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        ...(input.defaultLeadTimeDays !== undefined
+          ? { defaultLeadTimeDays: input.defaultLeadTimeDays }
+          : {}),
         ...(input.name ? { normalizedName: normalize(input.name) } : {}),
         ...(input.minimumOrder !== undefined ? { minimumOrder: dec(input.minimumOrder) } : {}),
         ...(input.freeShippingThreshold !== undefined
@@ -122,7 +149,16 @@ export class PurchasingService {
         });
       const row = await tx.vendorItem.create({
         data: {
-          ...input,
+          itemId: input.itemId,
+          ...(input.clinicLocationId !== undefined
+            ? { clinicLocationId: input.clinicLocationId }
+            : {}),
+          ...(input.vendorSku !== undefined ? { vendorSku: input.vendorSku } : {}),
+          ...(input.vendorBarcode !== undefined ? { vendorBarcode: input.vendorBarcode } : {}),
+          ...(input.productUrl !== undefined ? { productUrl: input.productUrl } : {}),
+          purchaseUnit: input.purchaseUnit,
+          stockUnit: input.stockUnit,
+          isPreferred: input.isPreferred,
           organizationId: user.organizationId,
           vendorId,
           purchaseToStock: new Prisma.Decimal(input.purchaseToStock),
@@ -195,8 +231,8 @@ export class PurchasingService {
           clinicLocationId: user.locationId,
           vendorId: input.vendorId,
           number,
-          expectedDate: input.expectedDate,
-          notes: input.notes,
+          ...(input.expectedDate !== undefined ? { expectedDate: input.expectedDate } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
           createdById: user.id,
           updatedById: user.id,
           lines: {
@@ -207,7 +243,7 @@ export class PurchasingService {
                 throw new BadRequestException(`${item.name} needs an active unit conversion.`);
               return {
                 itemId: item.id,
-                vendorItemId: line.vendorItemId,
+                vendorItemId: line.vendorItemId ?? null,
                 itemNameSnapshot: item.name,
                 skuSnapshot: item.sku,
                 purchaseUnitSnapshot: c.purchaseUnit,
@@ -270,7 +306,7 @@ export class PurchasingService {
       const updated = await tx.purchaseOrder.update({
         where: { id },
         data: {
-          status: next as never,
+          status: next,
           updatedById: user.id,
           ...(input.action === 'SUBMIT'
             ? { submittedAt: now }
@@ -285,7 +321,7 @@ export class PurchasingService {
         data: {
           organizationId: user.organizationId,
           clinicLocationId: user.locationId,
-          type: event as never,
+          type: event,
           entityType: 'purchaseOrder',
           entityId: id,
           actorId: user.id,
@@ -329,12 +365,12 @@ export class PurchasingService {
           organizationId: user.organizationId,
           clinicLocationId: user.locationId,
           vendorId: input.vendorId,
-          purchaseOrderId: po?.id,
+          purchaseOrderId: po?.id ?? null,
           type: po ? 'PURCHASE_ORDER' : 'AD_HOC',
           idempotencyKey: input.idempotencyKey,
-          receivedAt: input.receivedAt,
-          reference: input.reference,
-          notes: input.notes,
+          ...(input.receivedAt !== undefined ? { receivedAt: input.receivedAt } : {}),
+          ...(input.reference !== undefined ? { reference: input.reference } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes } : {}),
           postedById: user.id,
         },
       });
@@ -386,7 +422,7 @@ export class PurchasingService {
           organizationId: user.organizationId,
           clinicLocationId: user.locationId,
           idempotencyKey: input.idempotencyKey,
-          reason: input.reason,
+          ...(input.reason !== undefined ? { reason: input.reason } : {}),
           status: 'POSTED',
           createdById: user.id,
           postedById: user.id,
@@ -425,7 +461,7 @@ export class PurchasingService {
     tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
     receiptId: string,
-    po: any,
+    po: PurchaseOrderWithLines | null,
     line: ReceiptInput['lines'][number],
   ) {
     const item = await tx.catalogItem.findFirst({
@@ -444,7 +480,8 @@ export class PurchasingService {
       throw new ConflictException(
         'Controlled inventory must be received through the controlled receiving workflow.',
       );
-    if (item.lotTracking && !line.lotNumber)
+    const lotNumber = line.lotNumber;
+    if (item.lotTracking && !lotNumber)
       throw new BadRequestException('Lot number is required.');
     if (item.expirationTracking && !line.expirationDate)
       throw new BadRequestException('Expiration date is required.');
@@ -461,21 +498,23 @@ export class PurchasingService {
       throw new BadRequestException('Receipt disposition quantities exceed quantity received.');
     const onHand = usable.plus(quarantined);
     let lotId: string | null = null;
-    if (item.lotTracking || line.lotNumber) {
+    if (lotNumber) {
       const lot = await tx.inventoryLot.upsert({
         where: {
           itemId_stockLocationId_lotNumber: {
             itemId: item.id,
             stockLocationId: loc.id,
-            lotNumber: line.lotNumber ?? null,
+            lotNumber,
           },
         },
         create: {
           organizationId: user.organizationId,
           itemId: item.id,
           stockLocationId: loc.id,
-          lotNumber: line.lotNumber,
-          expirationDate: line.expirationDate,
+          lotNumber,
+          ...(line.expirationDate !== undefined
+            ? { expirationDate: line.expirationDate }
+            : {}),
           receivedDate: new Date(),
           receivedUnitCost: dec(line.unitCost),
           status: quarantined.gt(0) ? 'QUARANTINED' : 'AVAILABLE',
@@ -483,7 +522,7 @@ export class PurchasingService {
         },
         update: {
           quantity: { increment: onHand },
-          status: quarantined.gt(0) ? 'QUARANTINED' : undefined,
+          ...(quarantined.gt(0) ? { status: 'QUARANTINED' as const } : {}),
         },
       });
       lotId = lot.id;
@@ -522,14 +561,14 @@ export class PurchasingService {
         previousBalance: previous,
         resultingBalance: result,
         reason: po ? 'PURCHASE_ORDER_RECEIPT' : 'AD_HOC_RECEIPT',
-        purchaseOrderId: po?.id,
+        purchaseOrderId: po?.id ?? null,
         otherReference: receiptId,
         userId: user.id,
       },
     });
     const pol =
       line.purchaseOrderLineId && po
-        ? po.lines.find((x: any) => x.id === line.purchaseOrderLineId)
+        ? po.lines.find((x) => x.id === line.purchaseOrderLineId)
         : null;
     if (po && !pol)
       throw new BadRequestException('Receipt line does not belong to this purchase order.');
@@ -543,7 +582,7 @@ export class PurchasingService {
     await tx.inventoryReceiptLine.create({
       data: {
         receiptId,
-        purchaseOrderLineId: pol?.id,
+        purchaseOrderLineId: pol?.id ?? null,
         itemId: item.id,
         stockLocationId: loc.id,
         lotId,
@@ -558,8 +597,10 @@ export class PurchasingService {
         rejectedQuantity: rejected,
         quarantinedQuantity: quarantined,
         unitCostSnapshot: dec(line.unitCost),
-        lotNumberSnapshot: line.lotNumber,
-        expirationDateSnapshot: line.expirationDate,
+        ...(line.lotNumber !== undefined ? { lotNumberSnapshot: line.lotNumber } : {}),
+        ...(line.expirationDate !== undefined
+          ? { expirationDateSnapshot: line.expirationDate }
+          : {}),
         transactionId: tr.id,
       },
     });
@@ -617,7 +658,7 @@ export class PurchasingService {
           itemId_stockLocationId_lotNumber: {
             itemId: item.id,
             stockLocationId: dst.id,
-            lotNumber: source.lot.lotNumber,
+            lotNumber: source.lot.lotNumber!,
           },
         },
         create: {
@@ -662,7 +703,7 @@ export class PurchasingService {
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
         itemId: item.id,
-        lotId: l.sourceLotId,
+        lotId: l.sourceLotId ?? null,
         stockLocationId: src.id,
         transactionGroupId: group,
         transactionType: 'TRANSFER_OUT',
@@ -697,7 +738,7 @@ export class PurchasingService {
         itemId: item.id,
         sourceStockLocationId: src.id,
         destinationStockLocationId: dst.id,
-        sourceLotId: l.sourceLotId,
+        sourceLotId: l.sourceLotId ?? null,
         destinationLotId,
         quantity: qty,
         unitSnapshot: item.conversions[0]?.stockUnit ?? 'unit',
@@ -714,16 +755,21 @@ export class PurchasingService {
     if (!v) throw new NotFoundException('Vendor not found');
     return v;
   }
-  private presentPO<T extends Record<string, any>>(p: T, costs: boolean) {
+  private presentPO<T extends PresentableOrder>(p: T, costs: boolean) {
     return {
       ...p,
-      lines: p.lines?.map((l: any) => ({
+      lines: p.lines?.map((l) => ({
         ...redact(l, costs),
         outstandingQuantity: new Prisma.Decimal(l.orderedQuantity).minus(l.receivedQuantity),
       })),
     };
   }
-  private event(user: AuthenticatedUser, type: any, entityType: string, entityId: string) {
+  private event(
+    user: AuthenticatedUser,
+    type: Prisma.InventoryEventCreateInput['type'],
+    entityType: string,
+    entityId: string,
+  ) {
     return prisma.inventoryEvent.create({
       data: {
         organizationId: user.organizationId,

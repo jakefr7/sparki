@@ -1,0 +1,11 @@
+# Known Gaps
+
+- The repository is classified **HIGH RISK**; see `BASELINE_SITREP.md` for verified evidence.
+- Phase 1 is `READY_FOR_FOUNDER_REVIEW`. Manual verification completed outside the latest review run and is recorded in [PHASE_1_CLOSEOUT.md](./PHASE_1_CLOSEOUT.md). The latest review's `NOT_RUN` objection is run-local orchestration bookkeeping because external evidence was not inherited; historical run artifacts are unchanged.
+- `KNOWN_CROSS_PHASE_PLAYWRIGHT_PRODUCT_TEST_DEBT`: the Playwright infrastructure is operational, but the current product end-to-end suite is not green. Phase 6 verification matched the exact approved baseline of 24 failed and 1 did not run, while the new Phase 6 journey passed for 6 total passes. No new, substituted, or materially changed failure appeared. The historical failures remain unchanged and unremediated.
+- Phase 2 closed the apparent missing SSR authentication-cookie forwarding and silent development `OWNER` fallback findings. Claude Review 1's low-severity development-fixture hygiene finding remains preserved in the Phase 2 review artifact and did not block its `PASS` result or founder approval.
+- Phase 3 is `COMPLETE / FOUNDER_APPROVED`; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md). Its optional direct Today-view lifecycle coverage note remains a non-blocking hardening opportunity. The preserved placeholder prior-review artifact is an orchestration observation only and is not a product defect.
+- Phase 4 is `COMPLETE / FOUNDER_APPROVED`; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md). Its two low-severity findings remain optional, non-blocking follow-ups only: add an explicit `organizationId` filter to the `ControlledService` stock-balance lookup, and optionally add a multi-component controlled-usage invalid-lot regression test.
+- Phase 5 is `COMPLETE / FOUNDER_APPROVED`; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md). Phase 6 — Clinic Pilot Core Care Completion is `READY_FOR_FOUNDER_REVIEW`; see [PHASE_6_CLOSEOUT.md](./PHASE_6_CLOSEOUT.md).
+- GitHub PR preparation is not implemented in the local-first bootstrap and is not required to execute local stages.
+- Claude CLI is installed locally but was not authenticated when this system was created.

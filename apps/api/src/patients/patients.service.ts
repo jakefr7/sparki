@@ -331,14 +331,15 @@ export class PatientsService {
    * Appointments remain separate from Visits (see core-domain-model.md
    * "Appointment vs Visit").
    */
-  async getWorkspaceSummary(id: string, organizationId: string) {
+  async getWorkspaceSummary(id: string, organizationId: string, locationId: string) {
     const patient = await this.findById(id, organizationId);
-    const [upcomingAppointments, activeVisit, recentVisits, patientAlerts, patientMedications] = await Promise.all([
+    const [upcomingAppointments, activeVisit, recentVisits, patientAlerts, patientMedications, patientAttachments] = await Promise.all([
       this.appointments.listUpcomingForPatient(patient.id, organizationId),
       prisma.visit.findFirst({
         where: {
           patientId: patient.id,
           organizationId,
+          locationId,
           state: { notIn: TERMINAL_VISIT_STATES },
         },
         include: {
@@ -356,7 +357,15 @@ export class PatientsService {
       // yet; VisitIntake.medicationsAllergies is the closest real data).
       prisma.visit.findMany({
         where: { patientId: patient.id, organizationId },
-        include: { primaryVeterinarian: true, intake: true },
+        include: {
+          primaryVeterinarian: true,
+          intake: true,
+          examFindings: true,
+          soapNotes: { orderBy: { version: 'desc' }, take: 1 },
+          workItems: { where: { status: { in: ['Completed', 'Declined', 'Deferred'] } }, orderBy: { updatedAt: 'asc' } },
+          discharge: true,
+          clinicalAttachments: { where: { locationId }, include: { uploadedBy: true, events: { include: { actor: true }, orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } },
+        },
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
@@ -367,6 +376,11 @@ export class PatientsService {
       prisma.patientMedication.findMany({
         where: { patientId: patient.id, organizationId },
         orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+      }),
+      prisma.clinicalAttachment.findMany({
+        where: { patientId: patient.id, visitId: null, organizationId, locationId },
+        include: { uploadedBy: true, events: { include: { actor: true }, orderBy: { createdAt: 'asc' } } },
+        orderBy: { createdAt: 'desc' },
       }),
     ]);
 
@@ -417,6 +431,21 @@ export class PatientsService {
         expectedDurationMinutes: appointment.expectedDurationMinutes,
         state: appointment.state,
       })),
+      patientAttachments: patientAttachments.map((attachment) => ({
+        id: attachment.id,
+        patientId: attachment.patientId,
+        visitId: attachment.visitId,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        label: attachment.label,
+        createdAt: attachment.createdAt,
+        removedAt: attachment.removedAt,
+        supersededById: attachment.supersededById,
+        uploadedBy: { displayName: attachment.uploadedBy.displayName, firstName: attachment.uploadedBy.firstName, lastName: attachment.uploadedBy.lastName },
+        href: attachment.removedAt ? null : `/clinical-attachments/${attachment.id}/content`,
+        auditEvents: attachment.events.map((event) => ({ action: event.action, reason: event.reason, createdAt: event.createdAt, actor: { displayName: event.actor.displayName, firstName: event.actor.firstName, lastName: event.actor.lastName } })),
+      })),
       recentVisits: recentVisits.map((visit) => ({
         id: visit.id,
         visitType: visit.visitType,
@@ -430,6 +459,29 @@ export class PatientsService {
               lastName: visit.primaryVeterinarian.lastName,
             }
           : null,
+        intake: visit.intake,
+        examFindings: visit.examFindings,
+        soapNote: visit.soapNotes[0] ?? null,
+        careItems: visit.workItems,
+        discharge: visit.discharge,
+        attachments: (visit.clinicalAttachments ?? []).map((attachment) => ({
+          id: attachment.id,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          label: attachment.label,
+          createdAt: attachment.createdAt,
+          removedAt: attachment.removedAt,
+          supersededById: attachment.supersededById,
+          uploadedBy: { displayName: attachment.uploadedBy.displayName, firstName: attachment.uploadedBy.firstName, lastName: attachment.uploadedBy.lastName },
+          href: attachment.removedAt ? null : `/clinical-attachments/${attachment.id}/content`,
+          auditEvents: attachment.events.map((event) => ({
+            action: event.action,
+            reason: event.reason,
+            createdAt: event.createdAt,
+            actor: { displayName: event.actor.displayName, firstName: event.actor.firstName, lastName: event.actor.lastName },
+          })),
+        })),
       })),
       sections: {
         currentVisit: activeVisit
@@ -495,7 +547,7 @@ export class PatientsService {
         workItems: unavailableSection('Work system is not yet implemented.'),
         communication: unavailableSection('Communication module is not yet implemented.'),
         financial: unavailableSection('Billing/financial module is not yet implemented.'),
-        attachments: unavailableSection('Attachments are not yet implemented.'),
+        attachments: { status: 'available' as const },
       },
     };
   }

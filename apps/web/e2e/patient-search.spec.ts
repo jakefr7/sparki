@@ -43,14 +43,14 @@ test.afterAll(async () => {
 });
 
 test('search input is focused on load (keyboard-first landing)', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/patients');
   await expect(page.getByRole('combobox', { name: 'Search' })).toBeFocused();
 });
 
 test('typing a patient name, navigating with arrow keys, and opening with Enter reaches the workspace', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/patients');
 
   const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially(PATIENT_NAME);
@@ -71,7 +71,7 @@ test('typing a patient name, navigating with arrow keys, and opening with Enter 
 });
 
 test('search result shows operational context and next actions', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/patients');
 
   const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially(PATIENT_NAME);
@@ -84,7 +84,7 @@ test('search result shows operational context and next actions', async ({ page }
 });
 
 test('tolerates a typo via fuzzy search', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/patients');
   const typo = makeTypo(PATIENT_NAME);
 
   const input = page.getByRole('combobox', { name: 'Search' });
@@ -96,7 +96,7 @@ test('tolerates a typo via fuzzy search', async ({ page }) => {
 });
 
 test('shows an explicit empty state when nothing matches', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/patients');
   const input = page.getByRole('combobox', { name: 'Search' });
   await input.pressSequentially('qzxjvkqzxjvknonexistent');
 
@@ -104,7 +104,7 @@ test('shows an explicit empty state when nothing matches', async ({ page }) => {
 });
 
 test('"/" refocuses search after focus moves away (keyboard-first shortcut)', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/patients');
   const input = page.getByRole('combobox', { name: 'Search' });
 
   await page.locator('.app-brand').click();
@@ -117,7 +117,7 @@ test('"/" refocuses search after focus moves away (keyboard-first shortcut)', as
 test('search results render within the action-acknowledgement performance budget', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('/patients');
   const input = page.getByRole('combobox', { name: 'Search' });
 
   const start = Date.now();

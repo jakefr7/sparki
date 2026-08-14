@@ -12,12 +12,8 @@ import { DevelopmentUserService } from './development-user.service';
  * route out (see health.controller.ts) rather than wiring the guard
  * per-controller, so new routes are secure unless explicitly marked otherwise.
  *
- * The guard itself is chosen by whether WorkOS is configured: production
- * always requires it (and DevelopmentAuthGuard refuses to construct there
- * regardless), while local/test environments get the real AuthGuard as soon
- * as WORKOS_API_KEY/WORKOS_CLIENT_ID/WORKOS_COOKIE_PASSWORD are set, falling
- * back to DevelopmentAuthGuard's fake OWNER user otherwise so controllers
- * stay buildable without live WorkOS credentials.
+ * DevelopmentAuthGuard is selected only through the explicit fixed-identity
+ * mode. Missing WorkOS configuration never grants an identity implicitly.
  */
 @Global()
 @Module({
@@ -33,9 +29,9 @@ import { DevelopmentUserService } from './development-user.service';
         authService: AuthService,
         developmentUser: DevelopmentUserService,
       ) =>
-        config.nodeEnv === 'production' || authService.isConfigured
-          ? new AuthGuard(reflector, authService, config)
-          : new DevelopmentAuthGuard(reflector, config, developmentUser, authService),
+        config.developmentAuthMode === 'fixed'
+          ? new DevelopmentAuthGuard(reflector, config, developmentUser, authService)
+          : new AuthGuard(reflector, authService, config),
       inject: [Reflector, AppConfigService, AuthService, DevelopmentUserService],
     },
   ],

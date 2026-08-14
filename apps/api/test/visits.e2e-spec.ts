@@ -1261,9 +1261,43 @@ describe('Visits (e2e)', () => {
         followUpPlan: 'Reception to call tomorrow morning.',
       });
       expect(discharge.status).toBe(200);
-      const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceStatus: 'Paid' });
+      const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceDisposition: 'NoBalanceReported' });
       expect(checkout.status).toBe(201);
-      expect(checkout.body).toMatchObject({ state: 'RecordCompletionPending', phase: 'RecordClosure' });
+      expect(checkout.body).toMatchObject({
+        state: 'RecordCompletionPending',
+        phase: 'RecordClosure',
+        currentOwnerId: DEV_USER_ID,
+        nextAction: 'Finalize medical record',
+      });
+
+      const visitAfterCheckout = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+      expect(visitAfterCheckout.status).toBe(200);
+      expect(visitAfterCheckout.body).toMatchObject({
+        state: 'RecordCompletionPending',
+        phase: 'RecordClosure',
+        currentOwnerId: DEV_USER_ID,
+        nextAction: 'Finalize medical record',
+      });
+      const dashboardAfterCheckout = await request(app.getHttpServer()).get('/operations/dashboard');
+      expect(dashboardAfterCheckout.status).toBe(200);
+      expect(dashboardAfterCheckout.body.activeVisits).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: visit.id,
+          state: 'RecordCompletionPending',
+          phase: 'RecordClosure',
+          currentOwner: expect.objectContaining({ id: DEV_USER_ID }),
+          nextAction: 'Finalize medical record',
+        }),
+      ]));
+      const patientAfterCheckout = await request(app.getHttpServer()).get(`/patients/${patientId}/workspace`);
+      expect(patientAfterCheckout.status).toBe(200);
+      expect(patientAfterCheckout.body.sections.currentVisit).toMatchObject({
+        status: 'available',
+        visit: { id: visit.id, state: 'RecordCompletionPending' },
+      });
+      expect(patientAfterCheckout.body.recentVisits).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: visit.id, attachments: [] }),
+      ]));
 
       const saved = await request(app.getHttpServer()).put(`/visits/${visit.id}/record/draft`).send({
         version: draft.version,
@@ -1277,6 +1311,26 @@ describe('Visits (e2e)', () => {
       expect(finalized.status).toBe(201);
       const closedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
       expect(closedVisit).toMatchObject({ state: 'Archived', phase: 'Closed', workflowStepId: null });
+
+      const visitAfterClosure = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+      expect(visitAfterClosure.status).toBe(200);
+      expect(visitAfterClosure.body).toMatchObject({
+        state: 'Archived',
+        phase: 'Closed',
+        workflowStepId: null,
+        nextAction: null,
+      });
+      const dashboardAfterClosure = await request(app.getHttpServer()).get('/operations/dashboard');
+      expect(dashboardAfterClosure.status).toBe(200);
+      expect(dashboardAfterClosure.body.activeVisits).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: visit.id }),
+      ]));
+      const patientAfterClosure = await request(app.getHttpServer()).get(`/patients/${patientId}/workspace`);
+      expect(patientAfterClosure.status).toBe(200);
+      expect(patientAfterClosure.body.sections.currentVisit).toMatchObject({ status: 'unavailable' });
+      expect(patientAfterClosure.body.recentVisits).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: visit.id, state: 'Archived' }),
+      ]));
 
       const original = await prisma.soapNote.findUniqueOrThrow({ where: { id: finalized.body.id } });
       const amendment = await request(app.getHttpServer()).post(`/visits/${visit.id}/record/amend`).send({

@@ -14,6 +14,7 @@ import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
 import { MessageStaffButton } from '../../../components/message-staff-button';
 import { env } from '../../../lib/env';
+import { authenticatedServerFetch } from '../../../lib/server-api';
 import { appointmentStatusLabel, formatAge, visitStateLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
@@ -24,9 +25,9 @@ import {
 } from '../../../lib/patient-types';
 
 async function getWorkspace(id: string): Promise<PatientWorkspace | null> {
-  const response = await fetch(new URL(`/patients/${id}/workspace`, env.API_URL), {
-    cache: 'no-store',
-  });
+  const response = await authenticatedServerFetch(
+    new URL(`/patients/${id}/workspace`, env.API_URL),
+  );
   if (response.status === 404) {
     return null;
   }
@@ -91,7 +92,7 @@ export default async function PatientWorkspacePage({
     notFound();
   }
 
-  const { patient, clients, upcomingAppointments, recentVisits, sections } = workspace;
+  const { patient, clients, upcomingAppointments, patientAttachments, recentVisits, sections } = workspace;
   const primaryClient = clients.find((client) => client.isPrimary);
   const secondaryClients = clients.filter((client) => !client.isPrimary);
   const currentVisit = sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
@@ -432,68 +433,18 @@ export default async function PatientWorkspacePage({
           },
           {
             id: 'records',
-            label: 'Records',
+            label: 'Medical History',
             panel: (
               <div className="patient-tab-grid patient-tab-grid--records">
                 <section className="profile-card profile-card--wide" aria-labelledby="medical-record-summary-heading">
                   <div className="profile-card__header">
-                    <p className="eyebrow">Medical notes</p>
-                    <h2 id="medical-record-summary-heading">Medical Record Summary</h2>
+                    <p className="eyebrow">Chronology</p>
+                    <h2 id="medical-record-summary-heading">Medical History</h2>
                   </div>
-                  <div className="profile-records-empty">
-                    <strong>No medical records have been added for this patient yet.</strong>
-                    <p>
-                      Ready for intake details, exam findings, and treatment plans as clinical notes are recorded.
-                    </p>
-                  </div>
-                </section>
-                <section className="profile-records-readiness" aria-label="Record sections">
-                  {[
-                    ['Intake details', 'Ready to show notes captured during a visit.'],
-                    ['Exam findings', 'Ready for exam notes.'],
-                    ['Treatment plan', 'Ready for care plans and follow-up notes.'],
-                  ].map(([title, copy]) => (
-                    <div key={title}>
-                      <span>{title}</span>
-                      <p>{copy}</p>
-                    </div>
-                  ))}
+                  {patientAttachments.length ? <div><strong>Patient attachments</strong><ul>{patientAttachments.map((attachment) => <li key={attachment.id}>{attachment.href ? <a href={`/api${attachment.href}`}>{attachment.label || attachment.fileName}</a> : <span>{attachment.label || attachment.fileName}</span>} {attachment.removedAt ? <small>· Removed from active clinical history</small> : <small>· authenticated clinical file</small>}{attachment.auditEvents?.filter((event) => event.action === 'REMOVED_FROM_FINALIZED_HISTORY' || event.action === 'SUPERSEDED').map((event) => <small key={`${event.action}-${event.createdAt}`} className="clinical-attachment-audit"> · {event.action === 'SUPERSEDED' ? 'Corrected/replaced' : 'Audited removal'} by {event.actor?.displayName || [event.actor?.firstName, event.actor?.lastName].filter(Boolean).join(' ') || 'authorized user'} on {new Date(event.createdAt).toLocaleString()}: {event.reason}</small>)}</li>)}</ul></div> : null}
+                  {recentVisits.length ? <ol className="profile-visit-history">{recentVisits.map((visit) => <li key={visit.id}><article className="profile-visit-history__row"><span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span><div className="profile-visit-history__reason"><h3><Link href={`/visits/${visit.id}`}>{visit.reason}</Link></h3><p>{visit.intake?.chiefComplaint || visit.intake?.historyNotes}</p>{visit.examFindings?.assessment ? <p><strong>Assessment:</strong> {visit.examFindings.assessment}</p> : null}{visit.careItems?.length ? <ul>{visit.careItems.map((item) => <li key={item.id}>{item.type}: {item.title} — {item.status}</li>)}</ul> : null}{visit.discharge ? <p><strong>Discharge:</strong> {visit.discharge.instructions}</p> : null}{visit.soapNote ? <p><strong>SOAP v{visit.soapNote.version}:</strong> {visit.soapNote.status}{visit.soapNote.amendmentReason ? ` · Amended: ${visit.soapNote.amendmentReason}` : ''}</p> : null}{visit.attachments?.length ? <div><strong>Attachments</strong><ul>{visit.attachments.map((attachment) => <li key={attachment.id}>{attachment.href ? <a href={`/api${attachment.href}`}>{attachment.label || attachment.fileName}</a> : <span>{attachment.label || attachment.fileName}</span>} {attachment.removedAt ? <small>· Removed from active clinical history</small> : <small>· authenticated clinical file</small>}{attachment.auditEvents?.filter((event) => event.action === 'REMOVED_FROM_FINALIZED_HISTORY' || event.action === 'SUPERSEDED').map((event) => <small key={`${event.action}-${event.createdAt}`} className="clinical-attachment-audit"> · {event.action === 'SUPERSEDED' ? 'Corrected/replaced' : 'Audited removal'} by {event.actor?.displayName || [event.actor?.firstName, event.actor?.lastName].filter(Boolean).join(' ') || 'authorized user'} on {new Date(event.createdAt).toLocaleString()}: {event.reason}</small>)}</li>)}</ul></div> : null}<small>{doctorLabel(visit)} · provenance: visit documentation</small></div></article></li>)}</ol> : <p>No clinical history has been recorded.</p>}
                 </section>
               </div>
-            ),
-          },
-          {
-            id: 'visits',
-            label: 'Visits',
-            panel: (
-              <section className="profile-card profile-card--wide" aria-labelledby="visit-history-heading">
-                <div className="profile-card__header">
-                  <p className="eyebrow">Timeline</p>
-                  <h2 id="visit-history-heading">Visit History</h2>
-                </div>
-                {recentVisits.length > 0 ? (
-                  <ul className="profile-visit-history">
-                    {recentVisits.map((visit) => (
-                      <li key={visit.id}>
-                        <Link href={`/visits/${visit.id}`} className="profile-visit-history__row">
-                          <span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span>
-                          <span className="profile-visit-history__reason">
-                            <strong>{visit.reason}</strong>
-                            <small>{visit.visitType}</small>
-                          </span>
-                          <span className="status-badge status-badge--scheduled">{visitStateLabel(visit.state)}</span>
-                          <span className="profile-visit-history__doctor">{doctorLabel(visit)}</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="profile-empty-action">
-                    <p className="empty-state">No visits yet.</p>
-                    <StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start Walk-In" />
-                  </div>
-                )}
-              </section>
             ),
           },
           {

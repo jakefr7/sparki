@@ -15,7 +15,7 @@ relevant file in [`agents/`](./agents/README.md) before making changes.
 ## Prerequisites
 
 - Node.js 20+ (see `.nvmrc`)
-- pnpm 8.7+ (`corepack enable` will pick up the version pinned in `package.json`)
+- pnpm 10.34.3 (`corepack enable` will pick up the version pinned in `package.json`)
 - Docker (for local Postgres)
 
 ## Setup
@@ -23,24 +23,33 @@ relevant file in [`agents/`](./agents/README.md) before making changes.
 ```bash
 cp .env.example .env
 pnpm install
-docker compose up -d          # starts Postgres on localhost:55432
-pnpm dev                       # runs apps/api and apps/web together
+pnpm sparki:dev               # checks and starts Postgres, migrations, API, and web
 ```
 
-- API: http://localhost:4000 (health check at `/health/live`, `/health/ready`)
-- Web: http://localhost:3001
+- API: `API_URL` / `API_PORT` (default port 4000; health checks at `/health/live`, `/health/ready`)
+- Web: `WEB_PORT` (default port 3001)
 
-### Local Web Port Safety
+Before startup, `pnpm sparki:dev` requires either complete WorkOS configuration or the explicit
+local-only setting `SPARKI_DEVELOPMENT_AUTH=fixed`. It never enables fixed auth automatically, and
+the application's existing production safeguard continues to reject fixed auth in production.
+Use `pnpm sparki:doctor` for the same configuration, database, migration, Prisma, API URL, and port
+diagnostics without starting PostgreSQL or either application.
 
-Sparki web runs on http://localhost:3001 by default. Port 3000 is reserved for
-other local stacks, especially CRO auth/consent login, and Sparki's dev script
-will refuse to start on port 3000 unless you explicitly opt in.
+### Local startup safety
 
-To intentionally run Sparki on port 3000, use the override only when you are
-sure nothing else depends on that port:
+The single-stack command uses configured `API_PORT` and `WEB_PORT` values, defaulting to 4000 and
+3001 respectively, and requires `API_URL` to match the selected API port. It identifies occupied
+ports as Sparki or unrelated processes, but never kills either or silently selects another port. It
+starts the repository's Compose PostgreSQL service only when the expected local database is
+unreachable, waits for readiness, verifies applied migration checksums, and uses non-interactive
+`prisma migrate deploy` only for ordinary pending migrations. Historical drift or a failed migration
+stops startup; the command never runs `prisma migrate reset` or discards data.
+
+For lower-level, manually managed watch mode, `pnpm dev` remains available. Its web package keeps
+the opt-in port guard:
 
 ```bash
-WEB_PORT=3000 SPARKI_ALLOW_PORT_3000=true pnpm --filter @sparki/web dev
+SPARKI_ALLOW_PORT_3000=true pnpm dev
 ```
 
 ### Database
@@ -87,27 +96,42 @@ Run from the repo root (Turborepo fans these out to every app/package):
 
 | Command                        | What it does                                                                  |
 | ------------------------------ | ----------------------------------------------------------------------------- |
-| `pnpm dev`                     | Run api + web in watch mode                                                   |
+| `pnpm sparki:dev`              | Safely preflight and run the complete local stack on its configured ports     |
+| `pnpm sparki:doctor`           | Diagnose local configuration and dependencies without starting applications   |
+| `pnpm dev`                     | Lower-level api + web watch mode                                              |
 | `pnpm build`                   | Build every app/package                                                       |
 | `pnpm lint`                    | ESLint across the workspace                                                   |
 | `pnpm typecheck`               | `tsc --noEmit` across the workspace                                           |
-| `pnpm test`                    | Vitest (unit + e2e) across the workspace                                      |
+| `pnpm test`                    | Database-free Vitest unit tests across the workspace                          |
+| `pnpm test:integration`        | API integration tests in a disposable, per-run PostgreSQL database            |
+| `pnpm test:e2e`                | Playwright with disposable data and managed API/web servers                   |
 | `pnpm format` / `format:check` | Prettier write/check (code only — `docs/` is excluded, see `.prettierignore`) |
 
 Scope any of these to one package with `pnpm --filter @sparki/api <script>`.
 
 ## Testing
 
-`apps/api` has both unit tests (`*.spec.ts`) and e2e tests (`test/*.e2e-spec.ts`, run through a
-real Nest application instance via Supertest). The e2e suite hits real Postgres tables (patients,
-clients, etc.), so **migrations must be applied** (`pnpm --filter @sparki/db run migrate`) and
-**Postgres must be running** (`docker compose up -d`) before `pnpm test`.
+`apps/api` has database-free unit tests (`src/**/*.spec.ts`) and integration tests
+(`test/*.e2e-spec.ts`, run through a real Nest application via Supertest). `pnpm test` runs only
+the unit tests. `pnpm test:integration` requires PostgreSQL with database-creation privileges and
+creates a uniquely named `sparki_test_*` database, enables `pg_trgm`, applies the unchanged
+migration history, runs files serially, and drops only that database afterward. Set
+`TEST_DATABASE_URL` to a local administrative database (or a CI PostgreSQL service database); the
+runner refuses non-loopback hosts outside CI and refuses test-owned URLs as its administrative
+target. PostgreSQL must make `pg_trgm` available. The runner never migrates or cleans the configured
+development database.
 
 `apps/web/e2e/*.spec.ts` are Playwright browser tests covering the Patient Search workflow
 end-to-end (real API, real Postgres, real browser — no mocking). Run with `pnpm test:e2e`; the
-Playwright config boots `apps/api` and `apps/web` in dev mode automatically
-(`apps/web/playwright.config.ts`), so no separate `pnpm dev` is needed first. First run only:
+Playwright config boots `apps/api` and `apps/web` on `127.0.0.1:4000` and
+`127.0.0.1:3001`, does not reuse processes already occupying those ports, and runs one worker
+against its disposable schema. A port conflict therefore fails clearly instead of attaching to
+an unrelated server. No separate `pnpm dev` is needed first. First run only:
 `pnpm --filter @sparki/web exec playwright install --with-deps chromium`.
+
+For deliberately pre-started servers, use `PLAYWRIGHT_SKIP_WEB_SERVER=1` only with
+`pnpm --filter @sparki/web run test:e2e:raw` and supply the same isolated `DATABASE_URL`,
+`API_URL`, and `WEB_PORT` to both servers. This advanced path does not provision or clean data.
 
 ## Authentication
 
@@ -158,4 +182,5 @@ needs it (`dev`, `start`, `migrate`, `migrate:deploy`, `generate`, `studio`) is 
 sufficient — no exporting env vars by hand. In CI, `.env` doesn't exist at all; `dotenv-cli`
 silently no-ops when the file is missing and the job's real environment variables (set in
 `ci.yml`) pass through untouched.
+
 # sparki

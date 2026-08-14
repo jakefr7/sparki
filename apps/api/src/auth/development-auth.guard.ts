@@ -1,4 +1,4 @@
-import { Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
+import { Injectable, UnauthorizedException, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AppConfigService } from '../config/app-config.service';
@@ -25,8 +25,8 @@ export class DevelopmentAuthGuard implements CanActivate {
     private readonly developmentUser: DevelopmentUserService,
     private readonly authService: AuthService,
   ) {
-    if (config.nodeEnv === 'production') {
-      throw new Error('DevelopmentAuthGuard must never be used when NODE_ENV=production');
+    if (config.nodeEnv === 'production' || config.developmentAuthMode !== 'fixed') {
+      throw new Error('DevelopmentAuthGuard requires explicit fixed development auth outside production');
     }
   }
 
@@ -42,12 +42,18 @@ export class DevelopmentAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request & { user?: AuthenticatedUser }>();
     const sealedSession = readSessionCookie(request);
     if (sealedSession) {
+      if (sealedSession === 'dev:dev-user') {
+        request.user = await this.developmentUser.getUser();
+        return true;
+      }
       try {
         const { user } = await this.authService.verifySession(sealedSession);
         request.user = user;
         return true;
       } catch {
-        // Ignore stale local cookies and fall back to the fixed development user.
+        // Fixed identity mode is an explicit local/test fixture. A stale
+        // session cannot inherit that fixture's elevated identity.
+        throw new UnauthorizedException('Invalid development session');
       }
     }
 

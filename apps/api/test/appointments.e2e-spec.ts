@@ -20,6 +20,7 @@ describe('Appointments (e2e)', () => {
   let wellnessAppointmentTypeId: string;
   const availabilityBlockIds: string[] = [];
   const addedProviderAssignmentIds: string[] = [];
+  const createdAppointmentTypeIds: string[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -34,6 +35,40 @@ describe('Appointments (e2e)', () => {
     // providers and schedule blocks. Give this suite deterministic, isolated
     // availability instead of depending on whichever local demo schedule is
     // present in the shared development database.
+    const appointmentTypeFixtures = [
+      ['WellnessPreventiveCare', 'Wellness / Preventive Care', 30],
+      ['SickVisit', 'Sick Visit', 30],
+      ['Recheck', 'Follow-Up', 30],
+      ['TechnicianAppointment', 'Technician Appointment', 30],
+      ['Vaccination', 'Vaccination', 30],
+      ['SurgeryProcedure', 'Surgery Consultation', 60],
+      ['DropOff', 'Drop-Off', 30],
+      ['EmergencyUrgent', 'Urgent Visit', 30],
+      ['Telemedicine', 'Telemedicine', 30],
+      ['Euthanasia', 'Euthanasia', 60],
+      ['BoardingNonMedical', 'Boarding / Non-medical', 30],
+    ] as const;
+    for (const [appointmentType, name, defaultDurationMinutes] of appointmentTypeFixtures) {
+      const existing = await prisma.appointmentTypeSetting.findFirst({
+        where: { locationId: DEV_LOCATION_ID, appointmentType },
+        select: { id: true },
+      });
+      if (!existing) {
+        const created = await prisma.appointmentTypeSetting.create({
+          data: {
+            organizationId: DEV_ORGANIZATION_ID,
+            locationId: DEV_LOCATION_ID,
+            appointmentType,
+            name,
+            defaultDurationMinutes,
+            color: appointmentType === 'EmergencyUrgent' ? '#DC2626' : '#2563EB',
+            sortOrder: createdAppointmentTypeIds.length * 10 + 10,
+          },
+          select: { id: true },
+        });
+        createdAppointmentTypeIds.push(created.id);
+      }
+    }
     const appointmentTypes = await prisma.appointmentTypeSetting.findMany({
       where: {
         organizationId: DEV_ORGANIZATION_ID,
@@ -140,6 +175,9 @@ describe('Appointments (e2e)', () => {
         providerId: DEV_USER_ID,
         appointmentTypeId: { in: addedProviderAssignmentIds },
       },
+    });
+    await prisma.appointmentTypeSetting.deleteMany({
+      where: { id: { in: createdAppointmentTypeIds } },
     });
     await prisma.patientClient.deleteMany({ where: { patientId } });
     await prisma.patient.deleteMany({ where: { id: patientId } });
@@ -530,9 +568,30 @@ describe('Appointments (e2e)', () => {
   });
 
   describe('records-prep and confirmation status', () => {
+    let recordsStatusPatientId: string;
+
+    beforeAll(async () => {
+      const patient = await prisma.patient.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Records Status Patient',
+          species: 'Canine',
+          clients: { create: [{ clientId: primaryClientId, isPrimary: true }] },
+        },
+        select: { id: true },
+      });
+      recordsStatusPatientId = patient.id;
+    });
+
+    afterAll(async () => {
+      await prisma.appointment.deleteMany({ where: { patientId: recordsStatusPatientId } });
+      await prisma.patientClient.deleteMany({ where: { patientId: recordsStatusPatientId } });
+      await prisma.patient.delete({ where: { id: recordsStatusPatientId } });
+    });
+
     it('a newly created appointment defaults to NotStarted records prep and NotSent confirmation', async () => {
       const response = await request(app.getHttpServer()).post('/appointments').send({
-        patientId,
+        patientId: recordsStatusPatientId,
         appointmentType: 'WellnessPreventiveCare',
         appointmentTypeId: wellnessAppointmentTypeId,
         visitReason: 'Records prep default check',
@@ -570,7 +629,7 @@ describe('Appointments (e2e)', () => {
     describe('PATCH /appointments/:id/records-prep-status', () => {
       it('saves and returns the updated records-prep status', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Records prep update check',
           startTime: '2027-05-02T15:00:00.000Z',
@@ -589,7 +648,7 @@ describe('Appointments (e2e)', () => {
 
       it('rejects an invalid records-prep status with 400', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Invalid records prep check',
           startTime: '2027-05-02T16:00:00.000Z',
@@ -606,7 +665,7 @@ describe('Appointments (e2e)', () => {
     describe('PATCH /appointments/:id/confirmation-status', () => {
       it('saves and returns the updated confirmation status', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Confirmation status update check',
           startTime: '2027-05-03T15:00:00.000Z',
@@ -625,7 +684,7 @@ describe('Appointments (e2e)', () => {
 
       it('rejects an invalid confirmation status with 400', async () => {
         const created = await request(app.getHttpServer()).post('/appointments').send({
-          patientId,
+          patientId: recordsStatusPatientId,
           appointmentType: 'WellnessPreventiveCare',
           visitReason: 'Invalid confirmation status check',
           startTime: '2027-05-03T16:00:00.000Z',

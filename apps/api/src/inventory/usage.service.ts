@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment, @typescript-eslint/no-explicit-any */
-// @ts-nocheck
 import {
   BadRequestException,
   ConflictException,
@@ -7,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, prisma } from '@sparki/db';
+import type { InventoryReservationStatus, InventoryUsageEventStatus } from '@sparki/db';
 import { createHash } from 'node:crypto';
 import type { AuthenticatedUser } from '../auth/types';
 import type {
@@ -21,7 +20,23 @@ import { requireInventory } from './inventory.permissions';
 import { ControlledService } from './controlled.service';
 
 const D = (value: unknown) => new Prisma.Decimal(String(value ?? 0));
-const ACTIVE_RESERVATIONS = ['ACTIVE', 'PARTIALLY_CONSUMED'];
+const ACTIVE_RESERVATIONS: InventoryReservationStatus[] = ['ACTIVE', 'PARTIALLY_CONSUMED'];
+type UsageMapping = Prisma.InventoryUsageMappingGetPayload<{
+  include: { components: { orderBy: { sequence: 'asc' } } };
+}>;
+type UsageComponent = UsageMapping['components'][number];
+type UsageConfirmation = UsagePostInput['lines'][number];
+type CatalogItemWithConversions = Prisma.CatalogItemGetPayload<{
+  include: { conversions: true };
+}>;
+type StockBalanceWithLot = Prisma.StockBalanceGetPayload<{ include: { lot: true } }>;
+type ControlledContainerWithDetails = Prisma.ControlledContainerGetPayload<{
+  include: { profile: { include: { item: true } } };
+}> & { lot: Prisma.InventoryLotGetPayload<object> | null };
+type ControlledLedger = Awaited<ReturnType<ControlledService['postEvent']>>;
+
+const jsonInput = (value: Prisma.JsonValue): Prisma.InputJsonValue | Prisma.JsonNullValueInput =>
+  value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
 
 @Injectable()
 export class UsageService {
@@ -69,7 +84,7 @@ export class UsageService {
           clinicLocationId,
           sourceType: input.sourceType,
           sourceReference: input.sourceReference,
-          sourceCatalogItemId: input.sourceCatalogItemId,
+          sourceCatalogItemId: input.sourceCatalogItemId ?? null,
           version: (latest?.version ?? 0) + 1,
           isActive: input.activate,
           effectiveFrom: input.effectiveFrom ?? new Date(),
@@ -78,10 +93,19 @@ export class UsageService {
           lotSelectionPolicy: input.lotSelectionPolicy,
           createdById: user.id,
           updatedById: user.id,
-          notes: input.notes,
+          notes: input.notes ?? null,
           components: {
             create: input.components.map((component) => ({
               ...component,
+              weightUnit: component.weightUnit ?? null,
+              formulaConfiguration:
+                component.formulaConfiguration === null ||
+                component.formulaConfiguration === undefined
+                  ? Prisma.JsonNull
+                  : (component.formulaConfiguration as Prisma.InputJsonObject),
+              preferredStockLocationId: component.preferredStockLocationId ?? null,
+              substitutionGroup: component.substitutionGroup ?? null,
+              notes: component.notes ?? null,
               fixedQuantity: component.fixedQuantity ? D(component.fixedQuantity) : null,
               doseMultiplier: component.doseMultiplier ? D(component.doseMultiplier) : null,
               weightMultiplier: component.weightMultiplier ? D(component.weightMultiplier) : null,
@@ -121,6 +145,7 @@ export class UsageService {
         doseMultiplier: component.doseMultiplier?.toString(),
         weightMultiplier: component.weightMultiplier?.toString(),
         wasteAllowance: component.wasteAllowance.toString(),
+        formulaConfiguration: component.formulaConfiguration as Record<string, unknown> | null,
       })),
     });
   }
@@ -200,19 +225,19 @@ export class UsageService {
           organizationId: user.organizationId,
           clinicLocationId: user.locationId,
           itemId: input.itemId,
-          lotId: input.lotId,
-          controlledContainerId: input.controlledContainerId,
+          lotId: input.lotId ?? null,
+          controlledContainerId: input.controlledContainerId ?? null,
           stockLocationId: input.stockLocationId,
           sourceEventType: input.sourceEventType,
           sourceEventId: input.sourceEventId,
-          patientId: input.patientId,
-          visitId: input.visitId,
-          appointmentId: input.appointmentId,
-          invoiceId: input.invoiceId,
+          patientId: input.patientId ?? null,
+          visitId: input.visitId ?? null,
+          appointmentId: input.appointmentId ?? null,
+          invoiceId: input.invoiceId ?? null,
           quantity: reserved,
           baseUnitSnapshot: input.baseUnit,
           reservedById: user.id,
-          expiresAt: input.expiresAt,
+          expiresAt: input.expiresAt ?? null,
           idempotencyKey: input.idempotencyKey,
         },
       });
@@ -257,7 +282,7 @@ export class UsageService {
       where: {
         organizationId: user.organizationId,
         clinicLocationId: user.locationId,
-        ...(status ? { status: status as never } : {}),
+        ...(status ? { status: status as InventoryUsageEventStatus } : {}),
       },
       include: { lines: true },
       orderBy: { occurredAt: 'desc' },
@@ -283,8 +308,8 @@ export class UsageService {
       : await prisma.inventoryUsageMapping.findFirst({
           where: {
             organizationId: user.organizationId,
-            sourceType: input.sourceType,
-            sourceReference: input.sourceReference,
+            ...(input.sourceType ? { sourceType: input.sourceType } : {}),
+            ...(input.sourceReference ? { sourceReference: input.sourceReference } : {}),
             isActive: true,
             effectiveFrom: { lte: input.occurredAt },
             OR: [{ clinicLocationId: user.locationId }, { clinicLocationId: null }],
@@ -387,7 +412,19 @@ export class UsageService {
     if (!event) throw new NotFoundException('Review event not found');
     await prisma.inventoryUsageEvent.delete({ where: { id } });
     return this.postUsage(user, {
-      ...event,
+      eventType: event.eventType,
+      sourceRecordType: event.sourceRecordType,
+      sourceRecordId: event.sourceRecordId,
+      sourceEventVersion: event.sourceEventVersion,
+      ...(event.mappingId ? { mappingId: event.mappingId } : {}),
+      patientId: event.patientId,
+      clientId: event.clientId,
+      visitId: event.visitId,
+      appointmentId: event.appointmentId,
+      invoiceId: event.invoiceId,
+      invoiceLineId: event.invoiceLineId,
+      occurredAt: event.occurredAt,
+      notes: event.notes,
       idempotencyKey: input.idempotencyKey,
       lines: input.lines,
     });
@@ -431,7 +468,7 @@ export class UsageService {
           clientId: original.clientId,
           visitId: original.visitId,
           invoiceId: original.invoiceId,
-          mappingSnapshot: original.mappingSnapshot,
+          mappingSnapshot: jsonInput(original.mappingSnapshot),
           status: 'POSTED',
           occurredAt: input.occurredAt,
           postedAt: new Date(),
@@ -488,7 +525,7 @@ export class UsageService {
         await tx.inventoryUsageEventLine.create({
           data: {
             usageEventId: reversal.id,
-            componentSnapshot: line.componentSnapshot,
+            componentSnapshot: jsonInput(line.componentSnapshot),
             itemId: line.itemId,
             lotId: line.lotId,
             stockLocationId: line.stockLocationId,
@@ -633,7 +670,7 @@ export class UsageService {
   private async postNonControlled(
     user: AuthenticatedUser,
     input: UsagePostInput,
-    mapping: any,
+    mapping: UsageMapping,
     replaceEventId?: string,
   ) {
     return this.serial(async (tx) => {
@@ -646,18 +683,18 @@ export class UsageService {
           sourceRecordType: input.sourceRecordType,
           sourceRecordId: input.sourceRecordId,
           sourceEventVersion: input.sourceEventVersion,
-          patientId: input.patientId,
-          clientId: input.clientId,
-          visitId: input.visitId,
-          appointmentId: input.appointmentId,
-          invoiceId: input.invoiceId,
-          invoiceLineId: input.invoiceLineId,
+          patientId: input.patientId ?? null,
+          clientId: input.clientId ?? null,
+          visitId: input.visitId ?? null,
+          appointmentId: input.appointmentId ?? null,
+          invoiceId: input.invoiceId ?? null,
+          invoiceLineId: input.invoiceLineId ?? null,
           mappingId: mapping.id,
           mappingVersion: mapping.version,
           mappingSnapshot: this.mappingSnapshot(mapping),
           status: 'PENDING',
           occurredAt: input.occurredAt,
-          notes: input.notes,
+          notes: input.notes ?? null,
           idempotencyKey: input.idempotencyKey,
         },
       });
@@ -725,7 +762,7 @@ export class UsageService {
               organizationId: user.organizationId,
               clinicLocationId: user.locationId,
               itemId,
-              lotId: allocation.lot?.id,
+              lotId: allocation.lot?.id ?? null,
               stockLocationId: balance.stockLocationId,
               transactionGroupId: event.id,
               transactionType:
@@ -735,11 +772,11 @@ export class UsageService {
               resultingBalance: after,
               reason: `USAGE_${input.eventType}`,
               userId: user.id,
-              patientId: input.patientId,
-              visitId: input.visitId,
-              invoiceId: input.invoiceId,
+              patientId: input.patientId ?? null,
+              visitId: input.visitId ?? null,
+              invoiceId: input.invoiceId ?? null,
               otherReference: `${input.sourceRecordType}:${input.sourceRecordId}:v${input.sourceEventVersion}`,
-              notes: input.notes,
+              notes: input.notes ?? null,
             },
           });
           await tx.stockBalance.update({
@@ -775,7 +812,7 @@ export class UsageService {
               usageEventId: event.id,
               componentSnapshot: this.componentSnapshot(component),
               itemId,
-              lotId: allocation.lot?.id,
+              lotId: allocation.lot?.id ?? null,
               stockLocationId: balance.stockLocationId,
               calculatedQuantity: calculated,
               confirmedQuantity: allocation.quantity,
@@ -785,10 +822,10 @@ export class UsageService {
               sourceBalance: balance.onHand,
               resultingBalance: after,
               inventoryTransactionId: transaction.id,
-              reservationId: reservation?.id,
+              reservationId: reservation?.id ?? null,
               reservationConsumed,
-              substitutionItemId: confirmation?.substitutionItemId,
-              reason: confirmation?.reason,
+              substitutionItemId: confirmation?.substitutionItemId ?? null,
+              reason: confirmation?.reason ?? null,
             },
           });
           if (input.patientId)
@@ -797,18 +834,18 @@ export class UsageService {
                 organizationId: user.organizationId,
                 clinicLocationId: user.locationId,
                 patientId: input.patientId,
-                visitId: input.visitId,
+                visitId: input.visitId ?? null,
                 usageEventId: event.id,
                 itemId,
                 itemNameSnapshot: item.name,
                 manufacturerSnapshot: item.manufacturer,
-                lotNumberSnapshot: allocation.lot?.lotNumber,
-                expirationSnapshot: allocation.lot?.expirationDate,
+                lotNumberSnapshot: allocation.lot?.lotNumber ?? null,
+                expirationSnapshot: allocation.lot?.expirationDate ?? null,
                 quantity: allocation.quantity,
                 unitSnapshot: item.conversions[0]?.stockUnit ?? component.quantityUnit,
                 route: input.route ?? item.route,
                 performedById: user.id,
-                authorizingVeterinarianId: input.authorizingVeterinarianId,
+                authorizingVeterinarianId: input.authorizingVeterinarianId ?? null,
                 occurredAt: input.occurredAt,
               },
             });
@@ -825,18 +862,25 @@ export class UsageService {
   private async postControlled(
     user: AuthenticatedUser,
     input: UsagePostInput,
-    mapping: any,
+    mapping: UsageMapping,
     replaceEventId?: string,
   ) {
-    const postedLines: Array<{
-      component: any;
-      item: any;
-      ledger: any;
-      container: any;
+    const preparedLines: Array<{
+      component: UsageComponent;
+      item: ControlledContainerWithDetails['profile']['item'];
+      container: ControlledContainerWithDetails;
       quantity: Prisma.Decimal;
       waste: Prisma.Decimal;
     }> = [];
-    for (const component of mapping.components.filter((value: any) => value.deductComponents)) {
+    const postedLines: Array<{
+      component: UsageComponent;
+      item: ControlledContainerWithDetails['profile']['item'];
+      ledger: ControlledLedger;
+      container: ControlledContainerWithDetails;
+      quantity: Prisma.Decimal;
+      waste: Prisma.Decimal;
+    }> = [];
+    for (const component of mapping.components.filter((value) => value.deductComponents)) {
       const confirmation = input.lines.find(
         (line) => line.componentId === component.id || line.itemId === component.itemId,
       );
@@ -852,26 +896,46 @@ export class UsageService {
         },
         include: {
           profile: { include: { item: true } },
-          lot: true,
         },
       });
       if (!container || container.profile.itemId !== component.itemId)
         throw new NotFoundException('Authorized controlled container is unavailable');
+      const lot = container.lotId
+        ? await prisma.inventoryLot.findFirst({
+            where: {
+              id: container.lotId,
+              organizationId: user.organizationId,
+              stockLocation: { clinicLocationId: user.locationId },
+            },
+          })
+        : null;
+      if (container.lotId && !lot)
+        throw new NotFoundException('Controlled container lot is unavailable');
+      const containerWithDetails: ControlledContainerWithDetails = { ...container, lot };
       const calculated = this.calculate(component, input);
       const quantity = confirmation.confirmedQuantity
         ? D(confirmation.confirmedQuantity)
         : calculated;
       const waste = D(confirmation.wastedQuantity);
+      preparedLines.push({
+        component,
+        item: container.profile.item,
+        container: containerWithDetails,
+        quantity,
+        waste,
+      });
+    }
+    for (const prepared of preparedLines) {
       const eventType = input.eventType === 'PRESCRIPTION_DISPENSED' ? 'DISPENSED' : 'ADMINISTERED';
       const ledger = await this.controlled.postEvent(user, {
-        idempotencyKey: `${input.idempotencyKey}:${component.id}`,
-        registrationId: container.registrationId,
-        profileId: container.profileId,
-        containerId: container.id,
-        lotId: container.lotId,
-        stockLocationId: container.stockLocationId,
+        idempotencyKey: `${input.idempotencyKey}:${prepared.component.id}`,
+        registrationId: prepared.container.registrationId,
+        profileId: prepared.container.profileId,
+        containerId: prepared.container.id,
+        lotId: prepared.container.lotId,
+        stockLocationId: prepared.container.stockLocationId,
         eventType,
-        quantity: quantity.toString(),
+        quantity: prepared.quantity.toString(),
         eventAt: input.occurredAt,
         reason: `Clinical source ${input.sourceRecordType}:${input.sourceRecordId}`,
         patientId: input.patientId,
@@ -882,16 +946,16 @@ export class UsageService {
         notes: input.notes,
         attestation: 'Validated automatic clinical inventory usage event',
       });
-      if (waste.gt(0))
+      if (prepared.waste.gt(0))
         await this.controlled.postEvent(user, {
-          idempotencyKey: `${input.idempotencyKey}:${component.id}:waste`,
-          registrationId: container.registrationId,
-          profileId: container.profileId,
-          containerId: container.id,
-          lotId: container.lotId,
-          stockLocationId: container.stockLocationId,
+          idempotencyKey: `${input.idempotencyKey}:${prepared.component.id}:waste`,
+          registrationId: prepared.container.registrationId,
+          profileId: prepared.container.profileId,
+          containerId: prepared.container.id,
+          lotId: prepared.container.lotId,
+          stockLocationId: prepared.container.stockLocationId,
           eventType: 'WASTED_DURING_ADMINISTRATION',
-          quantity: waste.toString(),
+          quantity: prepared.waste.toString(),
           eventAt: input.occurredAt,
           reason: `Waste from ${input.sourceRecordType}:${input.sourceRecordId}`,
           patientId: input.patientId,
@@ -902,12 +966,12 @@ export class UsageService {
           attestation: 'Validated automatic clinical inventory waste event',
         });
       postedLines.push({
-        component,
-        item: container.profile.item,
+        component: prepared.component,
+        item: prepared.item,
         ledger,
-        container,
-        quantity,
-        waste,
+        container: prepared.container,
+        quantity: prepared.quantity,
+        waste: prepared.waste,
       });
     }
     return this.serial(async (tx) => {
@@ -920,12 +984,12 @@ export class UsageService {
           sourceRecordType: input.sourceRecordType,
           sourceRecordId: input.sourceRecordId,
           sourceEventVersion: input.sourceEventVersion,
-          patientId: input.patientId,
-          clientId: input.clientId,
-          visitId: input.visitId,
-          appointmentId: input.appointmentId,
-          invoiceId: input.invoiceId,
-          invoiceLineId: input.invoiceLineId,
+          patientId: input.patientId ?? null,
+          clientId: input.clientId ?? null,
+          visitId: input.visitId ?? null,
+          appointmentId: input.appointmentId ?? null,
+          invoiceId: input.invoiceId ?? null,
+          invoiceLineId: input.invoiceLineId ?? null,
           mappingId: mapping.id,
           mappingVersion: mapping.version,
           mappingSnapshot: this.mappingSnapshot(mapping),
@@ -933,7 +997,7 @@ export class UsageService {
           occurredAt: input.occurredAt,
           postedAt: new Date(),
           postedById: user.id,
-          notes: input.notes,
+          notes: input.notes ?? null,
           idempotencyKey: input.idempotencyKey,
         },
       });
@@ -963,19 +1027,19 @@ export class UsageService {
               organizationId: user.organizationId,
               clinicLocationId: user.locationId,
               patientId: input.patientId,
-              visitId: input.visitId,
+              visitId: input.visitId ?? null,
               usageEventId: event.id,
               itemId: posted.item.id,
               itemNameSnapshot: posted.item.name,
               manufacturerSnapshot: posted.item.manufacturer,
-              lotNumberSnapshot: posted.container.lot?.lotNumber,
-              expirationSnapshot: posted.container.lot?.expirationDate,
+              lotNumberSnapshot: posted.container.lot?.lotNumber ?? null,
+              expirationSnapshot: posted.container.lot?.expirationDate ?? null,
               controlledContainerReference: `••••${posted.container.containerNumber.slice(-4)}`,
               quantity: posted.quantity,
               unitSnapshot: posted.container.profile.baseUnit,
               route: input.route ?? posted.item.route,
               performedById: user.id,
-              authorizingVeterinarianId: input.authorizingVeterinarianId,
+              authorizingVeterinarianId: input.authorizingVeterinarianId ?? null,
               occurredAt: input.occurredAt,
             },
           });
@@ -988,13 +1052,13 @@ export class UsageService {
   }
 
   private async allocations(
-    tx: any,
+    tx: Prisma.TransactionClient,
     user: AuthenticatedUser,
-    item: any,
+    item: CatalogItemWithConversions,
     requested: Prisma.Decimal,
     policy: string,
-    confirmation: any,
-    component: any,
+    confirmation: UsageConfirmation | undefined,
+    component: UsageComponent,
   ) {
     const balances = await tx.stockBalance.findMany({
       where: {
@@ -1024,7 +1088,11 @@ export class UsageService {
           : { lot: { expirationDate: { sort: 'asc', nulls: 'last' } } },
     });
     let remaining = requested;
-    const result: Array<{ balance: any; lot: any; quantity: Prisma.Decimal }> = [];
+    const result: Array<{
+      balance: StockBalanceWithLot;
+      lot: StockBalanceWithLot['lot'];
+      quantity: Prisma.Decimal;
+    }> = [];
     for (const balance of balances) {
       const available = balance.onHand
         .minus(balance.quarantined)
@@ -1043,7 +1111,7 @@ export class UsageService {
     return result;
   }
 
-  private toBaseQuantity(item: any, unit: string, quantity: Prisma.Decimal) {
+  private toBaseQuantity(item: CatalogItemWithConversions, unit: string, quantity: Prisma.Decimal) {
     const conversion = item.conversions[0];
     if (!conversion) throw new BadRequestException(`Missing unit conversion for ${item.name}`);
     if (unit === conversion.stockUnit) return quantity;
@@ -1053,7 +1121,7 @@ export class UsageService {
     throw new BadRequestException(`No safe ${unit} to ${conversion.stockUnit} conversion`);
   }
 
-  private calculate(component: any, values: Record<string, unknown>) {
+  private calculate(component: UsageComponent, values: Record<string, unknown>) {
     const dose = D(values.dose ?? 1);
     const units = D(values.units ?? 1);
     const weight = D(values.patientWeight ?? 0);
@@ -1066,8 +1134,14 @@ export class UsageService {
     }
     if (component.quantityRule === 'USER_CONFIRMED')
       throw new BadRequestException('Staff confirmation is required');
-    const config = component.formulaConfiguration as any;
-    if (!config || !['dose', 'units', 'patientWeight'].includes(config.input))
+    const config = component.formulaConfiguration;
+    if (
+      !config ||
+      typeof config !== 'object' ||
+      Array.isArray(config) ||
+      typeof config.input !== 'string' ||
+      !['dose', 'units', 'patientWeight'].includes(config.input)
+    )
       throw new BadRequestException('Unsupported structured formula');
     return D(values[config.input])
       .mul(D(config.multiplier ?? 1))
@@ -1132,7 +1206,7 @@ export class UsageService {
     input: UsagePostInput,
     code: string,
     message: string,
-    mapping?: any,
+    mapping?: UsageMapping,
   ) {
     return prisma.inventoryUsageEvent.upsert({
       where: {
@@ -1151,20 +1225,20 @@ export class UsageService {
         sourceRecordType: input.sourceRecordType,
         sourceRecordId: input.sourceRecordId,
         sourceEventVersion: input.sourceEventVersion,
-        patientId: input.patientId,
-        clientId: input.clientId,
-        visitId: input.visitId,
-        appointmentId: input.appointmentId,
-        invoiceId: input.invoiceId,
-        invoiceLineId: input.invoiceLineId,
-        mappingId: mapping?.id,
-        mappingVersion: mapping?.version,
-        mappingSnapshot: mapping ? this.mappingSnapshot(mapping) : undefined,
+        patientId: input.patientId ?? null,
+        clientId: input.clientId ?? null,
+        visitId: input.visitId ?? null,
+        appointmentId: input.appointmentId ?? null,
+        invoiceId: input.invoiceId ?? null,
+        invoiceLineId: input.invoiceLineId ?? null,
+        mappingId: mapping?.id ?? null,
+        mappingVersion: mapping?.version ?? null,
+        mappingSnapshot: mapping ? this.mappingSnapshot(mapping) : Prisma.JsonNull,
         status: 'NEEDS_REVIEW',
         failureCode: code,
         failureMessage: message,
         occurredAt: input.occurredAt,
-        notes: input.notes,
+        notes: input.notes ?? null,
         idempotencyKey: input.idempotencyKey,
       },
       update: { status: 'NEEDS_REVIEW', failureCode: code, failureMessage: message },
@@ -1212,7 +1286,7 @@ export class UsageService {
     return mapping;
   }
 
-  private mappingSnapshot(mapping: any) {
+  private mappingSnapshot(mapping: UsageMapping): Prisma.InputJsonObject {
     return {
       id: mapping.id,
       version: mapping.version,
@@ -1221,24 +1295,26 @@ export class UsageService {
       deductionEvent: mapping.deductionEvent,
       reservationBehavior: mapping.reservationBehavior,
       lotSelectionPolicy: mapping.lotSelectionPolicy,
-      components: mapping.components.map((component: any) => this.componentSnapshot(component)),
+      components: mapping.components.map((component) => this.componentSnapshot(component)),
     };
   }
 
-  private componentSnapshot(component: any) {
+  private componentSnapshot(component: UsageComponent): Prisma.InputJsonObject {
     return {
       id: component.id,
       itemId: component.itemId,
       quantityRule: component.quantityRule,
-      fixedQuantity: component.fixedQuantity?.toString(),
+      ...(component.fixedQuantity ? { fixedQuantity: component.fixedQuantity.toString() } : {}),
       quantityUnit: component.quantityUnit,
-      doseMultiplier: component.doseMultiplier?.toString(),
-      weightMultiplier: component.weightMultiplier?.toString(),
+      ...(component.doseMultiplier ? { doseMultiplier: component.doseMultiplier.toString() } : {}),
+      ...(component.weightMultiplier
+        ? { weightMultiplier: component.weightMultiplier.toString() }
+        : {}),
       optional: component.optional,
       staffConfirmationRequired: component.staffConfirmationRequired,
       lotSelectionRequired: component.lotSelectionRequired,
       wasteAllowance: component.wasteAllowance.toString(),
-      substitutionGroup: component.substitutionGroup,
+      ...(component.substitutionGroup ? { substitutionGroup: component.substitutionGroup } : {}),
       physicalKit: component.physicalKit,
       deductComponents: component.deductComponents,
     };
@@ -1250,8 +1326,9 @@ export class UsageService {
         return await prisma.$transaction(work, {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         });
-      } catch (error: any) {
-        if (error?.code !== 'P2034' || attempt === 2) throw error;
+      } catch (error: unknown) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2034' || attempt === 2)
+          throw error;
       }
     throw new ConflictException('Concurrent inventory usage conflict');
   }

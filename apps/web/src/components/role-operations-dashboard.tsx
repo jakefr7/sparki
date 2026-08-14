@@ -141,6 +141,13 @@ function actionLabel(visit: DashboardVisitSummary, role: DashboardRole) {
   return 'Open visit';
 }
 
+function resumeSection(visit: DashboardVisitSummary, role: DashboardRole) {
+  if (role === 'receptionist' && CHECKOUT_STATES.has(visit.state)) return 'visit-discharge';
+  if (role === 'technician' && visit.phase === 'Discharge') return 'visit-discharge';
+  if (role === 'veterinarian' && visit.phase === 'RecordClosure') return 'visit-record';
+  return 'visit-care-plan';
+}
+
 function priorityFor(visit: DashboardVisitSummary) {
   let score = visit.elapsedMinutes;
   if (exceptionsFor(visit).some((exception) => exception.severity === 'Critical')) score += 240;
@@ -283,7 +290,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
       const response = await fetch(`/api/visits/${visit.id}/exam/start`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(payload.message ?? 'Could not start exam.');
-      router.push(`/visits/${visit.id}?from=command-center`);
+      router.push(`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, role)}`);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'Could not start exam.');
       setStartingExam(false);
@@ -292,7 +299,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
 
   return (
     <Link
-      href={`/visits/${visit.id}?from=command-center`}
+      href={`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, role)}`}
       className="role-queue-row"
       data-critical={critical || undefined}
       aria-disabled={startingExam || undefined}
@@ -345,13 +352,13 @@ function RecordsQueue({
       <div className="role-side-card__header">
         <div>
           <p className="eyebrow">{manager ? 'Clinical closure' : 'Before you leave'}</p>
-          <h2 id="open-records-heading">{manager ? 'Incomplete records' : 'Open records'}</h2>
+          <h2 id="open-records-heading">Records to Finish</h2>
         </div>
         <strong>{records.length}</strong>
       </div>
       <div className="role-mini-list">
         {records.slice(0, 5).map((item) => (
-          <Link href={`/visits/${item.visit.id}`} key={item.id}>
+          <Link href={`/visits/${item.visit.id}?from=command-center&resume=visit-record`} key={item.id}>
             <span>
               <strong>{item.visit.patient.name}</strong>
               <small>
@@ -399,7 +406,7 @@ function WatchList({ visits }: { visits: DashboardVisitSummary[] }) {
       </div>
       <div className="role-mini-list">
         {watched.map((visit) => (
-          <Link href={`/visits/${visit.id}`} key={visit.id}>
+          <Link href={`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, 'manager')}`} key={visit.id}>
             <span>
               <strong>{visit.patient.name}</strong>
               <small>

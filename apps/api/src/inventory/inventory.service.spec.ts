@@ -63,6 +63,7 @@ describe('inventory decimal and ledger rules', () => {
     ).toThrow(/Notes are required/);
   });
   it('retains location isolation during search and strips received cost', async () => {
+    vi.spyOn(prisma.controlledAuthorization, 'count').mockResolvedValue(0);
     const findMany = vi.spyOn(prisma.catalogItem, 'findMany').mockResolvedValue([
       {
         id: crypto.randomUUID(),

@@ -61,7 +61,6 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
       mimeType: string;
       sizeBytes: number;
       storageKey: string;
-      href: string;
     }>
   >([]);
   const [uploading, setUploading] = useState(false);
@@ -155,7 +154,7 @@ export function TeamMessagesWorkspace({ currentUserId }: { currentUserId: string
           mentionIds,
           replyToId: replyingTo?.id,
           linkedRecords: [],
-          uploadedAttachments: attachments,
+          uploadedAttachments: attachments.map(({ storageKey }) => ({ storageKey })),
         }),
       });
       setDraft('');

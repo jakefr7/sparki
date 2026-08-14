@@ -17,6 +17,7 @@ const findLocationAccesses = vi.mocked(prisma.clinicLocationAccess.findMany);
 function createService(): AuthService {
   return new AuthService({
     nodeEnv: 'test',
+    developmentAuthMode: 'fixed',
     workos: {},
   } as unknown as AppConfigService);
 }
@@ -186,5 +187,15 @@ describe('AuthService.resolveMembership', () => {
     await expect(createService().resolveMembership(createUser())).rejects.toBeInstanceOf(
       ConflictException,
     );
+  });
+});
+
+describe('AuthService configuration', () => {
+  it('fails closed when WorkOS is absent and fixed auth is not explicit', () => {
+    expect(() => new AuthService({
+      nodeEnv: 'development',
+      developmentAuthMode: 'disabled',
+      workos: {},
+    } as unknown as AppConfigService)).toThrow(/refusing to start/);
   });
 });

@@ -21,6 +21,10 @@ export class AppConfigService {
     return this.env.CORS_ORIGIN;
   }
 
+  get developmentAuthMode(): ApiEnv['SPARKI_DEVELOPMENT_AUTH'] {
+    return this.env.SPARKI_DEVELOPMENT_AUTH;
+  }
+
   get workos(): {
     apiKey: string | undefined;
     clientId: string | undefined;
@@ -37,5 +41,15 @@ export class AppConfigService {
 
   get addressProvider(): { mapboxAccessToken: string | undefined } {
     return { mapboxAccessToken: this.env.MAPBOX_ACCESS_TOKEN };
+  }
+
+  get attachmentStorage() {
+    return {
+      endpoint: this.env.ATTACHMENT_S3_ENDPOINT,
+      region: this.env.ATTACHMENT_S3_REGION,
+      bucket: this.env.ATTACHMENT_S3_BUCKET,
+      accessKeyId: this.env.ATTACHMENT_S3_ACCESS_KEY_ID,
+      secretAccessKey: this.env.ATTACHMENT_S3_SECRET_ACCESS_KEY,
+    };
   }
 }

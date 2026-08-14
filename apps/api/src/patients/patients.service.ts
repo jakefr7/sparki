@@ -356,7 +356,14 @@ export class PatientsService {
       // yet; VisitIntake.medicationsAllergies is the closest real data).
       prisma.visit.findMany({
         where: { patientId: patient.id, organizationId },
-        include: { primaryVeterinarian: true, intake: true },
+        include: {
+          primaryVeterinarian: true,
+          intake: true,
+          examFindings: true,
+          soapNotes: { orderBy: { version: 'desc' }, take: 1 },
+          workItems: { where: { status: { in: ['Completed', 'Declined', 'Deferred'] } }, orderBy: { updatedAt: 'asc' } },
+          discharge: true,
+        },
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
@@ -430,6 +437,11 @@ export class PatientsService {
               lastName: visit.primaryVeterinarian.lastName,
             }
           : null,
+        intake: visit.intake,
+        examFindings: visit.examFindings,
+        soapNote: visit.soapNotes[0] ?? null,
+        careItems: visit.workItems,
+        discharge: visit.discharge,
       })),
       sections: {
         currentVisit: activeVisit

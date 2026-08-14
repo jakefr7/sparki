@@ -4,6 +4,8 @@ import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { PostExamReview } from '../../../components/post-exam-review';
+import { VisitJourneyStatus } from '../../../components/visit-journey-status';
+import { VisitRecordPanel } from '../../../components/visit-record-panel';
 import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
 import { authenticatedServerFetch } from '../../../lib/server-api';
@@ -106,12 +108,15 @@ export default async function VisitWorkspacePage({
           headerOnly={Boolean(visit.examFindings?.completedAt)}
         />
 
+        <VisitJourneyStatus visit={visit} />
+
         {visit.state === 'VeterinarianExamInProgress' ? <ExamFindingsPanel visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
         {showClinicalWork ? <PostExamReview visit={visit} /> : null}
 
         {showClinicalWork ? <VisitWorkItemsPanel visit={visit} /> : null}
         {showDischarge ? <VisitDischargePanel visit={visit} /> : null}
+        {showClinicalWork ? <VisitRecordPanel visit={visit} /> : null}
       </div>
     </DashboardShell>
   );

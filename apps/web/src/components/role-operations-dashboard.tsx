@@ -345,7 +345,7 @@ function RecordsQueue({
       <div className="role-side-card__header">
         <div>
           <p className="eyebrow">{manager ? 'Clinical closure' : 'Before you leave'}</p>
-          <h2 id="open-records-heading">{manager ? 'Incomplete records' : 'Open records'}</h2>
+          <h2 id="open-records-heading">Records to Finish</h2>
         </div>
         <strong>{records.length}</strong>
       </div>

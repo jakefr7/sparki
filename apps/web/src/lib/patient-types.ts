@@ -191,6 +191,11 @@ export interface RecentVisitSummary {
   state: string;
   createdAt: string;
   primaryVeterinarian: { id: string; firstName: string; lastName: string } | null;
+  intake?: { chiefComplaint: string | null; historyNotes: string | null } | null;
+  examFindings?: { subjective: string | null; objective: string | null; assessment: string | null; plan: string | null } | null;
+  soapNote?: { subjective: string | null; objective: string | null; assessment: string | null; plan: string | null; status: string; version: number; amendmentReason: string | null; signedAt: string | null } | null;
+  careItems?: Array<{ id: string; title: string; type: string; status: string; result: Record<string, unknown> | null; completedAt: string | null }>;
+  discharge?: { instructions: string; medicationInstructions: string | null; warningSigns: string | null; followUpPlan: string | null; completedAt: string } | null;
 }
 
 export interface UpcomingAppointment {

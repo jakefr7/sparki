@@ -1,155 +1,99 @@
-/**
- * Visual-only progress model for the Visit workspace — maps the ~40-state
- * VisitState enum onto six coarse stages a technician can scan at a glance.
- * Purely presentational: no backend state is introduced or read back from
- * this, it just buckets the existing `visit.state` string.
- */
+import type { VisitDetail } from './patient-types';
+
+/** The patient-facing clinical journey. Check-in and intake are prerequisite
+ * context, not clinical stages, and deliberately stay out of this projection. */
 export const VISIT_WORKFLOW_STAGES = [
-  'Check In',
-  'Begin Intake',
-  'Ready for Veterinarian',
   'Exam',
-  'Treatment',
-  'Checkout',
+  'Plan',
+  'Client Decision',
+  'Care',
+  'Discharge',
+  'Record',
 ] as const;
 
 export type VisitWorkflowStage = (typeof VISIT_WORKFLOW_STAGES)[number];
 
-/** Display labels for the compact workflow progress bar. */
-const STAGE_DISPLAY_LABELS: Record<VisitWorkflowStage, string> = {
-  'Check In': 'Check In',
-  'Begin Intake': 'Begin Intake',
-  'Ready for Veterinarian': 'Ready for Veterinarian',
-  Exam: 'Exam',
-  Treatment: 'Treatment',
-  Checkout: 'Checkout',
-};
-
 export function visitWorkflowStageLabel(stage: VisitWorkflowStage): string {
-  return STAGE_DISPLAY_LABELS[stage];
+  return stage;
 }
 
-const STAGE_STATES: Record<Exclude<VisitWorkflowStage, 'Check In'>, string[]> = {
-  'Begin Intake': [
-    'Arrived',
-    'CheckInInProgress',
-    'ArrivedWithExceptions',
-    'Triaged',
-    'Waiting',
-    'ReadyForIntake',
-    'IntakeInProgress',
-  ],
-  'Ready for Veterinarian': ['VeterinarianExamReady'],
-  Exam: [
-    'VeterinarianExamInProgress',
-    'PlanDrafted',
-    'EstimateNeeded',
-    'EstimatePrepared',
-    'ClientApprovalPending',
-    'Approved',
-    'PartiallyApproved',
-    'Declined',
-    'DiagnosticsPending',
-    'DiagnosticsInProgress',
-    'ResultsPending',
-    'ResultsReady',
-    'VeterinarianReviewPending',
-  ],
-  Treatment: [
-    'TreatmentPending',
-    'TreatmentInProgress',
-    'TreatmentComplete',
-    'MedicationPending',
-    'ClientCommunicationPending',
-    'FollowUpPending',
-  ],
-  Checkout: [
-    'CheckoutReady',
-    'CheckoutInProgress',
-    'PaymentPending',
-    'PaymentComplete',
-    'RecordCompletionPending',
-    'RecordComplete',
-    'VisitClosing',
-    'VisitClosingWithExceptions',
-    // Closed episodes — nothing left to do, so shown as "done" (last stage).
-    'Archived',
-    'ArchivedWithExceptions',
-    'Cancelled',
-    'CancelledAfterArrival',
-    'NoShow',
-    'Rescheduled',
-    'Referred',
-    'Deferred',
-  ],
-};
+const PLAN_STATES = new Set(['PlanDrafted', 'EstimateNeeded', 'EstimatePrepared']);
+const DECISION_STATES = new Set(['ClientApprovalPending', 'Approved', 'PartiallyApproved', 'Declined']);
+const CARE_STATES = new Set([
+  'DiagnosticsPending', 'DiagnosticsInProgress', 'ResultsPending', 'ResultsReady',
+  'VeterinarianReviewPending', 'TreatmentPending', 'TreatmentInProgress',
+  'TreatmentComplete', 'MedicationPending', 'ClientCommunicationPending', 'FollowUpPending',
+]);
+const DISCHARGE_STATES = new Set(['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete']);
+const RECORD_STATES = new Set([
+  'RecordCompletionPending', 'RecordComplete', 'VisitClosing', 'VisitClosingWithExceptions',
+  'Archived', 'ArchivedWithExceptions', 'Cancelled', 'CancelledAfterArrival', 'NoShow',
+  'Rescheduled', 'Referred', 'Deferred',
+]);
 
-/** Index into VISIT_WORKFLOW_STAGES for the given Visit state. A Visit row
- *  only ever exists once the patient has arrived, so "Check In" is never
- *  the current stage — it's shown as already-done groundwork. */
 export function visitWorkflowStageIndex(state: string): number {
-  for (let i = VISIT_WORKFLOW_STAGES.length - 1; i >= 1; i--) {
-    const stage = VISIT_WORKFLOW_STAGES[i] as Exclude<VisitWorkflowStage, 'Check In'>;
-    if (STAGE_STATES[stage].includes(state)) return i;
-  }
+  if (RECORD_STATES.has(state)) return 5;
+  if (DISCHARGE_STATES.has(state)) return 4;
+  if (CARE_STATES.has(state)) return 3;
+  if (DECISION_STATES.has(state)) return 2;
+  if (PLAN_STATES.has(state)) return 1;
   return 0;
 }
 
-export interface VisitNextAction {
-  headline: string;
-  steps: string[];
+export interface VisitJourneyProjection {
+  stage: VisitWorkflowStage;
+  owner: string;
+  recordState: 'Not started' | 'Draft' | 'Finalized' | 'Amended';
+  blockers: string[];
+  allowedActions: string[];
 }
 
-/** Concrete, actionable copy for the "Next Action" card — what a technician
- *  or provider should do right now, not just the state's raw name. */
+function personLabel(person: VisitDetail['currentOwner']): string {
+  if (!person) return 'Unassigned';
+  return person.displayName || `${person.firstName} ${person.lastName}`;
+}
+
+/** A read-only projection over authoritative visit data. It never creates a
+ * second lifecycle state and never exposes the raw state enum to clinic users. */
+export function projectVisitJourney(visit: VisitDetail): VisitJourneyProjection {
+  const stage = VISIT_WORKFLOW_STAGES[visitWorkflowStageIndex(visit.state)]!;
+  const latestRecord = visit.soapNotes[0];
+  const blockers: string[] = [];
+  const openRequiredCare = visit.workItems.filter((item) =>
+    ['Pending', 'InProgress'].includes(item.status) && ['Treatment', 'Medication', 'Diagnostic'].includes(item.type),
+  );
+  if (openRequiredCare.length) blockers.push(`${openRequiredCare.length} care item${openRequiredCare.length === 1 ? '' : 's'} still open`);
+  if (stage === 'Discharge' && !visit.discharge) blockers.push('Discharge instructions are not complete');
+  if (visit.checkout?.completedAt && !latestRecord?.lockedAt) blockers.push('Record completion pending');
+
+  let recordState: VisitJourneyProjection['recordState'] = 'Not started';
+  if (latestRecord?.amendmentReason) recordState = 'Amended';
+  else if (latestRecord?.lockedAt || latestRecord?.signedAt) recordState = 'Finalized';
+  else if (latestRecord) recordState = 'Draft';
+
+  const actions: Record<VisitWorkflowStage, string[]> = {
+    Exam: ['Document exam findings'],
+    Plan: ['Build care plan'],
+    'Client Decision': ['Record client decision'],
+    Care: ['Complete authorized care'],
+    Discharge: ['Prepare discharge'],
+    Record: recordState === 'Finalized' ? ['Review medical record'] : ['Finish medical record'],
+  };
+
+  return { stage, owner: personLabel(visit.currentOwner), recordState, blockers, allowedActions: actions[stage] };
+}
+
+export interface VisitNextAction { headline: string; steps: string[] }
+
 export function nextActionForState(state: string): VisitNextAction {
-  const stageIndex = visitWorkflowStageIndex(state);
-
-  if (STAGE_STATES.Checkout.includes(state) && stageIndex === VISIT_WORKFLOW_STAGES.length - 1) {
-    const closed = [
-      'Archived',
-      'ArchivedWithExceptions',
-      'Cancelled',
-      'CancelledAfterArrival',
-      'NoShow',
-      'Rescheduled',
-      'Referred',
-      'Deferred',
-    ];
-    if (closed.includes(state)) {
-      return { headline: 'This visit is closed.', steps: ['No further action needed.'] };
-    }
-    return {
-      headline: 'Ready for checkout.',
-      steps: ['Review charges.', 'Collect payment.', 'Close the visit.'],
-    };
-  }
-
-  switch (VISIT_WORKFLOW_STAGES[stageIndex]) {
-    case 'Begin Intake':
-      return {
-        headline: 'Complete the intake details.',
-        steps: ['Capture vitals and history.', 'Review findings.', 'Send patient to veterinarian.'],
-      };
-    case 'Ready for Veterinarian':
-      return {
-        headline: 'Waiting for the veterinarian.',
-        steps: ['Intake is complete.', 'The patient is ready for the exam.'],
-      };
-    case 'Exam':
-      return {
-        headline: 'Veterinarian exam in progress.',
-        steps: ['Complete the exam.', 'Draft a plan.', 'Share findings with the client.'],
-      };
-    case 'Treatment':
-      return {
-        headline: 'Carry out the treatment plan.',
-        steps: ['Administer treatment.', 'Document outcomes.', 'Prepare for checkout.'],
-      };
-    default:
-      return {
-        headline: 'Continue the visit workflow.',
-        steps: ['Continue from the current visit state.'],
-      };
-  }
+  const stage = VISIT_WORKFLOW_STAGES[visitWorkflowStageIndex(state)]!;
+  const copy: Record<VisitWorkflowStage, VisitNextAction> = {
+    Exam: { headline: 'Complete the clinical exam.', steps: ['Review intake.', 'Document findings.'] },
+    Plan: { headline: 'Build the care plan.', steps: ['Review abnormal findings.', 'Order recommended care.'] },
+    'Client Decision': { headline: 'Confirm the client decision.', steps: ['Discuss each item.', 'Attest the decision.'] },
+    Care: { headline: 'Complete authorized care.', steps: ['Perform approved items.', 'Document outcomes.'] },
+    Discharge: { headline: 'Prepare the patient for departure.', steps: ['Complete instructions.', 'Hand off to reception.'] },
+    Record: { headline: 'Finish the medical record.', steps: ['Review attribution.', 'Finalize when complete.'] },
+  };
+  return copy[stage];
 }

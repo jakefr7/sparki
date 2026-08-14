@@ -9,7 +9,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   const config = app.get(AppConfigService);
 
-  app.use(json({ limit: '15mb' }));
+  // A 25 MB clinical attachment expands to roughly 33.4 MB as base64.
+  app.use(json({ limit: '35mb' }));
 
   app.enableCors({ origin: config.corsOrigin });
   app.enableShutdownHooks();

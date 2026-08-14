@@ -78,7 +78,7 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   }
 
   return (
-    <section className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
+    <section id="visit-discharge" className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
       <div className="visit-discharge-panel__header"><div><p className="eyebrow">Step 3 · Client handoff</p><h2 id="visit-discharge-heading">Discharge synopsis</h2><p>Prepare the clear, written plan the client will use at home.</p></div><span className={visit.discharge ? 'is-complete' : ''}>{visit.discharge ? '✓ Prepared' : 'Draft'}</span></div>
       {canDischarge ? (
         <form onSubmit={saveDischarge} className="visit-discharge-form" noValidate>

@@ -120,7 +120,7 @@ export function VisitRecordPanel({ visit }: { visit: VisitDetail }) {
   }
 
   return (
-    <section className="visit-record-panel" aria-labelledby="visit-record-heading">
+    <section id="visit-record" className="visit-record-panel" aria-labelledby="visit-record-heading">
       <div className="visit-record-panel__header">
         <div><p className="eyebrow">Step 4 · Record signoff</p><h2 id="visit-record-heading">Medical record</h2></div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{note.status}</span>

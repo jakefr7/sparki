@@ -28,6 +28,14 @@ describe('AttachmentStorageService development storage', () => {
     expect(storage.belongsTo(`${key}/../escape`, 'org-a', 'location-a')).toBe(false);
   });
 
+  it('separates clinical keys from messaging keys and enforces tenant/location ownership', () => {
+    const key = storage.clinicalKey('org-a', 'location-a');
+    expect(key).toMatch(/^organizations\/org-a\/locations\/location-a\/clinical\/[0-9a-f-]{36}$/);
+    expect(storage.clinicalBelongsTo(key, 'org-a', 'location-a')).toBe(true);
+    expect(storage.clinicalBelongsTo(key, 'org-b', 'location-a')).toBe(false);
+    expect(storage.clinicalBelongsTo(storage.key('org-a', 'location-a'), 'org-a', 'location-a')).toBe(false);
+  });
+
   it('keeps bytes and server-side metadata private until removed', async () => {
     const key = storage.key('org-a', 'location-a');
     await storage.put(key, Buffer.from('patient result'), 'text/plain', 'result.txt');

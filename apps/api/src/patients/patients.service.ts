@@ -363,6 +363,7 @@ export class PatientsService {
           soapNotes: { orderBy: { version: 'desc' }, take: 1 },
           workItems: { where: { status: { in: ['Completed', 'Declined', 'Deferred'] } }, orderBy: { updatedAt: 'asc' } },
           discharge: true,
+          clinicalAttachments: { where: { removedAt: null }, include: { uploadedBy: true, events: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'desc' } },
         },
         orderBy: { createdAt: 'desc' },
         take: 5,
@@ -442,6 +443,17 @@ export class PatientsService {
         soapNote: visit.soapNotes[0] ?? null,
         careItems: visit.workItems,
         discharge: visit.discharge,
+        attachments: (visit.clinicalAttachments ?? []).map((attachment) => ({
+          id: attachment.id,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          label: attachment.label,
+          createdAt: attachment.createdAt,
+          uploadedBy: { displayName: attachment.uploadedBy.displayName, firstName: attachment.uploadedBy.firstName, lastName: attachment.uploadedBy.lastName },
+          href: `/clinical-attachments/${attachment.id}/content`,
+          auditEvents: attachment.events.map((event) => ({ action: event.action, reason: event.reason, createdAt: event.createdAt })),
+        })),
       })),
       sections: {
         currentVisit: activeVisit
@@ -507,7 +519,7 @@ export class PatientsService {
         workItems: unavailableSection('Work system is not yet implemented.'),
         communication: unavailableSection('Communication module is not yet implemented.'),
         financial: unavailableSection('Billing/financial module is not yet implemented.'),
-        attachments: unavailableSection('Attachments are not yet implemented.'),
+        attachments: { status: 'available' as const },
       },
     };
   }

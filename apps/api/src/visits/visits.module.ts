@@ -9,16 +9,20 @@ import { VisitPolicyController } from './visit-policy.controller';
 import { VisitWorkItemsService } from './visit-work-items.service';
 import { VisitsService } from './visits.service';
 import { InventoryModule } from '../inventory/inventory.module';
+import { MessagingModule } from '../messaging/messaging.module';
+import { ClinicalAttachmentsController } from './clinical-attachments.controller';
+import { ClinicalAttachmentsService } from './clinical-attachments.service';
 
 @Module({
-  imports: [PatientsModule, AppointmentsModule, InventoryModule],
-  controllers: [VisitsController, VisitPolicyController],
+  imports: [PatientsModule, AppointmentsModule, InventoryModule, MessagingModule],
+  controllers: [VisitsController, VisitPolicyController, ClinicalAttachmentsController],
   providers: [
     VisitsService,
     VisitLifecycleService,
     VisitRecordsService,
     VisitDischargeService,
     VisitWorkItemsService,
+    ClinicalAttachmentsService,
   ],
   exports: [VisitsService],
 })

@@ -18,6 +18,14 @@ export class AttachmentStorageService {
     return `organizations/${organizationId}/locations/${locationId}/messaging/${randomUUID()}`;
   }
 
+  clinicalKey(organizationId: string, locationId: string): string {
+    return `organizations/${organizationId}/locations/${locationId}/clinical/${randomUUID()}`;
+  }
+
+  clinicalBelongsTo(key: string, organizationId: string, locationId: string): boolean {
+    return key.startsWith(`organizations/${organizationId}/locations/${locationId}/clinical/`) && !key.includes('..');
+  }
+
   belongsTo(key: string, organizationId: string, locationId: string): boolean {
     return key.startsWith(`organizations/${organizationId}/locations/${locationId}/messaging/`) && !key.includes('..');
   }

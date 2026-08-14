@@ -52,6 +52,10 @@ export async function cleanupFixture({
     OR: [{ patientId: { in: patientIds } }, { clientId: { in: clientIds } }],
   };
 
+  const attachments = await prisma.clinicalAttachment.findMany({ where: { patientId: { in: patientIds } }, select: { id: true } });
+  await deleteWithRetry(() => prisma.clinicalAttachmentEvent.deleteMany({ where: { attachmentId: { in: attachments.map((attachment) => attachment.id) } } }));
+  await deleteWithRetry(() => prisma.clinicalAttachment.deleteMany({ where: { id: { in: attachments.map((attachment) => attachment.id) } } }));
+
   await deleteWithRetry(() => prisma.visit.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.appointment.deleteMany({ where: linkedWhere }));
   await deleteWithRetry(() => prisma.patientAlert.deleteMany({ where: { patientId: { in: patientIds } } }));

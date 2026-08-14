@@ -31,6 +31,11 @@ export const VISIT_LIFECYCLE_INCLUDE = {
   soapNotes: { orderBy: { createdAt: 'desc' as const } },
   discharge: true,
   checkout: true,
+  clinicalAttachments: {
+    where: { removedAt: null },
+    select: { id: true, patientId: true, visitId: true, fileName: true, mimeType: true, sizeBytes: true, label: true, createdAt: true },
+    orderBy: { createdAt: 'desc' as const },
+  },
   workflowStep: true,
 } satisfies Prisma.VisitInclude;
 

@@ -1295,6 +1295,9 @@ describe('Visits (e2e)', () => {
         status: 'available',
         visit: { id: visit.id, state: 'RecordCompletionPending' },
       });
+      expect(patientAfterCheckout.body.recentVisits).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: visit.id, attachments: [] }),
+      ]));
 
       const saved = await request(app.getHttpServer()).put(`/visits/${visit.id}/record/draft`).send({
         version: draft.version,

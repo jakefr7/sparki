@@ -233,7 +233,13 @@ export class VisitsService {
     if (!visit) {
       throw new NotFoundException(`Visit ${id} not found`);
     }
-    return visit;
+    return {
+      ...visit,
+      clinicalAttachments: visit.clinicalAttachments.map((attachment) => ({
+        ...attachment,
+        href: `/clinical-attachments/${attachment.id}/content`,
+      })),
+    };
   }
 
   /** All non-terminal Visits for the organization — the Command Center's

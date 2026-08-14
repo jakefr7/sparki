@@ -15,6 +15,7 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 - Direct `tsc --noEmit` passed during the audit.
 - Phase 1 verification infrastructure now provides isolated PostgreSQL creation, migration, and seeding; deterministic API/web boot; development receptionist authentication; real-application Playwright execution; and targeted argument forwarding.
 - Phase 1 manual verification is recorded in [PHASE_1_CLOSEOUT.md](./PHASE_1_CLOSEOUT.md). The trustworthy engineering baseline is satisfied and Phase 1 is `READY_FOR_FOUNDER_REVIEW`.
+- Phase 2 authentication and tenant-safety hardening is verified, independently reviewed, and founder-approved; see [PHASE_2_CLOSEOUT.md](./PHASE_2_CLOSEOUT.md).
 
 ## PARTIAL
 
@@ -38,12 +39,12 @@ The verified audit record is [BASELINE_SITREP.md](./BASELINE_SITREP.md).
 
 ## DEFERRED
 
-- Authentication and tenant hardening is active in Phase 2. Clinical discharge behavior, inventory integrity guarantees, honest SMS state, checkout/payment behavior, and a financial ledger remain sequenced for later phases.
+- Clinical workflow integrity is active in Phase 3. Inventory integrity guarantees, honest SMS state, checkout/payment behavior, and a financial ledger remain sequenced for later phases.
 - Deployment and automated merge behavior are outside the local-first agent system.
 - Phase 3 retains the approved visit-discharge product mismatch, and Phase 4 retains the exact approved lint and inventory type-safety debt.
 
 ## CURRENT PHASE
 
 - Phase 1 — Trustworthy Engineering Baseline: **READY_FOR_FOUNDER_REVIEW**.
-- Phase 2 — Authentication & Tenant Safety: **APPROVED / ACTIVE**. No Phase 2 implementation has begun as part of the Phase 1 closeout.
-- Phase 2's Playwright debt decision is recorded and `FOUNDER_DECISION_REQUIRED` is cleared; the Phase 2 workflow may continue without broad E2E remediation.
+- Phase 2 — Authentication & Tenant Safety: **COMPLETE / FOUNDER_APPROVED**. Authoritative verification passed and Claude Review 1 is `PASS`; historical artifacts are preserved unchanged.
+- Phase 3 — Clinical Workflow Integrity: **APPROVED / ACTIVE**. No Phase 3 implementation, execution, or verification is part of this state transition.

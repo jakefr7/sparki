@@ -37,15 +37,15 @@ export class OperationsService {
    * Orchestrates existing AppointmentsService/VisitsService queries into one
    * snapshot rather than introducing new persistence logic — three targeted
    * queries (today's appointments, upcoming appointments, active visits),
-   * each already indexed on organizationId, then everything else is derived
-   * in memory.
+   * each scoped to the user's active organization and clinic location, then
+   * everything else is derived in memory.
    */
   async getDashboard(organizationId: string, locationId: string): Promise<OperationsDashboard> {
     const [todaysAppointments, upcomingAppointments, activeVisits] = await Promise.all([
-      this.appointments.listTodayForOrganization(organizationId) as Promise<
+      this.appointments.listTodayForOrganization(organizationId, locationId) as Promise<
         AppointmentWithContext[]
       >,
-      this.appointments.listUpcomingForOrganization(organizationId) as Promise<
+      this.appointments.listUpcomingForOrganization(organizationId, locationId) as Promise<
         AppointmentWithContext[]
       >,
       this.visits.listActiveForOrganization(organizationId, locationId) as Promise<VisitWithContext[]>,

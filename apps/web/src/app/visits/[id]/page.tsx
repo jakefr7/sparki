@@ -116,9 +116,12 @@ export default async function VisitWorkspacePage({
 
         {visit.state === 'VeterinarianExamInProgress' ? <ExamFindingsPanel visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
-        {showClinicalWork ? <PostExamReview visit={visit} /> : null}
-
-        {showClinicalWork ? <VisitWorkItemsPanel visit={visit} /> : null}
+        {showClinicalWork ? (
+          <div className="care-plan-workspace">
+            <PostExamReview visit={visit} />
+            <VisitWorkItemsPanel visit={visit} />
+          </div>
+        ) : null}
         {showDischarge ? <VisitDischargePanel visit={visit} /> : null}
         {showClinicalWork ? <VisitRecordPanel visit={visit} /> : null}
         <ClinicalAttachmentsPanel patientId={visit.patient.id} visitId={visit.id} attachments={visit.clinicalAttachments} finalized={visit.soapNotes.some((note) => note.status === 'Locked')} />

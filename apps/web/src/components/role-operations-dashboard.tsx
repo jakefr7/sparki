@@ -103,6 +103,11 @@ function exceptionsFor(visit: DashboardVisitSummary) {
 function elapsedLabel(minutes: number) {
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes} min`;
+  if (minutes >= 24 * 60) {
+    const days = Math.floor(minutes / (24 * 60));
+    const remainingHours = Math.floor((minutes % (24 * 60)) / 60);
+    return remainingHours ? `${days}d ${remainingHours}h` : `${days}d`;
+  }
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;

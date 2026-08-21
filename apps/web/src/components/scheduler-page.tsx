@@ -754,19 +754,20 @@ export function SchedulerPage() {
           view={view}
           onViewChange={setView}
           rangeLabel={formatRange(anchorDate, view)}
+          isCurrentRange={view === 'day'
+            ? isSameDay(anchorDate, today)
+            : isSameDay(startOfWeek(anchorDate), startOfWeek(today))}
           generatedAt={generatedAt}
           loading={loading}
-          onToday={() => setAnchorDate(today)}
-          onPrevious={() => move(-1)}
-          onNext={() => move(1)}
-        />
-        <SchedulerFilters
           providers={providers}
           statuses={statusOptions}
           providerFilter={providerFilter}
           statusFilter={statusFilter}
           onProviderFilterChange={setProviderFilter}
           onStatusFilterChange={setStatusFilter}
+          onToday={() => setAnchorDate(today)}
+          onPrevious={() => move(-1)}
+          onNext={() => move(1)}
         />
         {loadError ? (
           <p className="scheduler-inline-error" role="alert">
@@ -785,8 +786,6 @@ export function SchedulerPage() {
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
             onAppointmentMove={requestAppointmentMove}
-            onPrevious={() => move(-1)}
-            onNext={() => move(1)}
             draggingAppointment={draggingAppointment}
             onAppointmentDragStart={setDraggingAppointmentId}
             onAppointmentDragEnd={() => setDraggingAppointmentId(null)}
@@ -969,8 +968,15 @@ function SchedulerToolbar({
   view,
   onViewChange,
   rangeLabel,
+  isCurrentRange,
   generatedAt,
   loading,
+  providers,
+  statuses,
+  providerFilter,
+  statusFilter,
+  onProviderFilterChange,
+  onStatusFilterChange,
   onToday,
   onPrevious,
   onNext,
@@ -978,8 +984,15 @@ function SchedulerToolbar({
   view: SchedulerView;
   onViewChange: (view: SchedulerView) => void;
   rangeLabel: string;
+  isCurrentRange: boolean;
   generatedAt: string | null;
   loading: boolean;
+  providers: StaffMember[];
+  statuses: string[];
+  providerFilter: string;
+  statusFilter: string;
+  onProviderFilterChange: (value: string) => void;
+  onStatusFilterChange: (value: string) => void;
   onToday: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -987,18 +1000,20 @@ function SchedulerToolbar({
   return (
     <section className="scheduler-toolbar" aria-label="Scheduler controls">
       <div className="scheduler-toolbar__navigation">
-        <button type="button" onClick={onToday}>
-          Today
-        </button>
-        {view === 'day' ? <div className="scheduler-toolbar__stepper" aria-label="Navigate scheduler">
-          <button type="button" onClick={onPrevious} aria-label="Previous date range">
-            <span aria-hidden="true">&lt;</span>
+        <div className="scheduler-toolbar__period" aria-label={`Navigate ${view} view`}>
+          <button type="button" onClick={onPrevious} aria-label={view === 'day' ? 'Previous day' : 'Previous week'}>
+            <span aria-hidden="true">‹</span>
           </button>
-          <button type="button" onClick={onNext} aria-label="Next date range">
-            <span aria-hidden="true">&gt;</span>
+          <strong>{rangeLabel}</strong>
+          <button type="button" onClick={onNext} aria-label={view === 'day' ? 'Next day' : 'Next week'}>
+            <span aria-hidden="true">›</span>
           </button>
-        </div> : null}
-        <strong>{rangeLabel}</strong>
+        </div>
+        {!isCurrentRange ? (
+          <button type="button" className="scheduler-toolbar__current" onClick={onToday}>
+            {view === 'day' ? 'Back to today' : 'Current week'}
+          </button>
+        ) : null}
       </div>
       <div className="scheduler-toolbar__meta">
         <span className="scheduler-live-status">
@@ -1007,6 +1022,26 @@ function SchedulerToolbar({
             ? 'Updating'
             : `Updated ${generatedAt ? formatTime(new Date(generatedAt)) : 'now'}`}
         </span>
+        <div className="scheduler-toolbar__filters" aria-label="Schedule filters">
+          <label>
+            <span>Provider</span>
+            <select value={providerFilter} onChange={(event) => onProviderFilterChange(event.target.value)}>
+              <option value="all">All providers</option>
+              {providers.map((provider) => (
+                <option key={provider.id} value={provider.id}>{provider.displayName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+              <option value="all">All statuses</option>
+              {statuses.map((status) => (
+                <option key={status} value={status}>{STATUS_LABELS[status] ?? status}</option>
+              ))}
+            </select>
+          </label>
+        </div>
         <SchedulerViewToggle view={view} onViewChange={onViewChange} />
       </div>
     </section>
@@ -1037,52 +1072,6 @@ function SchedulerViewToggle({
   );
 }
 
-function SchedulerFilters({
-  providers,
-  statuses,
-  providerFilter,
-  statusFilter,
-  onProviderFilterChange,
-  onStatusFilterChange,
-}: {
-  providers: StaffMember[];
-  statuses: string[];
-  providerFilter: string;
-  statusFilter: string;
-  onProviderFilterChange: (value: string) => void;
-  onStatusFilterChange: (value: string) => void;
-}) {
-  return (
-    <section className="scheduler-filters" aria-label="Scheduler filters">
-      <label>
-        <span>Doctor / Provider</span>
-        <select
-          value={providerFilter}
-          onChange={(event) => onProviderFilterChange(event.target.value)}
-        >
-          <option value="all">All providers</option>
-          {providers.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.displayName}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        <span>Appointment status</span>
-        <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
-          <option value="all">All statuses</option>
-          {statuses.map((status) => (
-            <option key={status} value={status}>
-              {STATUS_LABELS[status] ?? status}
-            </option>
-          ))}
-        </select>
-      </label>
-    </section>
-  );
-}
-
 function WeekSchedulerGrid({
   days,
   appointments,
@@ -1094,8 +1083,6 @@ function WeekSchedulerGrid({
   onSlotClick,
   onAppointmentClick,
   onAppointmentMove,
-  onPrevious,
-  onNext,
   draggingAppointment,
   onAppointmentDragStart,
   onAppointmentDragEnd,
@@ -1111,8 +1098,6 @@ function WeekSchedulerGrid({
   onSlotClick: (slot: SelectedSlot) => void;
   onAppointmentClick: (appointment: SchedulerAppointment) => void;
   onAppointmentMove: (appointmentId: string, slot: SelectedSlot) => void;
-  onPrevious: () => void;
-  onNext: () => void;
   draggingAppointment: SchedulerAppointment | null;
   onAppointmentDragStart: (appointmentId: string) => void;
   onAppointmentDragEnd: () => void;
@@ -1123,9 +1108,7 @@ function WeekSchedulerGrid({
     <section className={draggingAppointment ? 'scheduler-calendar-card scheduler-calendar-card--dragging' : 'scheduler-calendar-card'} aria-label="Week appointment calendar">
       <div className="scheduler-week">
         <div className="scheduler-week__header">
-          <div className="scheduler-time-gutter scheduler-week-nav-cell">
-            <button type="button" className="scheduler-week-nav-button" onClick={onPrevious} aria-label="Previous week"><span aria-hidden="true">‹</span></button>
-          </div>
+          <div className="scheduler-time-gutter" aria-hidden="true" />
           {days.map((day) => (
             <div
               key={day.toISOString()}
@@ -1139,7 +1122,6 @@ function WeekSchedulerGrid({
               <strong>{day.getDate()}</strong>
             </div>
           ))}
-          <button type="button" className="scheduler-week-nav-button scheduler-week-nav-button--next" onClick={onNext} aria-label="Next week"><span aria-hidden="true">›</span></button>
         </div>
         <div className="scheduler-week__body">
           <TimeColumn />

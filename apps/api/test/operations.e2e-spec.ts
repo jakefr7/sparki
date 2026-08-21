@@ -11,6 +11,7 @@ const TEST_SOURCE_SYSTEM = 'sparki-operations-e2e';
 describe('Operations (e2e)', () => {
   let app: INestApplication;
   let otherOrganizationId: string;
+  let otherLocationId: string;
   let clientId: string;
   let patientId: string;
   let vetId: string;
@@ -41,6 +42,11 @@ describe('Operations (e2e)', () => {
       data: { organizationId: DEV_ORGANIZATION_ID, name: 'Ops Patient', species: 'Canine', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     patientId = patient.id;
+
+    const otherLocation = await prisma.location.create({
+      data: { organizationId: DEV_ORGANIZATION_ID, name: 'Operations E2E Other Location' },
+    });
+    otherLocationId = otherLocation.id;
 
     const vet = await prisma.user.create({
       data: {
@@ -94,7 +100,7 @@ describe('Operations (e2e)', () => {
         source: 'Phone',
         state: 'Scheduled',
         // listUpcomingForOrganization caps at the nearest 10 upcoming
-        // appointments org-wide, and the shared dev DB may carry many more
+        // appointments at this location, and the shared dev DB may carry many more
         // (protected local demo data spans the next 7 days) — scheduling
         // this a few minutes out, not a full week, keeps it reliably within
         // that top-10 regardless of what else is upcoming.
@@ -102,6 +108,35 @@ describe('Operations (e2e)', () => {
         providerId: vetId,
         sourceSystem: TEST_SOURCE_SYSTEM,
       },
+    });
+
+    await prisma.appointment.createMany({
+      data: [
+        {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: otherLocationId,
+          patientId,
+          clientId,
+          type: 'SickVisit',
+          reason: 'Other location today',
+          source: 'Phone',
+          state: 'Scheduled',
+          scheduledAt: new Date(),
+          sourceSystem: TEST_SOURCE_SYSTEM,
+        },
+        {
+          organizationId: DEV_ORGANIZATION_ID,
+          locationId: otherLocationId,
+          patientId,
+          clientId,
+          type: 'Recheck',
+          reason: 'Other location upcoming',
+          source: 'Phone',
+          state: 'Scheduled',
+          scheduledAt: new Date(Date.now() + 6 * 60 * 1000),
+          sourceSystem: TEST_SOURCE_SYSTEM,
+        },
+      ],
     });
 
     await prisma.appointment.create({
@@ -179,7 +214,7 @@ describe('Operations (e2e)', () => {
     });
 
     // Cross-org fixture: must never appear in DEV_ORGANIZATION_ID's dashboard.
-    const otherLocation = await prisma.location.create({
+    const otherOrganizationLocation = await prisma.location.create({
       data: { organizationId: otherOrganizationId, name: 'Other Org Location' },
     });
     const otherClient = await prisma.client.create({
@@ -191,7 +226,7 @@ describe('Operations (e2e)', () => {
     await prisma.visit.create({
       data: {
         organizationId: otherOrganizationId,
-        locationId: otherLocation.id,
+        locationId: otherOrganizationLocation.id,
         patientId: otherPatient.id,
         clientId: otherClient.id,
         visitType: 'WalkIn',
@@ -235,6 +270,7 @@ describe('Operations (e2e)', () => {
     });
     await prisma.staffProfile.deleteMany({ where: { userId: { in: [vetId, techId] } } });
     await prisma.user.deleteMany({ where: { id: { in: [vetId, techId] } } });
+    await prisma.location.deleteMany({ where: { id: otherLocationId } });
     await prisma.location.deleteMany({ where: { organizationId: otherOrganizationId } });
     await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();
@@ -339,6 +375,17 @@ describe('Operations (e2e)', () => {
         ...response.body.arrivedOrWaiting.map((v: { reason: string }) => v.reason),
       ];
       expect(allVisitReasons).not.toContain('Should not leak');
+    });
+
+    it('never leaks appointments from another location in the same organization', async () => {
+      const response = await request(app.getHttpServer()).get('/operations/dashboard');
+
+      const appointmentReasons = [
+        ...response.body.todaysAppointments.map((appointment: { reason: string }) => appointment.reason),
+        ...response.body.upcomingAppointments.map((appointment: { reason: string }) => appointment.reason),
+      ];
+      expect(appointmentReasons).not.toContain('Other location today');
+      expect(appointmentReasons).not.toContain('Other location upcoming');
     });
   });
 

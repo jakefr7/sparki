@@ -37,15 +37,15 @@ export function PostExamReview({ visit }: { visit: VisitDetail }) {
     <section className="post-exam-review" aria-labelledby="post-exam-review-heading">
       <div className="post-exam-review__complete">
         <span className="post-exam-review__check" aria-hidden="true">✓</span>
-        <div><p className="eyebrow">Exam complete</p><h2 id="post-exam-review-heading">Review findings and build the care plan</h2><p>Confirm the doctor’s conclusions, decide what happens today, and prepare the information the client will take home.</p></div>
+        <div><p className="eyebrow">Clinical evidence</p><h2 id="post-exam-review-heading">Exam summary</h2><p>Review the findings that inform today’s recommendations.</p></div>
         <div className="post-exam-review__statuses" aria-label="Post-exam status">
-          <span className={openWork.length ? 'has-open-work' : 'is-complete'}><i aria-hidden="true" />{openWork.length ? `${openWork.length} care ${openWork.length === 1 ? 'item' : 'items'} pending` : work.length ? 'Care items resolved' : 'No care items added'}</span>
-          <span className={visit.discharge ? 'is-complete' : ''}><i aria-hidden="true">{visit.discharge ? '✓' : ''}</i>{visit.discharge ? 'Synopsis prepared' : 'Synopsis not prepared'}</span>
+          <span className="is-complete"><i aria-hidden="true">✓</i>Exam complete</span>
+          <span className={openWork.length ? 'has-open-work' : work.length ? 'is-complete' : ''}><i aria-hidden="true" />{openWork.length ? `${openWork.length} pending` : work.length ? 'Plan resolved' : 'Plan not started'}</span>
         </div>
       </div>
 
       <div className="post-exam-review__summary">
-        <div className="post-exam-review__summary-header"><div><p className="eyebrow">Doctor’s review</p><h3>Clinical conclusions</h3></div><span>Saved from exam</span></div>
+        <div className="post-exam-review__summary-header"><div><p className="eyebrow">Doctor’s review</p><h3>Clinical conclusions</h3></div><span>Read only</span></div>
         <div className="post-exam-review__summary-grid">
           <article><span>Problem list / diagnoses</span><p>{exam.assessment || 'No problems or diagnoses documented.'}</p></article>
           <article><span>Recommendations</span><p>{exam.plan || 'No recommendations documented.'}</p></article>

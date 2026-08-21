@@ -138,7 +138,7 @@ export class AppointmentsController {
 
   @Post(':id/arrive')
   markArrived(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireSchedulingOperator(user);
+    requirePatientFlowOperator(user);
     return this.appointments.markArrived(id, user.organizationId, user.locationId, user.id);
   }
 
@@ -167,4 +167,15 @@ export class AppointmentsController {
 
 function requireSchedulingOperator(user: AuthenticatedUser) {
   requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+}
+
+function requirePatientFlowOperator(user: AuthenticatedUser) {
+  requireRole(user, [
+    'OWNER',
+    'PRACTICE_MANAGER',
+    'RECEPTIONIST',
+    'VETERINARIAN',
+    'TECHNICIAN',
+    'ASSISTANT',
+  ]);
 }

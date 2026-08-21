@@ -519,12 +519,12 @@ export class AppointmentsService {
     });
   }
 
-  /** All appointments scheduled for "today" (local server day) across the
-   *  organization — the Command Center's day-at-a-glance list. */
-  async listTodayForOrganization(organizationId: string) {
+  /** All appointments scheduled for "today" (local server day) at the
+   *  user's active clinic location — the Command Center's day-at-a-glance list. */
+  async listTodayForOrganization(organizationId: string, locationId: string) {
     const { start, end } = dayBoundsFor(new Date());
     return prisma.appointment.findMany({
-      where: { organizationId, scheduledAt: { gte: start, lt: end } },
+      where: { organizationId, locationId, scheduledAt: { gte: start, lt: end } },
       include: {
         patient: true,
         client: true,
@@ -602,12 +602,12 @@ export class AppointmentsService {
     }));
   }
 
-  /** Org-wide sibling of listUpcomingForPatient, for dashboards that aren't
-   *  scoped to one Patient. */
-  async listUpcomingForOrganization(organizationId: string, limit = 10) {
+  /** Location-scoped sibling of listUpcomingForPatient for operational dashboards. */
+  async listUpcomingForOrganization(organizationId: string, locationId: string, limit = 10) {
     return prisma.appointment.findMany({
       where: {
         organizationId,
+        locationId,
         scheduledAt: { gte: new Date() },
         state: { notIn: UPCOMING_EXCLUDED_STATES },
       },

@@ -5545,7 +5545,277 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 .visit-work-item form { display: grid; gap: .65rem; margin-top: .7rem; }
 .visit-work-item textarea { min-height: 4.5rem; resize: vertical; }
 
+/* Care-plan review is a single decision workspace: supporting clinical
+ * evidence stays visible beside the plan instead of competing as another
+ * full-width workflow section. */
+.care-plan-workspace {
+  display: grid;
+  width: min(1180px, calc(100% - 3rem));
+  grid-template-columns: minmax(19rem, 0.78fr) minmax(32rem, 1.35fr);
+  gap: 1rem;
+  align-items: start;
+  margin: 1.5rem auto 1.25rem;
+}
+
+.care-plan-workspace .post-exam-review,
+.care-plan-workspace .visit-work-panel {
+  width: 100%;
+  margin: 0;
+}
+
+.care-plan-workspace .post-exam-review {
+  position: sticky;
+  top: 1rem;
+}
+
+.post-exam-review__complete {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  padding: 1rem;
+}
+
+.post-exam-review__check {
+  width: 2.35rem;
+  height: 2.35rem;
+  flex-basis: 2.35rem;
+  font-size: 1rem;
+}
+
+.post-exam-review__complete h2 {
+  font-size: 1.15rem;
+}
+
+.post-exam-review__statuses {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+
+.post-exam-review__summary {
+  margin-top: 0.7rem;
+  box-shadow: 0 8px 24px rgba(30, 55, 70, 0.035);
+}
+
+.post-exam-review__summary-header {
+  padding: 0.85rem 1rem;
+}
+
+.post-exam-review__summary-grid {
+  grid-template-columns: 1fr;
+}
+
+.post-exam-review__summary-grid article {
+  min-height: 0;
+  padding: 0.9rem 1rem;
+  border-right: 0 !important;
+  border-bottom: 1px solid #e3ecee;
+}
+
+.post-exam-review__summary-grid article:last-child {
+  border-bottom: 0;
+}
+
+.visit-work-panel {
+  padding: 1.15rem;
+}
+
+.visit-work-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.visit-work-panel__header > div {
+  min-width: 0;
+}
+
+.visit-work-panel__header > span {
+  flex: 0 0 auto;
+  padding: 0.34rem 0.6rem;
+  border-radius: 999px;
+  background: #edf7f5;
+  color: #13766f;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.visit-work-add {
+  margin-top: 1rem;
+  overflow: hidden;
+  border: 1px solid #cfe1e2;
+  border-radius: 0.75rem;
+  background: #fbfdfd;
+}
+
+.visit-work-add > summary {
+  display: flex;
+  min-height: 3.7rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.visit-work-add > summary::-webkit-details-marker {
+  display: none;
+}
+
+.visit-work-add > summary > span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.visit-work-add > summary strong {
+  color: #17313a;
+  font-size: 0.85rem;
+}
+
+.visit-work-add > summary small {
+  color: #6a7b86;
+  font-size: 0.72rem;
+}
+
+.visit-work-add > summary b {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f6f4;
+  color: #147b74;
+  font-size: 1rem;
+}
+
+.visit-work-add[open] > summary {
+  border-bottom: 1px solid #dbe7e8;
+  background: #f4faf9;
+}
+
+.visit-work-add[open] > summary b {
+  transform: rotate(45deg);
+}
+
+.visit-work-create {
+  grid-template-columns: minmax(9rem, 0.7fr) minmax(15rem, 1.3fr);
+  margin: 0;
+  padding: 0.9rem;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.visit-work-create__recommendation,
+.visit-work-create fieldset,
+.visit-work-create__actions {
+  grid-column: 1 / -1;
+}
+
+.visit-work-create textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.visit-work-create fieldset {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid #e0eaeb;
+  border-radius: 0.65rem;
+}
+
+.visit-work-create fieldset legend {
+  padding: 0 0.3rem;
+  color: #526772;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.visit-work-create fieldset legend span {
+  color: #8a989f;
+  font-weight: 650;
+}
+
+.visit-work-create fieldset > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.visit-work-create__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.visit-work-create__actions .button-primary {
+  padding: 0 1rem;
+}
+
+.visit-work-list {
+  grid-template-columns: 1fr;
+}
+
+.visit-work-empty {
+  display: grid;
+  min-height: 9rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.25rem;
+  padding: 1.25rem;
+  border: 1px dashed #cbdcde;
+  border-radius: 0.72rem;
+  background: #fafcfc;
+  text-align: center;
+}
+
+.visit-work-empty > span {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #e8f6f4;
+  color: #147b74;
+}
+
+.visit-work-empty strong {
+  color: #263a44;
+  font-size: 0.85rem;
+}
+
+.visit-work-empty p {
+  margin: 0;
+  color: #6b7c86;
+  font-size: 0.76rem;
+}
+
+@media (max-width: 1050px) {
+  .care-plan-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .care-plan-workspace .post-exam-review {
+    position: static;
+  }
+
+  .post-exam-review__summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .post-exam-review__summary-grid article:nth-child(odd) {
+    border-right: 1px solid #e3ecee !important;
+  }
+}
+
 @media (max-width: 700px) {
+  .care-plan-workspace {
+    width: min(100% - 1.5rem, 1180px);
+  }
+
   .post-exam-review__summary-grid,
   .visit-discharge-panel,
   .visit-work-create,
@@ -5565,6 +5835,10 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   .visit-record-amendment > label:first-child,
   .visit-record-amendment > button {
     grid-column: 1;
+  }
+
+  .visit-work-create fieldset > div {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -8075,7 +8349,8 @@ img.pet-photo-placeholder {
 
 .scheduler-toolbar__navigation,
 .scheduler-toolbar__meta,
-.scheduler-toolbar__stepper,
+.scheduler-toolbar__period,
+.scheduler-toolbar__filters,
 .scheduler-view-toggle {
   display: flex;
   align-items: center;
@@ -8086,7 +8361,7 @@ img.pet-photo-placeholder {
   min-width: 0;
 }
 
-.scheduler-toolbar__navigation strong {
+.scheduler-toolbar__period strong {
   color: #172633;
   font-size: 1.08rem;
   letter-spacing: 0;
@@ -8122,29 +8397,72 @@ img.pet-photo-placeholder {
   outline-offset: 2px;
 }
 
-.scheduler-toolbar__navigation > button {
-  padding: 0 0.7rem;
+.scheduler-toolbar__period {
+  gap: 0.65rem;
 }
 
-.scheduler-toolbar__stepper {
-  overflow: hidden;
-  border: 1px solid #dde9ec;
-  border-radius: 0.55rem;
-}
-
-.scheduler-toolbar__stepper button {
+.scheduler-toolbar__period button {
   width: 2rem;
-  border: 0;
-  border-radius: 0;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  color: #526472;
+  font-size: 1.1rem;
 }
 
-.scheduler-toolbar__stepper button + button {
-  border-left: 1px solid #dde9ec;
+.scheduler-toolbar__current {
+  padding: 0 0.65rem;
+  border-color: transparent !important;
+  background: #eef8f7 !important;
+  color: #177f79 !important;
+}
+
+.scheduler-toolbar__current:hover {
+  background: #e3f4f2 !important;
 }
 
 .scheduler-toolbar__meta {
   justify-content: flex-end;
   gap: 0.7rem;
+}
+
+.scheduler-toolbar__filters {
+  gap: 0.45rem;
+}
+
+.scheduler-toolbar__filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.scheduler-toolbar__filters label > span {
+  color: #667586;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scheduler-toolbar__filters select {
+  width: 9.75rem;
+  min-height: 2rem;
+  padding: 0 1.75rem 0 0.55rem;
+  border: 1px solid #dde9ec;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #172633;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.scheduler-toolbar__filters label:last-child select {
+  width: 8.2rem;
+}
+
+.scheduler-toolbar__filters select:focus-visible {
+  border-color: rgba(31, 169, 160, 0.7);
+  outline: 2px solid rgba(31, 169, 160, 0.24);
+  outline-offset: 1px;
 }
 
 .scheduler-live-status {
@@ -8227,6 +8545,50 @@ img.pet-photo-placeholder {
   overflow: hidden;
 }
 
+/* On desktop, keep the scheduler controls anchored in the viewport and let
+ * the calendar itself own vertical scrolling. Mobile retains normal document
+ * scrolling so the compact navigation and stacked controls remain usable. */
+@media (min-width: 901px) {
+  .dashboard-shell:has(.scheduler-page) {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .dashboard-main:has(.scheduler-page) {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .dashboard-main:has(.scheduler-page) > .dashboard-header,
+  .scheduler-page > :not(.scheduler-calendar-card) {
+    flex: 0 0 auto;
+  }
+
+  .dashboard-main:has(.scheduler-page) > .scheduler-page {
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+
+  .scheduler-calendar-card {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .scheduler-day-view__header {
+    position: sticky;
+    z-index: 4;
+    top: 0;
+  }
+}
+
 .scheduler-week {
   min-width: 0;
 }
@@ -8245,13 +8607,6 @@ img.pet-photo-placeholder {
   background: rgba(251, 253, 253, 0.96);
   backdrop-filter: blur(8px);
 }
-
-.scheduler-week-nav-cell { display: grid; place-items: center; }
-.scheduler-week-nav-button { display: inline-grid; width: 2.15rem; height: 2.15rem; place-items: center; padding: 0; border: 1px solid #dbe7ea; border-radius: .58rem; background: #fff; color: #526472; cursor: pointer; box-shadow: 0 4px 12px rgba(31,54,70,.06); }
-.scheduler-week-nav-button span { font-size: 1.45rem; line-height: 1; transform: translateY(-1px); }
-.scheduler-week-nav-button:hover { border-color: rgba(31,169,160,.48); background: #f2fbfb; color: #177f79; }
-.scheduler-week-nav-button:focus-visible { outline: 2px solid rgba(31,169,160,.45); outline-offset: 2px; }
-.scheduler-week-nav-button--next { position: absolute; top: 50%; right: .55rem; z-index: 2; transform: translateY(-50%); }
 
 .scheduler-time-gutter,
 .scheduler-day-heading {
@@ -8845,10 +9200,6 @@ img.pet-photo-placeholder {
 .scheduler-status--green {
   border-color: #6ab482;
   background: #eff9f2;
-}
-
-.scheduler-calendar-card--day {
-  overflow: hidden;
 }
 
 .scheduler-day-view__header {
@@ -9817,8 +10168,19 @@ img.pet-photo-placeholder {
 }
 
 @media (max-width: 860px) {
-  .scheduler-filters {
-    grid-template-columns: 1fr;
+  .scheduler-toolbar__navigation,
+  .scheduler-toolbar__meta,
+  .scheduler-toolbar__filters {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .scheduler-toolbar__meta {
+    justify-content: flex-start;
+  }
+
+  .scheduler-view-toggle {
+    margin-left: auto;
   }
 }
 

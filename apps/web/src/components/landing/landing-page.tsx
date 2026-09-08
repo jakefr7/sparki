@@ -237,7 +237,10 @@ export function LandingPage() {
     const measure = () => {
       frame = 0;
       setScrolled(window.scrollY > 24);
-      const mid = window.innerHeight * 0.42;
+      // The incoming act claims the stage once its top crosses ~60% of the
+      // viewport — early enough that its copy has risen into place before the
+      // outgoing panel has fully faded, so scenes hand off without a blank beat.
+      const mid = window.innerHeight * 0.6;
       let next = 0;
       for (let i = 0; i < els.length; i += 1) {
         const el = els[i]!.current;
@@ -309,7 +312,7 @@ export function LandingPage() {
         window.scrollTo(0, target);
         return;
       }
-      tween(window.scrollY, target, 620, (value) => window.scrollTo(0, value));
+      tween(window.scrollY, target, 780, (value) => window.scrollTo(0, value));
     },
     [reduced],
   );
@@ -347,6 +350,13 @@ export function LandingPage() {
   const canvasRole: SparkiRole = act === 'roles' ? activeRole.role : 'veterinarian';
   const canvasJourney = journeyFromStep(step);
   const isDark = act === 'story' || act === 'roles' || act === 'belief';
+
+  // Only the act that owns the viewport shows its copy at full strength; the
+  // others dim and lift out of the way. This is what keeps two headings from
+  // being readable at once during a scene change — the outgoing panel resolves
+  // before the incoming one becomes legible, on the same frame the canvas
+  // re-poses and the ground changes tone.
+  const current = (name: Act) => (act === name ? 'true' : undefined);
 
   const canvas = (
     <SparkiCanvas
@@ -420,13 +430,12 @@ export function LandingPage() {
               <div className={s.stageGround} />
               <LandingImage slot="hero" className={s.figHero} priority />
               <LandingImage slot="flow" className={s.figFlow} />
-              <LandingImage slot="belief" className={s.figBelief} />
               <div className={s.canvasHolder}>{canvas}</div>
             </div>
           )}
 
           {/* ACT — hero */}
-          <section ref={heroRef} className={`${s.act} ${s.actHero}`}>
+          <section ref={heroRef} className={`${s.act} ${s.actHero}`} data-current={current('hero')}>
             <div className={s.actInner}>
               <p className={s.eyebrow}>
                 <span /> THE VETERINARY PRACTICE OPERATING SYSTEM
@@ -461,7 +470,12 @@ export function LandingPage() {
           </section>
 
           {/* ACT — convergence */}
-          <section ref={convergeRef} className={`${s.act} ${s.actConverge}`} id="product">
+          <section
+            ref={convergeRef}
+            className={`${s.act} ${s.actConverge}`}
+            id="product"
+            data-current={current('converge')}
+          >
             <div className={s.actText}>
               <p className={s.eyebrow}>From fragmented to focused</p>
               <h2>
@@ -487,6 +501,7 @@ export function LandingPage() {
             ref={storyRef}
             className={`${s.act} ${s.actStory}`}
             data-dark={act === 'story' ? 'true' : undefined}
+            data-current={current('story')}
             aria-labelledby="journey-heading"
           >
             <div className={s.actText}>
@@ -532,7 +547,12 @@ export function LandingPage() {
           </section>
 
           {/* ACT — platform */}
-          <section ref={platformRef} className={`${s.act} ${s.actPlatform}`} id="solutions">
+          <section
+            ref={platformRef}
+            className={`${s.act} ${s.actPlatform}`}
+            id="solutions"
+            data-current={current('platform')}
+          >
             <div className={s.actText}>
               <p className={s.eyebrow}>Connected by design</p>
               <h2>
@@ -571,7 +591,12 @@ export function LandingPage() {
           </section>
 
           {/* ACT — roles */}
-          <section ref={rolesRef} className={`${s.act} ${s.actRoles}`} data-dark={act === 'roles' ? 'true' : undefined}>
+          <section
+            ref={rolesRef}
+            className={`${s.act} ${s.actRoles}`}
+            data-dark={act === 'roles' ? 'true' : undefined}
+            data-current={current('roles')}
+          >
             <div className={s.actText}>
               <p className={s.eyebrow}>Your team. Their point of view.</p>
               <h2>
@@ -628,7 +653,13 @@ export function LandingPage() {
           </section>
 
           {/* ACT — belief */}
-          <section ref={beliefRef} className={`${s.act} ${s.actBelief}`} data-dark={act === 'belief' ? 'true' : undefined} id="why-sparki">
+          <section
+            ref={beliefRef}
+            className={`${s.act} ${s.actBelief}`}
+            data-dark={act === 'belief' ? 'true' : undefined}
+            data-current={current('belief')}
+            id="why-sparki"
+          >
             <div className={s.actText}>
               <p className={s.eyebrow}>Built around the work</p>
               <h2>
@@ -648,7 +679,6 @@ export function LandingPage() {
                 <span>More care. Less carrying the software.</span>
               </div>
             </div>
-            {reduced && <LandingImage slot="belief" className={s.figBeliefInline} />}
           </section>
         </div>
 

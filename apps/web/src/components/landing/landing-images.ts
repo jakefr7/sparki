@@ -1,11 +1,14 @@
 import type { StaticImageData } from 'next/image';
 
-import beliefPortrait from '../../../public/landing/belief-portrait.jpg';
 import flowPortrait from '../../../public/landing/flow-portrait.jpg';
 import heroPortrait from '../../../public/landing/hero-portrait.jpg';
 
 /**
  * Single source of truth for the landing page's dog / cat imagery.
+ *
+ * Two portraits, deliberately: one Siberian Husky (the patient) in the hero and
+ * one cat during the patient journey. Fewer, better compositions rather than
+ * pet cards scattered down the page.
  *
  * The image *files* under `public/landing/` are temporary, license-clear
  * Unsplash photographs (see `docs/landing-image-direction.md`). Every visual
@@ -13,7 +16,7 @@ import heroPortrait from '../../../public/landing/hero-portrait.jpg';
  * text, responsive `sizes` — lives here rather than in the JSX, so replacing a
  * photo later means editing the file plus, at most, one `focal` value.
  */
-export type LandingImageSlot = 'hero' | 'flow' | 'belief';
+export type LandingImageSlot = 'hero' | 'flow';
 
 export interface LandingImageSpec {
   /** Statically imported so Next generates width/height, srcset and a blur placeholder. */
@@ -33,21 +36,14 @@ export const LANDING_IMAGES: Record<LandingImageSlot, LandingImageSpec> = {
     src: heroPortrait,
     alt: '',
     aspectRatio: '4 / 5',
-    focal: '52% 40%',
-    sizes: '(max-width: 640px) 70vw, (max-width: 1100px) 40vw, 460px',
+    focal: '43% 46%',
+    sizes: '(max-width: 640px) 72vw, (max-width: 1100px) 40vw, 460px',
   },
   flow: {
     src: flowPortrait,
-    alt: 'A clinic patient',
+    alt: 'A cat being examined in a veterinary clinic',
     aspectRatio: '1 / 1',
-    focal: '50% 34%',
+    focal: '55% 42%',
     sizes: '(max-width: 640px) 100vw, (max-width: 1100px) 45vw, 420px',
-  },
-  belief: {
-    src: beliefPortrait,
-    alt: '',
-    aspectRatio: '3 / 4',
-    focal: '62% 42%',
-    sizes: '(max-width: 640px) 80vw, (max-width: 1100px) 45vw, 440px',
   },
 };

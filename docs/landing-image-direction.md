@@ -1,9 +1,17 @@
 # Landing page — animal image direction
 
-The public landing page (`apps/web/src/components/landing/`) uses a small,
-intentional set of dog / cat portraits for warmth. **The current files are
-temporary, license-clear Unsplash photographs** used so the page can be fully
-designed, animated, and reviewed now. They are _not_ permanent brand assets.
+The public landing page (`apps/web/src/components/landing/`) uses **two**
+portraits for warmth — one Siberian Husky (the patient, in the hero) and one
+cat (during the patient journey). Two deliberate compositions, not pet cards
+scattered down the page. **The current files are temporary, license-clear
+Unsplash photographs** used so the page can be fully designed, animated, and
+reviewed now. They are _not_ permanent brand assets.
+
+> A third `belief` slot (a small dog portrait beside the closing statement) was
+> removed: at that size it read as a rectangular card pasted over the receding
+> product UI. The belief section is now a plain typographic close with the
+> product blurring back — no photograph. Do not re-add it without a composition
+> that earns its place.
 
 All landing imagery flows through one layer so the temporary photos can be
 swapped one-for-one later with **zero re-wiring**:
@@ -43,35 +51,38 @@ or people holding pets. Dog and cat portraits only. Keep the set sparse.
 | Field | Value |
 | --- | --- |
 | Filename | `apps/web/public/landing/hero-portrait.jpg` |
-| Rendered aspect ratio | `4 / 5` (portrait crop out of a `4 / 3` source) |
-| Source pixel dimensions | `1600 × 1200` |
-| Focal point (`object-position`) | `52% 40%` — the eyes |
+| Rendered aspect ratio | `4 / 5` |
+| Source pixel dimensions | `1200 × 1500` |
+| Focal point (`object-position`) | `43% 46%` — the eyes |
 | `alt` | `""` (decorative; the hero headline carries meaning) |
-| Temporary asset | Unsplash photo `1543466835-00a7907e9de1` (beagle, outdoor, natural light) |
+| Temporary asset | Unsplash photo `1491604612772-6853927639ef` (black-and-white Siberian Husky, calm, plain indoor background) |
 
-**Role in the page:** lower-left depth layer of the hero. Sits behind the
-Sparki dashboard window on a nearer plane, ~30–40% visible, softly blurred at
-the edges by a radial mask, parallax-offset from the UI on scroll and on
-cursor movement.
+**Role in the page:** lower-left depth layer of the hero. Sits a plane behind
+the Sparki window, feathered on every edge by a radial mask so it dissolves
+into the ground rather than reading as a framed photo, with a restrained
+parallax offset on scroll and cursor movement. It clears out completely before
+any copy scrolls past it. The Husky is the **patient**; the product window is
+the system caring for that patient — so the dog must read as a clinic patient,
+never as an outdoor / lifestyle / pet-adventure image.
 
-**Final generated image should depict:** a single medium-or-large dog in a
-calm three-quarter head-and-shoulders portrait, looking just off camera,
-relaxed open mouth or soft closed mouth (not a hard "smile"), warm golden or
-sable coat. Clean, out-of-focus mid-tone background (studio sweep or soft
-natural greenery), strong but soft key light from front-left, shallow depth of
-field. Editorial campaign feel. Generous negative space on the left third for
-the portrait to bleed into the page.
+**Final generated image should depict:** a normal black-and-white Siberian
+Husky — realistic, calm, healthy-looking — in a veterinary clinic or exam-room
+context, being examined, handled, or gently held by a veterinarian or clinical
+staff member. Clean, modern, premium, believable medical environment. The human
+must not dominate the frame (torso / hands only is ideal); the dog stays the
+emotional focal point. No wilderness, no snow, no adventure-brand energy, no
+cheesy stock-photo staging.
 
 **Replacement prompt:**
 
-> Editorial studio portrait of a single friendly medium-sized dog, warm sable
-> and cream coat, calm three-quarter view looking gently off-camera, soft
-> relaxed expression. Shot on an 85mm lens at f/1.8, shallow depth of field,
-> soft directional key light from front-left with a subtle warm fill, smooth
-> out-of-focus warm-neutral background. Premium pet-brand campaign photography,
-> natural realistic fur detail, catchlight in the eyes, generous empty space on
-> the left side of the frame. Muted, sophisticated color palette. No people, no
-> collar tags, no text, no props. 4:3 frame, high resolution.
+> Editorial photograph of a calm, healthy black-and-white Siberian Husky on a
+> stainless steel veterinary exam table, being gently held and examined by a
+> veterinarian in clean scrubs — only the vet's hands and torso in frame, the
+> dog is the clear focal point. Modern, bright, minimal clinic interior, soft
+> even light, shallow depth of field. Premium healthcare-brand photography,
+> muted cool color palette that sits with a teal system colour, realistic fur
+> detail, gentle trusting expression. No faces, no text, no clutter. Vertical
+> 4:5 frame, high resolution.
 
 ---
 
@@ -80,68 +91,32 @@ the portrait to bleed into the page.
 | Field | Value |
 | --- | --- |
 | Filename | `apps/web/public/landing/flow-portrait.jpg` |
-| Rendered aspect ratio | `1 / 1` (square crop out of a `3 / 2` source) |
-| Source pixel dimensions | `1600 × 1101` |
-| Focal point (`object-position`) | `50% 34%` — between the eyes |
-| `alt` | `"A clinic patient"` |
-| Temporary asset | Unsplash photo `1514888286974-6c03e2ca1dba` (tuxedo cat, green wall) |
+| Rendered aspect ratio | `1 / 1` |
+| Source pixel dimensions | `1100 × 1100` |
+| Focal point (`object-position`) | `52% 44%` — the cat's face |
+| `alt` | `"A cat being examined in a veterinary clinic"` |
+| Temporary asset | Unsplash photo `1733783506192-653df6185a7d` (white cat on a stainless exam table, gloved hands) |
 
 **Role in the page:** during the patient-journey scroll scene this portrait
-wipes in from behind the Sparki panel with a vertical `mask-image` reveal, then
-collapses / cross-fades into the circular patient avatar inside the record —
-the "this animal _is_ this Sparki patient" beat. Also used as the blurred
+wipes up from behind the Sparki panel with a `mask-image` reveal, feathered on
+every edge so it reads as part of the scene, not a card. Also the blurred
 backdrop the Today patient-flow list floats over on mobile.
 
-**Final generated image should depict:** a single cat (or could be a small
-dog) in a head-on, symmetrical portrait, direct eye contact, alert but calm,
-front paws / chest visible as if perched. Plain flat-color wall behind in a
-muted green or teal that harmonizes with Sparki. Even, soft frontal light.
-Strong central composition so the circular crop lands cleanly on the face.
+**Final generated image should depict:** the same idea as the hero, for a cat —
+a calm cat on a veterinary exam table being gently handled or examined by
+clinical staff (gloved hands, scrubs), the cat as the clear focal point, the
+human not dominating. Clean modern clinic, cool neutral palette. Not a home
+scene, not decorative pet photography.
 
 **Replacement prompt:**
 
-> Editorial head-on portrait of a single calm cat with striking eyes, looking
-> directly at the camera, front paws visible resting on a ledge. Plain
-> smooth muted sage-green wall background, soft even frontal lighting, gentle
-> shadow. Symmetrical centered composition, face in the exact middle of the
-> frame. Realistic detailed fur, sharp catchlights, shallow background. Modern
-> premium pet-brand editorial photography, calm and trustworthy mood, refined
-> muted color grade. No people, no text, no props, no collar. Square 1:1 frame,
+> Editorial photograph of a calm cat on a stainless steel veterinary exam
+> table, gently held and examined by a veterinarian in clean scrubs and exam
+> gloves — only hands and torso in frame, the cat is the clear focal point.
+> Bright minimal clinic interior, soft even light, shallow depth of field.
+> Premium healthcare-brand photography, muted cool color palette, realistic fur
+> detail, calm trusting mood. No faces, no text, no clutter. Square 1:1 frame,
 > high resolution.
-
----
-
-## Slot: `belief` — "built for how clinics actually work"
-
-| Field | Value |
-| --- | --- |
-| Filename | `apps/web/public/landing/belief-portrait.jpg` |
-| Rendered aspect ratio | `3 / 4` (portrait crop out of a `3 / 2` source) |
-| Source pixel dimensions | `1600 × 1067` |
-| Focal point (`object-position`) | `62% 42%` — the dog's face, right of centre |
-| `alt` | `""` (decorative; paired with the section heading) |
-| Temporary asset | Unsplash photo `1561037404-61cd46aa615b` (small dog, pink studio sweep) |
-
-**Role in the page:** paired beside the belief statement. Enters with a
-diagonal `mask-image` reveal as the product UI recedes and blurs into a
-background layer. The empty side of the frame overlaps the text column.
-
-**Final generated image should depict:** a single small-to-medium dog, clean
-studio portrait on a seamless paper sweep in a soft warm neutral (blush, sand,
-or warm grey), head and upper chest, direct or near-direct eye contact, ears
-up and attentive, honest and grounded expression. Clearly art-directed
-one-light studio look with a soft falloff. The animal sits to one side of the
-frame leaving a clean empty region for the headline to sit against.
-
-**Replacement prompt:**
-
-> Minimal studio portrait of a single small attentive dog on a seamless warm
-> blush-grey paper backdrop, head and chest, ears up, calm honest expression,
-> near-direct eye contact. One large soft key light, gentle shadow falloff,
-> subtle vignette. Subject positioned to the right third of the frame with
-> clean empty backdrop on the left for text. Realistic fur and catchlights,
-> refined muted campaign color grade, premium pet-brand aesthetic. No people,
-> no text, no props, no visible collar. 3:2 frame, high resolution.
 
 ---
 
@@ -149,6 +124,6 @@ frame leaving a clean empty region for the headline to sit against.
 
 Slots are defined once in `landing-images.ts`. Adding one means adding a
 registry entry plus a `<LandingImage slot="…">` usage and (optionally) a
-`.figure--<slot>` mask rule in `landing.module.css`. Keep the total at three
-unless there is a strong reason: a few exceptional images beat many average
-ones.
+`.fig<slot>` mask rule in `landing.module.css`. Keep the total at two unless
+there is a strong reason: a few exceptional images beat many average ones, and
+a small photograph dropped into a busy composition reads as a sticker.

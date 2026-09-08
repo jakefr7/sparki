@@ -458,9 +458,6 @@ export function LandingPage() {
                 </div>
               )}
             </div>
-            <p className={s.scrollCue} aria-hidden="true">
-              <span>Scroll to see a visit move through Sparki</span> ↓
-            </p>
           </section>
 
           {/* ACT — convergence */}

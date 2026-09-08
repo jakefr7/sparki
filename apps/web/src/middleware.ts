@@ -13,8 +13,9 @@ import { SESSION_COOKIE_NAME } from './lib/auth-cookie';
 export function middleware(request: NextRequest) {
   const hasSession = request.cookies.has(SESSION_COOKIE_NAME);
   const isLoginPage = request.nextUrl.pathname === '/login';
+  const isPublicPage = request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/demo';
 
-  if (!hasSession && !isLoginPage) {
+  if (!hasSession && !isLoginPage && !isPublicPage) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);

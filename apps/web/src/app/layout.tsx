@@ -5,6 +5,7 @@ import { AuthBootstrapProvider, type BootstrapProfile, type BootstrapWeather } f
 import type { CurrentUser } from '../lib/use-current-user';
 import { env } from '../lib/env';
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from '../lib/theme';
+import { SESSION_COOKIE_NAME } from '../lib/auth-cookie';
 import './globals.css';
 import './team-messages-popovers.css';
 import './profile-settings.css';
@@ -34,10 +35,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
   const authRequest: RequestInit = cookieHeader ? { headers: { cookie: cookieHeader }, cache: 'no-store' } : { cache: 'no-store' };
-  const [meResponse, profileResponse] = await Promise.all([
+  // Public visitors need no clinic bootstrap requests. Session-bearing requests retain the existing API verification.
+  const [meResponse, profileResponse] = cookieStore.has(SESSION_COOKIE_NAME) ? await Promise.all([
     fetch(new URL('/auth/me', env.API_URL), authRequest).catch(() => null),
     fetch(new URL('/auth/profile', env.API_URL), authRequest).catch(() => null),
-  ]);
+  ]) : [null, null];
   const meBody = meResponse?.ok ? await meResponse.json() as { user?: CurrentUser } : null;
   const profile = profileResponse?.ok ? await profileResponse.json() as BootstrapProfile : null;
   let weather: BootstrapWeather | null = null;

@@ -100,6 +100,12 @@ function exceptionsFor(visit: DashboardVisitSummary) {
   return visit.openExceptions ?? [];
 }
 
+// Once the SOAP note is signed the veterinarian is done — the visit moves to
+// CheckoutReady for the front desk, so it should drop off the vet's queue.
+function recordSigned(visit: DashboardVisitSummary) {
+  return visit.recordStatus === 'Locked';
+}
+
 function elapsedLabel(minutes: number) {
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes} min`;
@@ -141,7 +147,7 @@ function actionLabel(visit: DashboardVisitSummary, role: DashboardRole) {
     if (EXAM_STATES.has(visit.state))
       return visit.state === 'VeterinarianExamReady' ? 'Start exam' : 'Continue exam';
     if (PLAN_STATES.has(visit.state) || CARE_STATES.has(visit.state)) return 'Review care plan';
-    if (visit.phase === 'RecordClosure') return 'Finish record';
+    if (visit.phase === 'RecordClosure' && !recordSigned(visit)) return 'Finish record';
   }
   return 'Open visit';
 }
@@ -184,7 +190,7 @@ function roleVisits(role: DashboardRole, visits: DashboardVisitSummary[], userId
         (EXAM_STATES.has(visit.state) ||
           PLAN_STATES.has(visit.state) ||
           CARE_STATES.has(visit.state) ||
-          visit.phase === 'RecordClosure')
+          (visit.phase === 'RecordClosure' && !recordSigned(visit)))
       );
     }
     return visit.elapsedMinutes >= 30 || !visit.currentOwner || exceptionsFor(visit).length > 0;

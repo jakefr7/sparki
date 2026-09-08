@@ -12,6 +12,7 @@ export function ClinicalAttachmentsPanel({ patientId, visitId, attachments, fina
   const { user } = useCurrentUser();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [correction, setCorrection] = useState<Correction>(null);
   const mayCorrect = ['OWNER', 'PRACTICE_MANAGER', 'VETERINARIAN'].includes(user?.role ?? '');
 
@@ -24,8 +25,10 @@ export function ClinicalAttachmentsPanel({ patientId, visitId, attachments, fina
       if (!response.ok) throw new Error(body.message ?? 'Could not upload attachment.');
       setCorrection(null);
       router.refresh();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not upload attachment.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -37,8 +40,10 @@ export function ClinicalAttachmentsPanel({ patientId, visitId, attachments, fina
     const form = new FormData(formNode);
     form.set('patientId', patientId);
     form.set('visitId', visitId);
-    await postUpload(form);
-    formNode.reset();
+    if (await postUpload(form)) {
+      formNode.reset();
+      setUploadOpen(false);
+    }
   }
 
   async function correct(event: FormEvent<HTMLFormElement>, attachmentId: string, kind: 'remove' | 'replace') {
@@ -74,8 +79,17 @@ export function ClinicalAttachmentsPanel({ patientId, visitId, attachments, fina
   }
 
   return <section id="visit-attachments" className="visit-work-panel" aria-labelledby="clinical-attachments-heading">
-    <header><p className="eyebrow">Clinical record</p><h2 id="clinical-attachments-heading">Attachments</h2><p>PDF, JPG, or PNG · 25 MB maximum · private authenticated access.</p></header>
-    <form onSubmit={(event) => void upload(event)}><label>File<input name="file" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required /></label><label>Clinical label<input name="label" maxLength={200} placeholder="Lab report, referral record, image…" /></label><button className="button-secondary" disabled={saving}>{saving ? 'Saving…' : 'Add to clinical record'}</button></form>
+    <header className="clinical-attachments-header">
+      <div><h2 id="clinical-attachments-heading">Attachments <span className="clinical-attachments-count">{attachments.length}</span></h2><p>Lab reports, referral records, and images</p></div>
+      <button type="button" className="clinical-attachments-toggle" aria-expanded={uploadOpen} aria-controls="clinical-attachment-upload" disabled={saving} onClick={() => setUploadOpen((open) => !open)}>{uploadOpen ? 'Cancel' : '+ Add attachment'}</button>
+    </header>
+    <div id="clinical-attachment-upload" hidden={!uploadOpen}>
+      <form className="clinical-attachment-upload-form" onSubmit={(event) => void upload(event)}>
+        <label>File<input name="file" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required aria-describedby="attachment-file-help" /><small id="attachment-file-help">PDF, JPG, or PNG · up to 25 MB</small></label>
+        <label>Description (optional)<input name="label" maxLength={200} placeholder="e.g. Lab results" /></label>
+        <button className="button-secondary" disabled={saving}>{saving ? 'Uploading…' : 'Upload attachment'}</button>
+      </form>
+    </div>
     {attachments.length ? <ul>{attachments.map((attachment) => <li key={attachment.id}>
       {attachment.href ? <a href={`/api${attachment.href}`}>{attachment.label || attachment.fileName}</a> : <span>{attachment.label || attachment.fileName}</span>} <small>{Math.ceil(attachment.sizeBytes / 1024)} KB · {new Date(attachment.createdAt).toLocaleString()}</small>
       {mayCorrect ? <span><button type="button" disabled={saving} onClick={() => setCorrection({ attachmentId: attachment.id, kind: 'remove' })}>{finalized ? 'Audited removal' : 'Remove'}</button><button type="button" disabled={saving} onClick={() => setCorrection({ attachmentId: attachment.id, kind: 'replace' })}>Replace with correction</button></span> : null}
@@ -87,7 +101,7 @@ export function ClinicalAttachmentsPanel({ patientId, visitId, attachments, fina
         <button className="button-secondary" disabled={saving}>{saving ? 'Saving…' : correction.kind === 'replace' ? 'Save corrected attachment' : finalized ? 'Confirm audited removal' : 'Confirm removal'}</button>
         <button type="button" disabled={saving} onClick={() => setCorrection(null)}>Cancel</button>
       </form> : null}
-    </li>)}</ul> : <p>No clinical attachments.</p>}
+    </li>)}</ul> : <p className="clinical-attachments-empty">No attachments yet.</p>}
     {error ? <p className="form-error" role="alert">{error}</p> : null}
   </section>;
 }

@@ -1178,7 +1178,9 @@ describe('Visits (e2e)', () => {
       expect(finalized.status).toBe(201);
       expect(finalized.body).toMatchObject({ status: 'Locked', veterinarianId: DEV_USER_ID });
       const persistedVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visit.id } });
-      expect(persistedVisit).toMatchObject({ state: 'RecordComplete', phase: 'RecordClosure' });
+      // Record is signed but the patient still needs checking out, so the visit
+      // is handed to the front desk as CheckoutReady rather than parked in RecordComplete.
+      expect(persistedVisit).toMatchObject({ state: 'CheckoutReady', phase: 'RecordClosure' });
     });
 
     it('audits clinical work and requires documented medication stock reconciliation after reversal', async () => {

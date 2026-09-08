@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "node scripts/free-dev-ports.mjs && turbo run dev",
+    "dev:free-ports": "node scripts/free-dev-ports.mjs",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test && node --test scripts/run-isolated-tests.test.mjs",

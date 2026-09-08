@@ -1,3 +1,4 @@
+import { VisitCareSections } from '../../../components/visit-care-sections';
 import { notFound } from 'next/navigation';
 import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace';
@@ -57,10 +58,10 @@ export default async function VisitWorkspacePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; view?: string }>;
 }) {
   const { id } = await params;
-  const { from } = await searchParams;
+  const { from, view } = await searchParams;
   const visit = await getVisit(id);
   if (!visit) {
     notFound();
@@ -72,9 +73,22 @@ export default async function VisitWorkspacePage({
   // Care-plan execution begins only after the veterinarian completes the
   // exam. Showing it during ExamInProgress competes with exam documentation
   // and implies downstream work should be ordered before the exam is done.
-  const showClinicalWork = Boolean(visit.examFindings?.completedAt);
-  const showDischarge = Boolean(visit.examFindings?.completedAt);
+  const examComplete = Boolean(visit.examFindings?.completedAt);
+  const reviewingExam = examComplete && view === 'exam';
+  const showClinicalWork = examComplete && !reviewingExam;
+
+  const visitHref = `/visits/${encodeURIComponent(visit.id)}`;
+  const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
+  const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
+  const attachmentsPanel = (
+    <ClinicalAttachmentsPanel
+      patientId={visit.patient.id}
+      visitId={visit.id}
+      attachments={visit.clinicalAttachments}
+      finalized={recordSigned}
+    />
+  );
 
   return (
     <DashboardShell
@@ -83,8 +97,8 @@ export default async function VisitWorkspacePage({
       title={visit.patient.name}
       workspace
     >
-      <div className="visit-workspace">
-        <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} />
+      <div className={`visit-workspace${examComplete ? ' visit-workspace--post-exam' : ''}`}>
+        {!examComplete ? <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} /> : null}
         <VisitIntakeWorkspace
           visitId={visit.id}
           visitType={visit.visitType}
@@ -114,17 +128,27 @@ export default async function VisitWorkspacePage({
 
         <VisitJourneyStatus visit={visit} />
 
-        {visit.state === 'VeterinarianExamInProgress' ? <ExamFindingsPanel visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
+        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
-        {showClinicalWork ? (
-          <div className="care-plan-workspace">
-            <PostExamReview visit={visit} />
-            <VisitWorkItemsPanel visit={visit} />
+        {showClinicalWork && !recordSigned ? <VisitCareSections
+          examHref={`${visitHref}?view=exam${originQuery}`}
+          initialSection={view === 'plan' ? 0 : visit.phase === 'RecordClosure' ? 2 : visit.phase === 'Discharge' ? 1 : 0}
+          plan={<div className="care-plan-workspace care-plan-workspace--focused"><details className="visit-exam-reference"><summary>Exam findings</summary><PostExamReview visit={visit} /></details><VisitWorkItemsPanel visit={visit} /></div>}
+          discharge={<VisitDischargePanel visit={visit} />}
+          record={<VisitRecordPanel visit={visit} attachments={attachmentsPanel} />}
+        /> : null}
+        {showClinicalWork && recordSigned ? (
+          <div className="visit-signed-record">
+            <p className={`visit-signed-record__status${visit.checkout ? '' : ' visit-signed-record__status--pending'}`}>
+              {visit.checkout
+                ? 'Visit complete — record signed and patient checked out.'
+                : 'Clinical work is done. Front-desk checkout is the only step left.'}
+            </p>
+            <VisitRecordPanel visit={visit} attachments={attachmentsPanel} />
+            {!visit.checkout ? <VisitDischargePanel visit={visit} /> : null}
           </div>
         ) : null}
-        {showDischarge ? <VisitDischargePanel visit={visit} /> : null}
-        {showClinicalWork ? <VisitRecordPanel visit={visit} /> : null}
-        <ClinicalAttachmentsPanel patientId={visit.patient.id} visitId={visit.id} attachments={visit.clinicalAttachments} finalized={visit.soapNotes.some((note) => note.status === 'Locked')} />
+        {!examComplete && visit.state !== 'VeterinarianExamInProgress' ? attachmentsPanel : null}
       </div>
     </DashboardShell>
   );

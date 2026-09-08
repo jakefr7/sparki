@@ -321,6 +321,9 @@ export function assertVisitTransitionRequirements(
   },
   target: VisitState,
 ) {
+  if (target === 'VeterinarianExamInProgress' && !visit.intake?.completedAt) {
+    throw new ConflictException('Complete intake before starting the veterinarian exam.');
+  }
   if (target === 'VeterinarianExamReady' && !visit.intake?.completedAt) {
     throw new ConflictException('Complete intake before sending this patient to the veterinarian.');
   }

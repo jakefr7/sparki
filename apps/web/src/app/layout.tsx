@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { cookies } from 'next/headers';
 import { ThemeProvider } from '../components/theme-provider';
-import { MessagingDock } from '../components/messaging-dock';
 import { AuthBootstrapProvider, type BootstrapProfile, type BootstrapWeather } from '../components/auth-bootstrap';
 import type { CurrentUser } from '../lib/use-current-user';
 import { env } from '../lib/env';
@@ -10,6 +9,7 @@ import './globals.css';
 import './team-messages-popovers.css';
 import './profile-settings.css';
 import './profile-avatar.css';
+import './clinical-workspace.css';
 
 export const metadata: Metadata = {
   title: 'Sparki',
@@ -52,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: setInitialThemeScript }} />
       </head>
       <body>
-        <AuthBootstrapProvider value={{ user: meBody?.user ?? null, profile, weather }}><ThemeProvider>{children}<MessagingDock /></ThemeProvider></AuthBootstrapProvider>
+        <AuthBootstrapProvider value={{ user: meBody?.user ?? null, profile, weather }}><ThemeProvider>{children}</ThemeProvider></AuthBootstrapProvider>
       </body>
     </html>
   );

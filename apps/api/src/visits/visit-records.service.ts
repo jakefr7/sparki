@@ -201,7 +201,12 @@ export class VisitRecordsService {
     const now = new Date();
     const contentHash = hashSoap(note);
     const canClose = Boolean(visit.checkout && visit.checkout.balanceStatus !== 'Outstanding');
-    const nextState = canClose ? 'Archived' : 'RecordComplete';
+    // Signing the record doesn't finish the visit — the front desk still has to
+    // check the patient out. Leave those visits in a checkout-ready state so
+    // every dashboard and queue surfaces them to reception without special-casing.
+    // (Only when checkout already happened but a balance is outstanding do we
+    // keep RecordComplete, since that's a balance problem, not a missing checkout.)
+    const nextState = canClose ? 'Archived' : visit.checkout ? 'RecordComplete' : 'CheckoutReady';
     const nextPhase = canClose ? 'Closed' : 'RecordClosure';
     return prisma.$transaction(async (tx) => {
       const changed = await tx.soapNote.updateMany({

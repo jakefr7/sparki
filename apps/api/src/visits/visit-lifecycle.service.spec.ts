@@ -5,6 +5,11 @@ import { assertVisitTransitionRequirements } from './visit-lifecycle.service';
 const baseVisit = { visitType: 'Scheduled', intake: null, examFindings: null };
 
 describe('visit lifecycle requirements', () => {
+  it('blocks exam start with missing or unfinished intake', () => {
+    expect(() => assertVisitTransitionRequirements(baseVisit, 'VeterinarianExamInProgress')).toThrow(ConflictException);
+    expect(() => assertVisitTransitionRequirements({ ...baseVisit, intake: { completedAt: null } }, 'VeterinarianExamInProgress')).toThrow(ConflictException);
+    expect(() => assertVisitTransitionRequirements({ ...baseVisit, intake: { completedAt: new Date() } }, 'VeterinarianExamInProgress')).not.toThrow();
+  });
   it('requires completed intake before veterinarian handoff', () => {
     expect(() => assertVisitTransitionRequirements(baseVisit, 'VeterinarianExamReady')).toThrow(ConflictException);
     expect(() => assertVisitTransitionRequirements({ ...baseVisit, intake: { completedAt: new Date() } }, 'VeterinarianExamReady')).not.toThrow();

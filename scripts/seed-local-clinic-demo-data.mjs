@@ -21,6 +21,7 @@
 // Usage: pnpm seed:local-demo   (from repo root; needs DATABASE_URL in .env)
 // =============================================================================
 
+import { ensureLocalDemoIntake } from './ensure-local-demo-intake.mjs';
 import prismaClientPackage from '../packages/db/generated/client/index.js';
 
 const { PrismaClient } = prismaClientPackage;
@@ -546,10 +547,18 @@ async function ensureAppointmentTypes(organizationId, locationId) {
     ['Recheck', 'Follow-Up', 30, '#7C3AED', [VET_A, VET_B]],
   ];
   for (const [appointmentType, name, duration, color, providerIds] of types) {
+    // Appointment types are clinic-defined; location + legacy type is no
+    // longer unique. Reuse this named fixture, or create it with a stable id.
+    const existing = await prisma.appointmentTypeSetting.findFirst({
+      where: { organizationId, locationId, appointmentType, name },
+      orderBy: { id: 'asc' },
+      select: { id: true },
+    });
+    const id = existing?.id ?? `local-demo-appointment-type-${locationId}-${appointmentType}`;
     const setting = await prisma.appointmentTypeSetting.upsert({
-      where: { locationId_appointmentType: { locationId, appointmentType } },
+      where: { id },
       update: { name, defaultDurationMinutes: duration, color, isActive: true },
-      create: { organizationId, locationId, appointmentType, name, defaultDurationMinutes: duration, color, isActive: true, sortOrder: 10 },
+      create: { id, organizationId, locationId, appointmentType, name, defaultDurationMinutes: duration, color, isActive: true, sortOrder: 10 },
     });
     await prisma.appointmentTypeProvider.deleteMany({
       where: { appointmentTypeId: setting.id, providerId: { notIn: providerIds } },
@@ -738,6 +747,8 @@ async function ensureAppointmentsAndVisits(organizationId, locationId, patientId
         archivedAt: isArchived ? entry.scheduledAt : null,
       },
     });
+    const seededVisit = await prisma.visit.findUniqueOrThrow({ where: { id: visitId }, include: { patient: true } });
+    await ensureLocalDemoIntake(prisma, seededVisit);
     visitCount += 1;
   }
 

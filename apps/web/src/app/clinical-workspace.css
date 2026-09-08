@@ -1,0 +1,559 @@
+/* Shared clinical workspace: clear progress, compact findings, usable uploads. */
+.visit-journey-status {
+  width: min(1120px, calc(100% - 3rem));
+  box-sizing: border-box;
+  margin: 1.25rem auto 0;
+  padding: .75rem 0;
+  border-bottom: 1px solid var(--border, #d7e4e6);
+}
+
+.visit-journey-status .eyebrow { margin: 0; font-size: .68rem; letter-spacing: .08em; }
+.visit-journey-status .visit-workflow-steps { margin: 0; padding-bottom: .5rem; overflow-x: auto; }
+.visit-journey-status dl { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 1rem; margin: 0; padding-top: 1rem; border-top: 1px solid var(--border, #d7e4e6); }
+.visit-journey-status dt { color: var(--text-secondary); font-size: .72rem; }
+.visit-journey-status dd { margin: .3rem 0 0; font-size: .85rem; font-weight: 650; }
+.visit-journey-status__blockers { margin-top: 1rem; padding: .8rem 1rem; border-radius: 8px; background: #fff4df; color: #80520c; font-size: .82rem; }
+.exam-workspace-body { padding-top: 1rem; padding-bottom: 1.5rem; }
+.exam-findings-card { box-shadow: 0 4px 18px #17343e06; }
+.physical-exam-form { gap: 1.4rem; }
+.physical-exam-general { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 1rem; background: #f7fafb; border: 1px solid #e5eeee; border-radius: 10px; }
+.physical-exam-system { grid-template-columns: minmax(300px, .9fr) minmax(220px, 1.1fr); align-items: center; padding: .65rem .9rem; }
+.physical-exam-pills button { border-radius: 7px; min-height: 2rem; font-weight: 650; }
+.physical-exam-pills button.is-selected.is-not-examined { box-shadow: none; border-color: #c9d6dc; background: #edf2f4; }
+.physical-exam-pills--score { gap: .3rem; }
+.physical-exam-pills--score button { min-width: 1.8rem; }
+.physical-exam-form input::placeholder, .physical-exam-form textarea::placeholder { color: #7a8994; }
+.exam-findings-actions { border-top: 1px solid #e5eeee; padding-top: 1rem; }
+#visit-attachments { box-sizing: border-box; width: min(1120px, calc(100% - 3rem)); margin: 0 auto 2rem; padding: 1.25rem 1.5rem; }
+#visit-attachments h2 { font-size: 1.1rem; margin: .25rem 0; }
+#visit-attachments header > p:last-child { margin: .4rem 0 1.2rem; color: var(--text-secondary); font-size: .78rem; }
+#visit-attachments .clinical-attachment-upload-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 1rem; }
+#visit-attachments label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; font-size: .78rem; font-weight: 650; }
+#visit-attachments input { box-sizing: border-box; width: 100%; min-width: 0; height: 42px; padding: .6rem .7rem; border: 1px solid #d7e4e6; border-radius: 8px; font: inherit; background: #fff; color: #172633; }
+#visit-attachments input[type=file] { padding: .3rem; font-size: .75rem; }
+#visit-attachments input::file-selector-button { padding: .4rem .7rem; margin-right: .6rem; border: 0; border-radius: 5px; background: #eaf5f3; color: #176f69; font: inherit; cursor: pointer; }
+#visit-attachments .clinical-attachment-upload-form button { min-height: 42px; font-size: .8rem; }
+#visit-attachments > p:not(.form-error) { padding: 1rem; margin-bottom: 0; text-align: center; border: 1px dashed #d7e4e6; border-radius: 8px; color: var(--text-secondary); font-size: .8rem; }
+#visit-attachments input:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
+@media (max-width: 760px) {
+  .visit-journey-status dl, #visit-attachments .clinical-attachment-upload-form { grid-template-columns: 1fr; }
+  .physical-exam-system, .physical-exam-general { grid-template-columns: 1fr; }
+  .visit-journey-status, #visit-attachments { width: calc(100% - 2rem); padding: 1rem; }
+}
+
+.visit-journey-status__details summary { width: fit-content; padding: .35rem 0; color: var(--text-secondary); font-size: .75rem; cursor: pointer; }
+.visit-journey-status__details summary:hover { color: #13766f; }
+.visit-journey-status__details summary:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 3px; }
+.visit-journey-status__details[open] dl { margin-top: .5rem; padding-bottom: .5rem; }
+
+/* Keep full-height visit scrolling inside the workspace, including trackpad overscroll. */
+html:has(.visit-workspace),
+body:has(.visit-workspace) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+  background: #f7f8fb;
+}
+.dashboard-shell:has(.visit-workspace) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.dashboard-main--workspace:has(> .visit-workspace) {
+  height: 100dvh;
+  min-height: 0;
+}
+.dashboard-main--workspace > .visit-workspace {
+  min-height: 0;
+  overscroll-behavior-y: none;
+  background: #f7f8fb;
+}
+
+#visit-attachments .clinical-attachments-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+#visit-attachments .clinical-attachments-header h2 { display: flex; align-items: center; gap: .5rem; }
+.clinical-attachments-count { padding: .15rem .45rem; border-radius: 6px; background: #eef3f5; color: #667586; font-size: .72rem; font-weight: 600; }
+#visit-attachments .clinical-attachments-header p { margin: .3rem 0 0; font-size: .78rem; color: var(--text-secondary); }
+.clinical-attachments-toggle { flex-shrink: 0; padding: .55rem .8rem; border: 1px solid #cfdfe1; border-radius: 8px; background: transparent; color: #176f69; font: inherit; font-size: .8rem; font-weight: 650; cursor: pointer; }
+.clinical-attachments-toggle:hover { background: #edf7f5; }
+.clinical-attachments-toggle:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 3px; }
+#visit-attachments .clinical-attachment-upload-form { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid #e5eeee; align-items: start; }
+#visit-attachments .clinical-attachment-upload-form > button { margin-top: 1.35rem; }
+#visit-attachments label small { font-size: .7rem; font-weight: 400; color: var(--text-secondary); }
+#visit-attachments > .clinical-attachments-empty { border: 0; padding: 0; margin: 1rem 0 0; text-align: left; font-size: .78rem; }
+@media (max-width: 560px) {
+  #visit-attachments .clinical-attachments-header { align-items: flex-start; flex-direction: column; }
+  #visit-attachments .clinical-attachment-upload-form > button { margin-top: 0; }
+}
+
+/* Patient context stays readable without competing with the clinical form. */
+.visit-workspace .patient-context-bar__details {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .65rem 1.5rem;
+  padding: .8rem 0 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+.visit-workspace .patient-context-bar__reason {
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .4rem;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  border: 0;
+}
+.visit-workspace .patient-context-bar__reason-label { font-weight: 400; font-size: .75rem; }
+.visit-workspace .patient-context-bar__reason strong { font-size: .85rem; font-weight: 650; }
+.visit-workspace .patient-context-bar__facts {
+  display: flex;
+  width: auto;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+}
+.visit-workspace .patient-context-bar__facts > div { flex-direction: row; align-items: baseline; gap: .4rem; }
+.visit-workspace .patient-context-bar__facts dt { font-weight: 400; font-size: .75rem; }
+.visit-workspace .patient-context-bar__facts dd { font-weight: 500; font-size: .75rem; }
+@media (max-width: 760px) {
+  .visit-workspace .patient-context-bar__reason { flex-basis: 100%; }
+}
+
+.visit-workspace--post-exam .patient-context-bar__back-row { display: none; }
+.visit-stage-navigation { width: min(1120px, calc(100% - 3rem)); margin: 0 auto 1.5rem; }
+.visit-stage-navigation__link { display: inline-flex; align-items: center; padding: .65rem .9rem; border: 1px solid #cfdfe1; border-radius: 8px; color: #176f69; background: #fff; font-size: .85rem; font-weight: 650; text-decoration: none; }
+.visit-stage-navigation__link:hover { background: #edf7f5; }
+.visit-stage-navigation__link:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 3px; }
+
+.visit-care-sections { width: min(1120px, calc(100% - 3rem)); margin: 1.25rem auto; }
+.visit-care-sections__nav { display: flex; gap: 1.5rem; border-bottom: 1px solid #d7e4e6; margin-bottom: 1.25rem; }
+.visit-care-sections__nav button { padding: .75rem 0; border: 0; border-bottom: 2px solid transparent; background: none; color: #667586; font: inherit; font-size: .85rem; cursor: pointer; }
+.visit-care-sections__nav button[aria-current] { border-bottom-color: #1fa9a0; color: #176f69; font-weight: 700; }
+.visit-care-sections__nav button:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
+.visit-care-sections .care-plan-workspace--focused { display: flex; flex-direction: column; width: 100%; margin: 0; padding: 0; gap: 1rem; }
+.visit-exam-reference > summary { cursor: pointer; color: #667586; font-size: .8rem; padding: .4rem 0; }
+.visit-exam-reference .post-exam-review { position: static; margin-top: .75rem; }
+.visit-exam-reference .post-exam-review__complete { display: none; }
+.visit-care-sections .visit-work-panel, .visit-care-sections #visit-record, .visit-care-sections #visit-discharge { width: 100%; margin: 0; border: 1px solid #d7e4e6; border-radius: 12px; padding: 1.25rem; background: #fff; box-shadow: none; }
+.visit-care-sections h2 { font-size: 1.2rem; }
+.visit-care-sections .eyebrow { display: none; }
+.visit-care-sections input:not([type=checkbox]), .visit-care-sections select, .visit-care-sections textarea { border: 1px solid #d7e4e6; border-radius: 7px; padding: .6rem .7rem; color: #172633; background: #fff; font: inherit; font-size: .85rem; font-weight: 400; max-width: 100%; }
+.visit-care-sections textarea { min-height: 6rem; }
+.visit-medication-options { grid-column: 1 / -1; }
+.visit-medication-options > summary { cursor: pointer; color: #667586; font-size: .8rem; padding: .5rem 0; }
+.visit-care-sections .visit-discharge-field { border: 0; padding: 0; background: none; }
+.visit-care-sections .visit-discharge-field small { display: none; }
+.visit-care-sections .visit-discharge-field textarea { min-height: 6rem; }
+.visit-care-sections .visit-work-empty { padding: 1.5rem; background: none; border: 0; }
+@media (max-width: 600px) { .visit-care-sections { width: calc(100% - 2rem); } .visit-care-sections__nav { gap: 1rem; } }
+
+.visit-step-caption { margin: 0 0 .8rem; color: #667586; font-size: .78rem; scroll-margin-top: 1rem; }
+.visit-step-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
+.visit-care-sections--guided .visit-record-form__actions > .visit-stage-navigation__link { margin-right: auto; }
+.visit-record-delegate-options { margin: 1rem 0; }
+.visit-record-delegate-options > summary { color: #667586; font-size: .8rem; cursor: pointer; }
+.visit-care-sections--guided .visit-discharge-form__footer { flex-wrap: wrap; gap: 1rem; margin-top: .9rem; padding-top: 0; border-top: 0; }
+.visit-care-sections--guided .visit-discharge-form__footer > div:last-child { margin-left: auto; }
+.visit-care-sections--guided .visit-work-panel__header, .visit-care-sections--guided .visit-record-panel__header, .visit-care-sections--guided .visit-discharge-panel__header { margin-bottom: 1rem; }
+.visit-care-sections--guided .visit-discharge-panel__header {
+  align-items: flex-start;
+  padding: 0;
+  border-bottom: 0;
+  background: none;
+}
+.visit-care-sections--guided .visit-discharge-panel__header > span { background: #edf7f5; color: #13766f; }
+.visit-care-sections--guided .visit-discharge-panel__header > span.is-complete { background: #dff2e9; color: #16765b; }
+@media (max-width: 600px) { .visit-step-actions { flex-wrap: wrap; } }
+
+.visit-workspace .button-primary {
+  min-height: 42px;
+  padding: .65rem 1rem;
+  border: 1px solid #1b9e97;
+  border-radius: 8px;
+  background: #1b9e97;
+  color: #fff;
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: none;
+}
+.visit-workspace .button-primary:hover { background: #16867f; border-color: #16867f; }
+.visit-workspace .button-primary:disabled { opacity: .5; cursor: default; }
+.visit-workspace .button-primary:focus-visible { outline: 2px solid #176f69; outline-offset: 3px; }
+.visit-step-actions > .visit-stage-navigation__link { border-color: transparent; background: transparent; padding-left: 0; }
+.visit-care-sections #visit-care-plan > .visit-work-create { padding: 0; border: 0; background: transparent; }
+.visit-care-sections .visit-work-list:empty { display: none; }
+.visit-care-sections #visit-attachments { margin-top: 1rem; }
+
+/* Compact care-plan entry; the page's forward action carries the strongest emphasis. */
+.visit-care-sections #visit-care-plan > .visit-work-create {
+  grid-template-columns: minmax(150px, .35fr) minmax(0, 1fr);
+  align-items: start;
+  gap: .9rem;
+}
+.visit-care-sections #visit-care-plan .visit-work-create > label { gap: .4rem; font-size: .8rem; font-weight: 600; }
+.visit-care-sections #visit-care-plan .visit-work-create input,
+.visit-care-sections #visit-care-plan .visit-work-create select { height: 42px; min-height: 42px; width: 100%; }
+.visit-care-sections #visit-care-plan .visit-work-create textarea { min-height: 5rem; height: 5rem; resize: vertical; }
+.visit-care-sections #visit-care-plan .visit-work-create__actions { margin: 0; padding: 0; }
+.visit-care-sections #visit-care-plan .visit-work-create__actions .button-primary { background: #edf7f5; border-color: #c5ded9; color: #176f69; }
+.visit-care-sections #visit-care-plan .visit-work-create__actions .button-primary:hover { background: #dcefeb; }
+.visit-medication-options[hidden] { display: none !important; }
+.visit-care-sections--guided .visit-exam-reference { margin: 0; }
+.visit-care-sections--guided .visit-exam-reference > summary { padding: 0; }
+.visit-care-sections--guided .care-plan-workspace--focused { gap: .75rem; }
+@media (max-width: 600px) {
+  .visit-care-sections #visit-care-plan > .visit-work-create { grid-template-columns: 1fr; }
+}
+
+.visit-care-sections--guided .visit-stage-navigation__link {
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.visit-care-sections--guided .visit-stage-navigation__link:hover {
+  background: transparent;
+  color: #105f59;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.visit-care-sections .visit-discharge-field.is-missing {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.visit-care-sections .visit-discharge-field.is-missing textarea {
+  border-color: #c95555;
+  background: #fffafa;
+}
+.visit-care-sections .visit-discharge-field textarea:focus-visible {
+  outline: 2px solid #1b9e97;
+  outline-offset: 2px;
+}
+.visit-care-sections .visit-discharge-field.is-missing textarea:focus-visible {
+  outline-color: #c95555;
+}
+.exam-workspace-body > #visit-attachments { width: 100%; margin: 1rem 0 0; }
+.exam-workspace-body > .visit-step-actions { margin-top: 1.25rem; }
+.visit-care-sections .visit-record-form--review { display: flex; flex-direction: column; gap: 1.25rem; }
+.visit-care-sections .visit-record-form--review textarea { height: auto; min-height: 6rem; line-height: 1.55; font-weight: 400; }
+.visit-record-footer__primary { display: flex; gap: .75rem; align-items: center; margin-left: auto; }
+.visit-record-save-draft { padding: .65rem .8rem; border: 1px solid #cfdfe1; border-radius: 8px; color: #176f69; background: transparent; font: inherit; font-size: .85rem; cursor: pointer; }
+.visit-record-save-draft:hover { background: #edf7f5; }
+.visit-record-save-draft:focus-visible { outline: 2px solid #1b9e97; outline-offset: 3px; }
+.visit-record-save-draft:disabled { opacity: .5; cursor: default; }
+.visit-care-sections #visit-attachments { width: 100%; }
+#visit-attachments > p.clinical-attachments-empty:not(.form-error) { border: 0; padding: 0; text-align: left; margin: .75rem 0 0; }
+.visit-care-sections #visit-care-plan .visit-work-create__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.visit-care-sections #visit-care-plan .visit-work-create__actions > .button-primary {
+  margin-left: auto;
+}
+
+/* Clinical handoff recap: full intake picture from the tech, collapsible. */
+.exam-intake-drawer__content { grid-template-columns: 1fr; }
+.exam-intake-drawer__vitals dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: .55rem .9rem;
+  margin: .4rem 0 0;
+}
+.exam-intake-drawer__vitals dl > div { display: flex; flex-direction: column; gap: .15rem; }
+.exam-intake-drawer__vitals dt { color: #667586; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.exam-intake-drawer__vitals dd { margin: 0; color: #172633; font-size: .88rem; font-weight: 650; }
+.exam-intake-drawer__content p { white-space: pre-wrap; }
+
+/* Diagnosis autocomplete: thin full-width bar with removable tags. */
+.diagnosis-picker { position: relative; display: flex; flex-direction: column; gap: .38rem; }
+.diagnosis-picker > label { color: #172633; font-size: .78rem; font-weight: 800; }
+.diagnosis-picker__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem;
+  width: 100%;
+  padding: .35rem .45rem;
+  border: 1px solid #d7e4e6;
+  border-radius: .55rem;
+  background: #fff;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.diagnosis-picker__bar:hover { border-color: #bcd0d3; }
+.diagnosis-picker__bar:focus-within {
+  border-color: #1fa9a0;
+  box-shadow: 0 0 0 3px rgba(31, 169, 160, .16);
+}
+.diagnosis-picker__bar input {
+  flex: 1 1 12ch;
+  min-width: 12ch;
+  height: 1.75rem;
+  box-sizing: border-box;
+  border: 0 !important;
+  padding: 0 .15rem !important;
+  margin: 0 !important;
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 400;
+  line-height: 1.75rem;
+  color: #172633;
+  background: transparent;
+  outline: none;
+}
+.diagnosis-picker__bar input::placeholder { color: #8a99a4; font-size: .875rem; }
+.diagnosis-picker__bar input:focus,
+.diagnosis-picker__bar input:focus-visible { outline: none; box-shadow: none; }
+.diagnosis-picker__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: .1rem;
+  height: 1.75rem;
+  box-sizing: border-box;
+  padding: 0 .25rem 0 .6rem;
+  border-radius: 999px;
+  border: 1px solid #cde7e2;
+  background: #eef7f5;
+  color: #12655f;
+  font-size: .8rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.diagnosis-picker__tag button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5f938c;
+  font-size: .9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+  transform: translateY(-0.5px); /* seat the × glyph on the text's optical centre */
+}
+.diagnosis-picker__tag button:hover { background: rgba(18, 101, 95, .14); color: #0f544f; }
+.diagnosis-picker__tag button:focus-visible { outline: 2px solid #12655f; outline-offset: 1px; }
+.diagnosis-picker__options {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: .3rem 0 0;
+  padding: .3rem;
+  list-style: none;
+  border: 1px solid #d7e4e6;
+  border-radius: .6rem;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(30, 55, 70, .12);
+  max-height: 15rem;
+  overflow-y: auto;
+}
+.diagnosis-picker__options li {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .5rem .6rem;
+  border-radius: .4rem;
+  font-size: .85rem;
+  font-weight: 400;
+  color: #172633;
+  cursor: pointer;
+}
+.diagnosis-picker__options li[aria-selected="true"],
+.diagnosis-picker__options li:hover { background: #eef7f5; color: #13766f; }
+.diagnosis-picker__option--custom { color: #526575; }
+.diagnosis-picker__option-add {
+  flex-shrink: 0;
+  padding: .1rem .4rem;
+  border-radius: 999px;
+  background: #eef7f5;
+  color: #12655f;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.diagnosis-picker__options li[aria-selected="true"] .diagnosis-picker__option-add,
+.diagnosis-picker__options li:hover .diagnosis-picker__option-add { background: #fff; }
+
+/* Merged plan + discharge box sits directly below the diagnosis bar. */
+.physical-exam-conclusion--stacked { display: flex; flex-direction: column; gap: 1rem; }
+.physical-exam-plan textarea { min-height: 12rem; }
+.physical-exam-plan textarea:focus,
+.physical-exam-plan textarea:focus-visible {
+  outline: none;
+  border-color: #1fa9a0;
+  box-shadow: 0 0 0 3px rgba(31, 169, 160, .16);
+}
+.physical-exam-legacy-notes {
+  padding: .7rem .9rem;
+  border: 1px solid #e5eeee;
+  border-radius: .6rem;
+  background: #f7fafb;
+}
+.physical-exam-legacy-notes > span { color: #667586; font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.physical-exam-legacy-notes > p { margin: .3rem 0 0; color: #172633; font-size: .85rem; line-height: 1.45; white-space: pre-wrap; }
+
+/* Autosave status sits at the foot of its own card, not in the step nav bar. */
+.exam-findings-card__save {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-top: 1.1rem;
+}
+.visit-care-sections .visit-discharge-form__save { margin-top: .9rem; }
+.visit-care-sections .visit-discharge-form[id^="discharge-form-"] { padding: 0; }
+
+/* Step 4: attachments live inside the record card, below Plan; save status at card foot. */
+.visit-record-panel__attachments { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid #e5eeee; }
+.visit-record-panel__attachments #visit-attachments {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.visit-record-panel__save { display: flex; align-items: center; gap: .6rem; margin-top: 1.1rem; }
+
+/* In-app confirm dialog (replaces native window.confirm), matching modal styling. */
+.visit-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 38, 51, .36);
+  backdrop-filter: blur(2px);
+}
+.visit-confirm {
+  width: min(28rem, 100%);
+  padding: 1.35rem 1.4rem 1.15rem;
+  border: 1px solid rgba(207, 222, 226, .9);
+  border-radius: .95rem;
+  background: #fff;
+  box-shadow: 0 26px 70px rgba(23, 38, 51, .25);
+}
+.visit-confirm h2 { margin: 0; color: #172633; font-size: 1.05rem; font-weight: 800; }
+.visit-confirm p { margin: .55rem 0 0; color: #667586; font-size: .86rem; line-height: 1.5; }
+.visit-confirm__actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.35rem; }
+.visit-confirm__actions .button-primary,
+.visit-confirm__actions .button-secondary { min-height: 2.4rem; padding: .55rem 1rem; font-size: .85rem; }
+
+/* Step 4: block signing until every SOAP section is filled; flag the gaps. */
+.visit-record-form--review label.is-missing > span { color: #b23b3b; }
+.visit-record-form--review label.is-missing em {
+  font-style: normal;
+  font-weight: 700;
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.visit-record-form--review textarea[aria-invalid="true"] { border-color: #c95555; background: #fffafa; }
+.visit-record-form--review textarea[aria-invalid="true"]:focus-visible { outline: 2px solid #c95555; outline-offset: 2px; }
+.visit-confirm .form-error { margin: .9rem 0 0; }
+
+/* Signed record: a compact standalone document — glanceable, not a form. */
+.visit-signed-record { padding-bottom: 2rem; }
+.visit-signed-record .visit-record-panel { margin-bottom: 1rem; }
+.visit-signed-record .visit-discharge-panel { margin: 0 auto; }
+.visit-signed-record .visit-discharge-panel__header {
+  padding: 1rem 1.35rem;
+  border-bottom: 0;
+  background: none;
+}
+.visit-signed-record .visit-discharge-panel__header .eyebrow { display: none; }
+
+.visit-signed-record__status {
+  box-sizing: border-box;
+  width: min(1120px, calc(100% - 3rem));
+  margin: 1.25rem auto .9rem;
+  padding: .6rem .9rem;
+  border-radius: 8px;
+  background: #eef3f5;
+  color: #52616d;
+  font-size: .82rem;
+  font-weight: 600;
+}
+.visit-signed-record__status--pending { background: #fff6e6; border: 1px solid #f0dcae; color: #7a5b16; }
+
+.visit-record-panel--signed { padding: 1.5rem 1.6rem; box-shadow: 0 1px 3px rgba(23, 38, 51, .05); }
+.visit-record-panel--signed .visit-record-panel__header { margin-bottom: 1.4rem; }
+.visit-record-panel--signed .visit-record-panel__header h2 { font-size: 1.15rem; }
+.visit-record-panel__signed { margin: .25rem 0 0; color: #667586; font-size: .8rem; font-weight: 500; }
+
+.visit-record-soap { display: grid; grid-template-columns: 6.5rem 1fr; row-gap: .9rem; column-gap: 1rem; margin: 0; }
+.visit-record-soap > div { display: contents; }
+.visit-record-soap dt { color: #8494a0; font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding-top: .1rem; }
+.visit-record-soap dd { margin: 0; color: #172633; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
+.visit-record-soap__line { display: block; }
+.visit-record-soap__muted { display: block; margin-top: .2rem; color: #8494a0; font-size: .82rem; }
+.visit-record-soap__more { margin-top: .3rem; }
+.visit-record-soap__more > summary { color: #176f69; font-size: .8rem; cursor: pointer; list-style: none; }
+.visit-record-soap__more > summary::-webkit-details-marker { display: none; }
+.visit-record-soap__more > summary::before { content: "▸ "; }
+.visit-record-soap__more[open] > summary::before { content: "▾ "; }
+.visit-record-soap__more > p { margin: .4rem 0 0; color: #52616d; font-size: .82rem; line-height: 1.55; white-space: pre-wrap; }
+@media (max-width: 560px) {
+  .visit-record-soap { grid-template-columns: 1fr; row-gap: .3rem; }
+  .visit-record-soap dd { margin-bottom: .7rem; }
+}
+
+.visit-record-panel__correct { margin: 1.4rem 0 0; }
+.visit-record-panel__correct button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #667586;
+  font: inherit;
+  font-size: .82rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.visit-record-panel__correct button:hover { color: #13766f; }
+.visit-record-panel__correct button:focus-visible { outline: 2px solid #1b9e97; outline-offset: 3px; }
+
+/* Attachments, on a signed record, collapse to a quiet line. */
+.visit-record-panel--signed .visit-record-panel__attachments { margin-top: 1.4rem; padding-top: 1.1rem; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-header { align-items: baseline; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-header p { display: none; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-header h2 { font-size: .68rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #8494a0; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-count { background: none; padding: 0; color: #8494a0; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: .8rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.visit-record-panel--signed #visit-attachments .clinical-attachments-toggle:hover { background: none; color: #13766f; }
+.visit-record-panel--signed #visit-attachments .clinical-attachments-empty { margin-top: .35rem; color: #8494a0; font-size: .8rem; }
+
+/* Discharge: plain fields, no card-in-card, guidance in the placeholder. */
+.visit-discharge-field > span.visit-discharge-field__label { display: block; }
+.visit-discharge-field__label { color: #172633; font-size: .8rem; font-weight: 700; }
+.visit-discharge-field__label em { margin-left: .3rem; color: #b74343; font-size: .68rem; font-style: normal; font-weight: 700; }
+.visit-discharge-check .visit-discharge-field__label { color: #52616d; font-size: .82rem; font-weight: 500; }
+.visit-care-sections .visit-discharge-field textarea { min-height: 4.5rem; }
+.visit-discharge-panel__header .eyebrow { display: none; }

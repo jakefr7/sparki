@@ -19,7 +19,7 @@ export function MessagingDock() {
   const { user, loading } = useCurrentUser();
   const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
-  if (loading || !user || user.role === 'CLIENT' || pathname === '/messages' || pathname === '/communication') return null;
+  if (loading || !user || user.role === 'CLIENT' || pathname === '/login' || pathname === '/messages' || pathname === '/communication') return null;
   return <MessagingExperience currentUserId={user.id} expanded={expanded} onExpandedChange={setExpanded} />;
 }
 

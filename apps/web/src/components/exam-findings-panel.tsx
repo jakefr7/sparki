@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import type { AutosaveState } from './patient-context-bar';
+import { DiagnosisInput } from './diagnosis-input';
 
 const EXAM_IN_PROGRESS_STATE = 'VeterinarianExamInProgress';
 const AUTOSAVE_DELAY_MS = 900;
@@ -57,7 +58,7 @@ interface ExamFindingsPayload {
 }
 
 function emptySystems(): Record<SystemKey, SystemFinding> {
-  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Not examined', notes: '' }])) as Record<SystemKey, SystemFinding>;
+  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Normal', notes: '' }])) as Record<SystemKey, SystemFinding>;
 }
 
 function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
@@ -101,14 +102,42 @@ function payloadFromDraft(draft: ExamDraft): ExamFindingsPayload {
 function IntakeRecap({ intake }: { intake: Intake }) {
   const [open, setOpen] = useState(true);
   if (!intake) return null;
-  const vitals = [
-    intake.weight != null ? `${intake.weight} ${intake.weightUnit.toLowerCase()}` : null,
-    intake.temperature != null ? `${intake.temperature}°F` : null,
-    intake.heartRate != null ? `${intake.heartRate} bpm` : null,
-    intake.respiratoryRate != null ? `${intake.respiratoryRate} rpm` : null,
-    intake.crtSeconds != null ? `CRT ${intake.crtSeconds}s` : null,
-    intake.gumColor ? `Gums: ${intake.gumColor}` : null,
+
+  const vitals: Array<[string, string]> = [
+    intake.weight != null ? ['Weight', `${intake.weight} ${intake.weightUnit === 'KG' ? 'kg' : 'lb'}`] as [string, string] : null,
+    intake.temperature != null ? ['Temperature', `${intake.temperature}°F`] as [string, string] : null,
+    intake.heartRate != null ? ['Heart rate', `${intake.heartRate} bpm`] as [string, string] : null,
+    intake.respiratoryRate != null ? ['Respiratory rate', `${intake.respiratoryRate} rpm`] as [string, string] : null,
+    intake.crtSeconds != null ? ['CRT', `${intake.crtSeconds} sec`] as [string, string] : null,
+    intake.gumColor ? ['Gum color', intake.gumColor] as [string, string] : null,
+    intake.painScore != null ? ['Pain score', `${intake.painScore}${intake.painScale ? ` (${intake.painScale})` : ''}`] as [string, string] : null,
+  ].filter((entry): entry is [string, string] => entry != null);
+
+  const symptoms = [
+    intake.vomiting ? 'Vomiting' : null,
+    intake.diarrhea ? 'Diarrhea' : null,
+    intake.sneezing ? 'Sneezing' : null,
   ].filter(Boolean).join(' · ');
+
+  const notes: Array<[string, string]> = [
+    intake.chiefComplaint ? ['Presenting concern', intake.chiefComplaint] as [string, string] : null,
+    intake.historyNotes ? ['Medical history', intake.historyNotes] as [string, string] : null,
+    intake.appetite ? ['Appetite', intake.appetite] as [string, string] : null,
+    symptoms ? ['Reported symptoms', symptoms] as [string, string] : null,
+    intake.attitude ? ['Attitude', intake.attitude] as [string, string] : null,
+    intake.appearance ? ['Appearance', intake.appearance] as [string, string] : null,
+    intake.systemicConcerns ? ['Systemic concerns', intake.systemicConcerns] as [string, string] : null,
+    intake.allergies || intake.medicationsAllergies
+      ? ['Allergies', [intake.allergies, intake.medicationsAllergies].filter(Boolean).join(' · ')] as [string, string]
+      : null,
+    intake.currentMedications ? ['Current medications', intake.currentMedications] as [string, string] : null,
+    intake.vaccinationHistory ? ['Vaccination history', intake.vaccinationHistory] as [string, string] : null,
+    intake.pastSurgeries ? ['Past surgeries', intake.pastSurgeries] as [string, string] : null,
+    intake.sedationIssues ? ['Sedation history', intake.sedationIssues] as [string, string] : null,
+    intake.recentTravel ? ['Recent travel', intake.recentTravel] as [string, string] : null,
+    intake.specialDiet ? ['Diet', intake.specialDiet] as [string, string] : null,
+    intake.supplements ? ['Supplements', intake.supplements] as [string, string] : null,
+  ].filter((entry): entry is [string, string] => entry != null);
 
   return (
     <section className={`exam-intake-drawer${open ? ' exam-intake-drawer--open' : ''}`}>
@@ -118,8 +147,15 @@ function IntakeRecap({ intake }: { intake: Intake }) {
       </button>
       {open ? (
         <div className="exam-intake-drawer__content">
-          <div><span>Vitals</span><p>{vitals || 'Not captured'}</p></div>
-          <div><span>Medical history</span><p>{intake.historyNotes || intake.chiefComplaint || 'Not captured'}</p></div>
+          <div className="exam-intake-drawer__vitals">
+            <span>Vitals</span>
+            {vitals.length ? (
+              <dl>{vitals.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+            ) : <p>Not captured</p>}
+          </div>
+          {notes.map(([label, value]) => (
+            <div key={label}><span>{label}</span><p>{value}</p></div>
+          ))}
         </div>
       ) : null}
     </section>
@@ -142,8 +178,9 @@ function ExamFindingsSummary({ examFindings }: { examFindings: ExamFindings }) {
   );
 }
 
-export function ExamFindingsPanel({ visitId, state, examFindings, intake }: { visitId: string; state: string; examFindings: VisitDetail['examFindings']; intake: Intake }) {
+export function ExamFindingsPanel({ visitId, state, examFindings, intake, returnToCarePlan }: { returnToCarePlan?: string | undefined; visitId: string; state: string; examFindings: VisitDetail['examFindings']; intake: Intake }) {
   const router = useRouter();
+  const editable = state === EXAM_IN_PROGRESS_STATE || Boolean(returnToCarePlan);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<ExamDraft>(() => draftFromFindings(examFindings));
@@ -183,6 +220,11 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake }: { vi
     try {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
       await saveExamFindings(draft);
+      if (returnToCarePlan) {
+        router.push(returnToCarePlan);
+        router.refresh();
+        return;
+      }
       const response = await fetch(`/api/visits/${visitId}/exam/complete`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(payload.message ?? 'Could not complete exam.');
@@ -194,31 +236,55 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake }: { vi
 
   return (
     <div className="exam-workspace-body">
-      {state === EXAM_IN_PROGRESS_STATE ? <IntakeRecap intake={intake} /> : null}
+      <p className="visit-step-caption">Step 1 of 4 · Exam</p>
+      {editable ? <IntakeRecap intake={intake} /> : null}
       <section className="exam-findings-card" aria-labelledby="exam-findings-heading">
-        <div className="exam-findings-card__header"><div><p className="eyebrow">Veterinarian exam</p><h2 id="exam-findings-heading">Physical examination</h2><p>Record the patient’s general assessment and head-to-tail findings.</p></div></div>
+        <div className="exam-findings-card__header"><div><p className="eyebrow">Veterinarian exam</p><h2 id="exam-findings-heading">Physical examination</h2><p>{editable ? 'Record the patient’s general assessment and head-to-tail findings.' : 'Completed exam findings'}</p></div></div>
 
-        {state === EXAM_IN_PROGRESS_STATE ? (
+        {editable ? (
           <div className="physical-exam-form">
             <fieldset className="physical-exam-section"><legend>General assessment</legend><div className="physical-exam-general">
-              <label><span>Pain score</span><input value={draft.general.painScore} maxLength={30} placeholder="Scale and score" onChange={(e) => updateDraft((d) => ({ ...d, general: { ...d.general, painScore: e.target.value } }))} /></label>
-              <fieldset className="physical-exam-pill-field"><legend>Body condition score</legend><div className="physical-exam-pills physical-exam-pills--score">{Array.from({ length: 9 }, (_, i) => String(i + 1)).map((score) => <button type="button" key={score} aria-pressed={draft.general.bodyConditionScore === score} className={draft.general.bodyConditionScore === score ? 'is-selected' : ''} onClick={() => updateDraft((d) => ({ ...d, general: { ...d.general, bodyConditionScore: d.general.bodyConditionScore === score ? '' : score } }))}>{score}</button>)}</div></fieldset>
+              {([['painScore', 'Pain score'], ['bodyConditionScore', 'Body condition score']] as const).map(([key, label]) => (
+                <label key={key}>
+                  <span>{label}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={draft.general[key]}
+                    maxLength={30}
+                    placeholder="Enter score"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value !== '' && !/^\d+(\.\d*)?$/.test(value)) return;
+                      updateDraft((d) => ({ ...d, general: { ...d.general, [key]: value } }));
+                    }}
+                  />
+                </label>
+              ))}
             </div></fieldset>
 
             <fieldset className="physical-exam-section"><legend>Body systems</legend><div className="physical-exam-systems">
               {EXAM_SYSTEMS.map(([key, label]) => <div className="physical-exam-system" key={key}><fieldset className="physical-exam-pill-field"><legend>{label}</legend><div className="physical-exam-pills">{(['Normal', 'Abnormal', 'Not examined'] as FindingStatus[]).map((status) => <button type="button" key={status} aria-pressed={draft.systems[key].status === status} className={draft.systems[key].status === status ? `is-selected is-${status.toLowerCase().replace(' ', '-')}` : ''} onClick={() => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], status } } }))}>{status}</button>)}</div></fieldset><label className="physical-exam-system__notes"><span className="sr-only">{label} notes</span><input maxLength={150} placeholder="Add findings or notes" value={draft.systems[key].notes} onChange={(e) => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], notes: e.target.value } } }))} /></label></div>)}
             </div></fieldset>
 
-            <div className="physical-exam-conclusion">
-              <label><span>Problem list / diagnoses</span><textarea maxLength={1200} placeholder="Document active problems, diagnoses, or differentials" value={draft.problemList} onChange={(e) => updateDraft((d) => ({ ...d, problemList: e.target.value }))} /></label>
-              <label><span>Recommendations / plan</span><textarea maxLength={1200} placeholder="Document recommended diagnostics, treatment, and follow-up" value={draft.recommendations} onChange={(e) => updateDraft((d) => ({ ...d, recommendations: e.target.value }))} /></label>
+            <div className="physical-exam-conclusion physical-exam-conclusion--stacked">
+              <DiagnosisInput value={draft.problemList} onChange={(next) => updateDraft((d) => ({ ...d, problemList: next }))} />
+              <label className="physical-exam-plan"><span>Plan and discharges</span><textarea rows={10} maxLength={8000} placeholder="Plan, treatments, and take-home discharge instructions" value={draft.recommendations} onChange={(e) => updateDraft((d) => ({ ...d, recommendations: e.target.value }))} /></label>
             </div>
-            <label className="physical-exam-additional"><span>Additional exam notes</span><textarea maxLength={500} placeholder="Anything not captured above" value={draft.additionalNotes} onChange={(e) => updateDraft((d) => ({ ...d, additionalNotes: e.target.value }))} /></label>
+            {draft.additionalNotes.trim() ? (
+              <div className="physical-exam-legacy-notes"><span>Earlier exam notes</span><p>{draft.additionalNotes}</p></div>
+            ) : null}
             {error ? <p className="form-error" role="alert">{error}</p> : null}
-            <div className="exam-findings-actions"><div className="intake-action-bar__status"><span className={`autosave-indicator autosave-indicator--${autosaveState}`}><span className="autosave-indicator__dot" aria-hidden="true" />{autosaveState === 'saving' ? 'Saving…' : autosaveState === 'error' ? 'Save failed' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'All changes saved'}</span>{autosaveState === 'error' ? <button type="button" className="intake-save-retry" onClick={() => void saveExamFindings(draft).catch(() => undefined)}>Retry</button> : null}</div><button type="button" className="button-primary exam-complete-button" disabled={submitting} onClick={() => void completeExam()}>{submitting ? 'Completing…' : 'Complete Exam'}</button></div>
           </div>
-        ) : <><p className="visit-intake-panel__status">Exam findings are not editable while this visit is in {state}.</p>{examFindings ? <ExamFindingsSummary examFindings={examFindings} /> : null}</>}
+        ) : <><p className="visit-intake-panel__status">This exam is complete. Findings are read-only.</p>{examFindings ? <ExamFindingsSummary examFindings={examFindings} /> : null}</>}
+        {editable ? (
+          <div className="exam-findings-card__save">
+            <span className={`autosave-indicator autosave-indicator--${autosaveState}`}><span className="autosave-indicator__dot" aria-hidden="true" />{autosaveState === 'saving' ? 'Saving…' : autosaveState === 'error' ? 'Save failed' : lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'All changes saved'}</span>
+            {autosaveState === 'error' ? <button type="button" className="intake-save-retry" onClick={() => void saveExamFindings(draft).catch(() => undefined)}>Retry</button> : null}
+          </div>
+        ) : null}
       </section>
+      {editable ? (<div className="visit-step-actions"><span /><button type="button" className="button-primary exam-complete-button" disabled={submitting} onClick={() => void completeExam()}>{submitting ? 'Saving…' : 'Continue to care plan →'}</button></div>) : null}
     </div>
   );
 }

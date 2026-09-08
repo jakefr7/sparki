@@ -59,6 +59,7 @@ export function projectVisitJourney(visit: VisitDetail): VisitJourneyProjection 
   const stage = VISIT_WORKFLOW_STAGES[visitWorkflowStageIndex(visit.state)]!;
   const latestRecord = visit.soapNotes[0];
   const blockers: string[] = [];
+  if (!visit.intake?.completedAt) blockers.push('Intake is incomplete. Complete intake before continuing the clinical visit.');
   const openRequiredCare = visit.workItems.filter((item) =>
     ['Pending', 'InProgress'].includes(item.status) && ['Treatment', 'Medication', 'Diagnostic'].includes(item.type),
   );

@@ -5,7 +5,6 @@ import type { VisitDetail } from './patient-types';
 export const VISIT_WORKFLOW_STAGES = [
   'Exam',
   'Plan',
-  'Client Decision',
   'Care',
   'Discharge',
   'Record',
@@ -32,10 +31,9 @@ const RECORD_STATES = new Set([
 ]);
 
 export function visitWorkflowStageIndex(state: string): number {
-  if (RECORD_STATES.has(state)) return 5;
-  if (DISCHARGE_STATES.has(state)) return 4;
-  if (CARE_STATES.has(state)) return 3;
-  if (DECISION_STATES.has(state)) return 2;
+  if (RECORD_STATES.has(state)) return 4;
+  if (DISCHARGE_STATES.has(state)) return 3;
+  if (CARE_STATES.has(state) || DECISION_STATES.has(state)) return 2;
   if (PLAN_STATES.has(state)) return 1;
   return 0;
 }
@@ -63,7 +61,7 @@ export function projectVisitJourney(visit: VisitDetail): VisitJourneyProjection 
   const openRequiredCare = visit.workItems.filter((item) =>
     ['Pending', 'InProgress'].includes(item.status) && ['Treatment', 'Medication', 'Diagnostic'].includes(item.type),
   );
-  if (openRequiredCare.length) blockers.push(`${openRequiredCare.length} care item${openRequiredCare.length === 1 ? '' : 's'} still open`);
+  if (openRequiredCare.length && stage !== 'Plan') blockers.push(`${openRequiredCare.length} care item${openRequiredCare.length === 1 ? '' : 's'} still open`);
   if (stage === 'Discharge' && !visit.discharge) blockers.push('Discharge instructions are not complete');
   if (visit.checkout?.completedAt && !latestRecord?.lockedAt) blockers.push('Record completion pending');
 
@@ -75,8 +73,7 @@ export function projectVisitJourney(visit: VisitDetail): VisitJourneyProjection 
   const actions: Record<VisitWorkflowStage, string[]> = {
     Exam: ['Document exam findings'],
     Plan: ['Build care plan'],
-    'Client Decision': ['Record client decision'],
-    Care: ['Complete authorized care'],
+    Care: ['Complete ordered care'],
     Discharge: ['Prepare discharge'],
     Record: recordState === 'Finalized' ? ['Review medical record'] : ['Finish medical record'],
   };
@@ -91,8 +88,7 @@ export function nextActionForState(state: string): VisitNextAction {
   const copy: Record<VisitWorkflowStage, VisitNextAction> = {
     Exam: { headline: 'Complete the clinical exam.', steps: ['Review intake.', 'Document findings.'] },
     Plan: { headline: 'Build the care plan.', steps: ['Review abnormal findings.', 'Order recommended care.'] },
-    'Client Decision': { headline: 'Confirm the client decision.', steps: ['Discuss each item.', 'Attest the decision.'] },
-    Care: { headline: 'Complete authorized care.', steps: ['Perform approved items.', 'Document outcomes.'] },
+    Care: { headline: 'Complete ordered care.', steps: ['Perform ordered items.', 'Document outcomes.'] },
     Discharge: { headline: 'Prepare the patient for departure.', steps: ['Complete instructions.', 'Hand off to reception.'] },
     Record: { headline: 'Finish the medical record.', steps: ['Review attribution.', 'Finalize when complete.'] },
   };

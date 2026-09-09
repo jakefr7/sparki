@@ -73,7 +73,6 @@ export class VisitWorkItemsService {
             ? {
                 result: {
                   plan: JSON.parse(JSON.stringify(input.plan)) as Prisma.InputJsonValue,
-                  clientDecision: { decision: 'Pending' },
                   orderedById: actorId,
                   orderedAt: new Date().toISOString(),
                 },
@@ -121,20 +120,6 @@ export class VisitWorkItemsService {
           Boolean(input.clientDecision),
         );
         const priorResult = isJsonObject(item.result) ? item.result : {};
-        const decision = isJsonObject(priorResult.clientDecision)
-          ? priorResult.clientDecision.decision
-          : undefined;
-        const structuredCarePlan = isJsonObject(priorResult.plan);
-        if (
-          structuredCarePlan &&
-          CLINICAL_ORDER_TYPES.includes(item.type) &&
-          ['InProgress', 'Completed'].includes(input.status) &&
-          decision !== 'Authorized'
-        ) {
-          throw new ConflictException(
-            'Only client-authorized care may be performed. Record the client decision first.',
-          );
-        }
         const reopening = item.status === 'Completed' && input.status !== 'Completed';
         if (reopening && !input.reason)
           throw new ConflictException('A reason is required to reopen completed work.');

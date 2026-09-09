@@ -10,15 +10,21 @@ type Json = Record<string, unknown>;
 
 function object(value: unknown): Json { return value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {}; }
 function text(value: unknown) { return typeof value === 'string' ? value : ''; }
+function statusLabel(status: string) {
+  if (status === 'Completed') return 'Completed';
+  if (status === 'InProgress') return 'In progress';
+  if (['Declined', 'Deferred', 'Cancelled'].includes(status)) return 'Not proceeding';
+  return 'Ordered · ready for care';
+}
 
-export function VisitWorkItemsPanel({ visit }: { visit: VisitDetail }) {
+export function VisitWorkItemsPanel({ visit, mode = 'plan' }: { visit: VisitDetail; mode?: 'plan' | 'care' }) {
   const router = useRouter();
   const { user } = useCurrentUser();
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [careType, setCareType] = useState('Treatment');
   const [error, setError] = useState<string | null>(null);
-  const items = visit.workItems.filter((item) => CARE_TYPES.some(([type]) => type === item.type));
+  const items = visit.workItems.filter((item) => CARE_TYPES.some(([type]) => type === item.type) && (mode === 'plan' || ['Diagnostic', 'Treatment', 'Medication'].includes(item.type)));
   const mayPlan = user?.role === 'OWNER' || user?.role === 'VETERINARIAN';
   const mayPerformClinicalWork = ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? '');
   const closed = ['Archived', 'ArchivedWithExceptions', 'Cancelled', 'NoShow'].includes(visit.state);
@@ -48,37 +54,31 @@ export function VisitWorkItemsPanel({ visit }: { visit: VisitDetail }) {
     });
   }
 
-  function decide(event: FormEvent<HTMLFormElement>, itemId: string) {
-    event.preventDefault(); const form = new FormData(event.currentTarget); const decision = String(form.get('decision'));
-    const status = decision === 'Declined' ? 'Declined' : decision === 'DecideLater' ? 'Deferred' : 'Pending';
-    return request(`/api/visits/${visit.id}/work-items/${itemId}`, 'PUT', { status, reason: form.get('note') || `${decision} by client`, clientDecision: { decision, method: form.get('method'), note: form.get('note') || null } });
-  }
-
   function execute(event: FormEvent<HTMLFormElement>, itemId: string) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     return request(`/api/visits/${visit.id}/work-items/${itemId}`, 'PUT', { status: 'Completed', execution: {
-      outcome: form.get('outcome'), actualDose: form.get('actualDose') || null, route: form.get('route') || null,
+      note: form.get('note') || null, actualDose: form.get('actualDose') || null, route: form.get('route') || null,
       site: form.get('site') || null, quantity: form.get('quantity') || null, unit: form.get('unit') || null,
       concentration: form.get('concentration') || null, performedAt: new Date().toISOString(),
     } });
   }
 
-  return <section id="visit-care-plan" className="visit-work-panel" aria-labelledby="care-plan-heading" onChange={() => setHasUnsavedChanges(true)}>
-    <header className="visit-work-panel__header"><div><h2 id="care-plan-heading">Care plan</h2></div>{items.length > 0 ? <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span> : null}</header>
-    {mayPlan && !closed ? <form className="visit-work-create" onSubmit={(event) => void create(event)}>
+  const headingId = mode === 'plan' ? 'care-plan-heading' : 'care-execution-heading';
+  return <section id={mode === 'plan' ? 'visit-care-plan' : 'visit-care'} className={`visit-work-panel visit-work-panel--${mode}`} aria-labelledby={headingId} onChange={() => mode === 'plan' && setHasUnsavedChanges(true)}>
+    <header className="visit-work-panel__header"><div><h2 id={headingId}>{mode === 'plan' ? 'Care plan' : 'Care'}</h2><p>{mode === 'plan' ? 'Add the treatments, diagnostics, medications, and follow-up this patient needs.' : 'Document the care completed from the veterinarian’s plan.'}</p></div>{items.length > 0 ? <span>{items.length} {items.length === 1 ? 'item' : 'items'}</span> : null}</header>
+    {mode === 'plan' && mayPlan && !closed ? <form className="visit-work-create" onSubmit={(event) => void create(event)}>
       <label>Type<select name="type" value={careType} onChange={(event) => setCareType(event.target.value)}>{CARE_TYPES.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Name<input name="title" required placeholder="Enter treatment, test, or medication" /></label>
-      <label className="visit-work-create__recommendation">Instructions<textarea name="recommendation" rows={3} required placeholder="What needs to be done?" /></label>
+      <label className="visit-work-create__recommendation">Plan details<textarea name="recommendation" rows={3} required placeholder="What are you recommending, and why?" /></label>
       <details className="visit-medication-options" hidden={careType !== 'Medication'}><summary>Medication details (optional)</summary><fieldset><legend className="sr-only">Medication details</legend><div><label>Ordered dose<input name="orderedDose" /></label><label>Route<input name="route" /></label><label>Frequency<input name="frequency" /></label><label>Duration<input name="duration" /></label><label>Disposition<select name="disposition"><option value="">Not applicable</option><option value="AdministeredInClinic">Administered in clinic</option><option value="DispensedTakeHome">Dispensed / take home</option></select></label></div></fieldset></details>
       <div className="visit-work-create__actions"><span className={`autosave-indicator autosave-indicator--${saving ? 'saving' : error ? 'error' : hasUnsavedChanges ? 'saving' : 'saved'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saving ? 'Saving…' : error ? 'Changes not saved' : hasUnsavedChanges ? 'Unsaved changes' : 'All changes saved'}</span><button className="button-primary" disabled={saving}>{saving ? 'Adding…' : 'Add to plan'}</button></div>
     </form> : null}
-    <div className="visit-work-list">{items.length === 0 ? null : items.map((item) => {
-      const result = object(item.result); const plan = object(result.plan); const decision = object(result.clientDecision); const execution = object(result.execution); const authorized = decision.decision === 'Authorized';
-      return <article key={item.id} className="visit-work-item"><div><div className="visit-work-item__meta"><span>{item.type}</span><small className={`visit-work-item__status visit-work-item__status--${item.status.toLowerCase()}`}>{item.status}</small></div><strong>{item.title}</strong><p>{text(plan.recommendation)}</p></div>
-        <dl><div><dt>Client decision</dt><dd>{text(decision.decision) || 'Pending'}</dd></div>{decision.method ? <div><dt>Method</dt><dd>{text(decision.method)}</dd></div> : null}{decision.attestedAt ? <div><dt>Attested</dt><dd>{new Date(text(decision.attestedAt)).toLocaleString()}</dd></div> : null}</dl>
-        {mayPerformClinicalWork && !closed && item.status !== 'Completed' ? <details><summary>Record client decision</summary><form onSubmit={(event) => void decide(event, item.id)}><label>Decision<select name="decision"><option>Authorized</option><option>Declined</option><option value="DecideLater">Decide later</option></select></label><label>Communication method<select name="method"><option value="InPerson">In person</option><option>Phone</option><option>Video</option><option>Text</option><option>Email</option></select></label><label>Note<textarea name="note" /></label><button className="button-secondary" disabled={saving}>Attest decision</button></form></details> : null}
-        {mayPerformClinicalWork && authorized && !closed && item.status !== 'Completed' ? <details><summary>Document care execution</summary><form onSubmit={(event) => void execute(event, item.id)}><label>Outcome<textarea name="outcome" required /></label>{item.type === 'Medication' ? <fieldset><legend>Medication execution</legend><label>Actual dose<input name="actualDose" /></label><label>Concentration<input name="concentration" /></label><label>Quantity<input name="quantity" /></label><label>Unit<input name="unit" /></label><label>Route<input name="route" /></label><label>Site<input name="site" /></label></fieldset> : null}<button className="button-primary" disabled={saving}>Complete authorized care</button></form></details> : null}
-        {item.status === 'Completed' ? <p><strong>Performed:</strong> {text(execution.outcome) || 'Completed'}{item.completedAt ? ` · ${new Date(item.completedAt).toLocaleString()}` : ''}</p> : null}
+    <div className="visit-work-list">{items.length === 0 ? <div className="visit-work-empty"><strong>{mode === 'plan' ? 'No care added yet' : 'No care to complete'}</strong><span>{mode === 'plan' ? 'Add the first item above.' : 'Return to the care plan to add an order.'}</span></div> : items.map((item) => {
+      const result = object(item.result); const plan = object(result.plan); const execution = object(result.execution);
+      const canDocumentCare = mode === 'care' && mayPerformClinicalWork && !closed && ['Pending', 'InProgress'].includes(item.status);
+      return <article key={item.id} className="visit-work-item"><div><div className="visit-work-item__meta"><span>{item.type}</span>{mode === 'care' || item.status === 'Completed' ? <small className={`visit-work-item__status visit-work-item__status--${item.status.toLowerCase()}`}>{statusLabel(item.status)}</small> : null}</div><strong>{item.title}</strong><p>{text(plan.recommendation)}</p></div>
+        {canDocumentCare ? <details><summary>{item.type === 'Diagnostic' ? 'Record test performed' : item.type === 'Medication' ? 'Record administration' : 'Record treatment performed'}</summary><form onSubmit={(event) => void execute(event, item.id)}>{item.type === 'Medication' ? <fieldset><legend>Administration details</legend><label>Actual dose<input name="actualDose" /></label><label>Concentration<input name="concentration" /></label><label>Quantity<input name="quantity" /></label><label>Unit<input name="unit" /></label><label>Route<input name="route" /></label><label>Site<input name="site" /></label></fieldset> : null}<label>Note <span className="field-optional">Optional—use only for a variance, complication, or useful handoff detail</span><textarea name="note" /></label><button className="button-primary" disabled={saving}>{item.type === 'Diagnostic' ? 'Mark test performed' : item.type === 'Medication' ? 'Record administration' : 'Mark treatment performed'}</button></form></details> : null}
+        {item.status === 'Completed' ? <p><strong>Performed</strong>{text(execution.note) || text(execution.outcome) ? ` · ${text(execution.note) || text(execution.outcome)}` : ''}{item.completedAt ? ` · ${new Date(item.completedAt).toLocaleString()}` : ''}</p> : null}
       </article>;
     })}</div>{error ? <p className="form-error" role="alert">{error}</p> : null}
   </section>;

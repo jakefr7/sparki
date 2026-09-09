@@ -22,7 +22,8 @@ describe('Phase 6 care-plan work item schemas', () => {
     }).success).toBe(true);
   });
 
-  it('requires an execution outcome and timestamp', () => {
-    expect(updateVisitWorkItemSchema.safeParse({ status: 'Completed', execution: { performedAt: new Date().toISOString() } }).success).toBe(false);
+  it('records routine completion without forcing a narrative outcome', () => {
+    expect(updateVisitWorkItemSchema.safeParse({ status: 'Completed', execution: { performedAt: new Date().toISOString() } }).success).toBe(true);
+    expect(updateVisitWorkItemSchema.safeParse({ status: 'Completed', execution: { performedAt: new Date().toISOString(), note: 'Patient resisted collection' } }).success).toBe(true);
   });
 });

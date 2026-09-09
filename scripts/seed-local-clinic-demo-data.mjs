@@ -214,6 +214,16 @@ const TEMPLATES = [
   { key: 'nailTrim', type: 'TechnicianAppointment', reason: 'Nail trim', duration: 15, providerRole: 'tech' },
 ];
 
+// Keep Whiskers' active demo visit vet-led so the record-signing workflow has
+// an assigned veterinarian and represents a routine checkup, not a tech visit.
+const WHISKERS_CHECKUP = {
+  key: 'checkup',
+  type: 'WellnessPreventiveCare',
+  reason: 'Checkup',
+  duration: 30,
+  providerRole: 'vet',
+};
+
 /** Mirrors apps/api/src/visits/visits.service.ts APPOINTMENT_TYPE_TO_VISIT_TYPE
  *  so seeded visits use the same visitType a real check-in would produce. */
 const APPOINTMENT_TYPE_TO_VISIT_TYPE = {
@@ -386,8 +396,11 @@ function buildAppointmentPlan() {
   const todayBuckets = bucketTodaySlots(TODAY_SLOTS, NOW);
   for (const slot of TODAY_SLOTS) {
     const patient = nextPatient();
-    const template = nextTemplate();
-    const provider = providerFor(template);
+    const rotatedTemplate = nextTemplate();
+    const isWhiskersCheckup =
+      patient.key === 'whiskers-johnson' && slot.hour === 16 && slot.minute === 30;
+    const template = isWhiskersCheckup ? WHISKERS_CHECKUP : rotatedTemplate;
+    const provider = isWhiskersCheckup ? VET_A : providerFor(template);
     const bucket = todayBuckets.get(slot);
     const { appointmentState, visitState } = BUCKET_TO_STATES[bucket];
     plan.push({

@@ -191,7 +191,8 @@ export class VisitRecordsService {
     const signer = await prisma.user.findFirst({ where: { id: signerId, organizationId, isActive: true } });
     const delegated = visit.signoffDelegates.some((entry) => entry.delegateId === signerId);
     const assignedTechnicianMaySign = visit.visitType === 'TechnicianAppointment' && visit.assignedTechnicianId === signerId;
-    if (!signer || (visit.primaryVeterinarianId !== signerId && !assignedTechnicianMaySign && !(delegated && signer.canFinalizeRecordsForOthers))) {
+    const unassignedClinicalCompleterMaySign = !visit.primaryVeterinarianId && Boolean(signer && (['VETERINARIAN', 'OWNER'].includes(signer.role) || signer.canFinalizeRecordsForOthers));
+    if (!signer || (visit.primaryVeterinarianId !== signerId && !unassignedClinicalCompleterMaySign && !assignedTechnicianMaySign && !(delegated && signer.canFinalizeRecordsForOthers))) {
       throw new ForbiddenException('You are not assigned or delegated to finalize this medical record.');
     }
     const note = visit.soapNotes.find((entry) => OPEN_RECORD_STATUSES.includes(entry.status as (typeof OPEN_RECORD_STATUSES)[number]));
@@ -236,6 +237,7 @@ export class VisitRecordsService {
           nextAction: canClose ? null : visit.checkout?.balanceStatus === 'Outstanding' ? 'Resolve outstanding balance' : 'Complete checkout',
           ...(canClose ? { closedAt: now, archivedAt: now } : {}),
           lastUpdatedById: signerId,
+          ...(unassignedClinicalCompleterMaySign ? { primaryVeterinarianId: signerId } : {}),
           workflowStepId,
           version: { increment: 1 },
         },

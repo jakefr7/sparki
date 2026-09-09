@@ -81,6 +81,10 @@ export default async function VisitWorkspacePage({
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
   const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
+  const openClinicalWork = visit.workItems.some((item) => {
+    if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
+    return ['Pending', 'InProgress'].includes(item.status);
+  });
   const attachmentsPanel = (
     <ClinicalAttachmentsPanel
       patientId={visit.patient.id}
@@ -132,8 +136,10 @@ export default async function VisitWorkspacePage({
 
         {showClinicalWork && !recordSigned ? <VisitCareSections
           examHref={`${visitHref}?view=exam${originQuery}`}
-          initialSection={view === 'plan' ? 0 : visit.phase === 'RecordClosure' ? 2 : visit.phase === 'Discharge' ? 1 : 0}
+          canContinueToDischarge={!openClinicalWork}
+          initialSection={view === 'plan' ? 0 : view === 'care' ? 1 : view === 'discharge' ? 2 : view === 'record' ? 3 : visit.phase === 'RecordClosure' ? 3 : visit.phase === 'Discharge' ? 2 : 0}
           plan={<div className="care-plan-workspace care-plan-workspace--focused"><details className="visit-exam-reference"><summary>Exam findings</summary><PostExamReview visit={visit} /></details><VisitWorkItemsPanel visit={visit} /></div>}
+          care={<VisitWorkItemsPanel visit={visit} mode="care" />}
           discharge={<VisitDischargePanel visit={visit} />}
           record={<VisitRecordPanel visit={visit} attachments={attachmentsPanel} />}
         /> : null}

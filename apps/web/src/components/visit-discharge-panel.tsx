@@ -42,8 +42,8 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
       const body = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(body.message ?? 'Could not save discharge.');
       setHasUnsavedChanges(false);
-      router.refresh();
-      step?.next();
+      if (step) step.next();
+      else router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not save discharge.'); }
     finally { setSaving(false); }
   }

@@ -122,6 +122,57 @@ body:has(.visit-workspace) {
 }
 
 .visit-workspace--post-exam .patient-context-bar__back-row { display: none; }
+.visit-workspace--post-exam .patient-context-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(820px, calc(100% - 3rem));
+  min-height: 0;
+  padding: .65rem 0;
+  gap: .55rem 1.25rem;
+}
+.visit-workspace--post-exam .visit-care-sections { width: min(820px, calc(100% - 3rem)); }
+.visit-workspace--post-exam .patient-context-bar__identity { gap: .7rem; }
+.visit-workspace--post-exam .patient-context-bar__avatar { width: 2.5rem; height: 2.5rem; border-radius: .7rem; }
+.visit-workspace--post-exam .patient-context-bar__name-block h1 { font-size: 1.35rem; line-height: 1.05; }
+.visit-workspace--post-exam .patient-context-bar__meta { margin-top: .1rem; font-size: .76rem; }
+.visit-workspace--post-exam .patient-context-bar__details {
+  display: flex;
+  grid-column: 1;
+  grid-row: 2;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .45rem 1.25rem;
+  width: 100%;
+  padding: .5rem 0 0;
+  border-top: 1px solid var(--border);
+}
+.visit-workspace--post-exam .patient-context-bar__reason {
+  flex-wrap: nowrap;
+  padding: 0;
+  border: 0;
+}
+.visit-workspace--post-exam .patient-context-bar__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem 1.25rem;
+  width: auto;
+  padding: 0;
+  border: 0;
+}
+.visit-workspace--post-exam .patient-context-bar__reason-label,
+.visit-workspace--post-exam .patient-context-bar__facts dt { color: #71818d; font-size: .68rem; }
+.visit-workspace--post-exam .patient-context-bar__reason strong,
+.visit-workspace--post-exam .patient-context-bar__facts dd { font-size: .76rem; font-weight: 650; white-space: nowrap; }
+.visit-workspace--post-exam .patient-context-bar__alerts { grid-column: 1 / -1; }
+.visit-workspace--post-exam .patient-context-bar__alerts:empty { display: none; }
+@media (max-width: 1050px) {
+  .visit-workspace--post-exam .patient-context-bar__details { display: flex; }
+}
+@media (max-width: 700px) {
+  .visit-workspace--post-exam .patient-context-bar,
+  .visit-workspace--post-exam .visit-care-sections { width: min(100% - 2rem, 820px); }
+  .visit-workspace--post-exam .patient-context-bar__reason { flex-basis: 100%; }
+}
 .visit-stage-navigation { width: min(1120px, calc(100% - 3rem)); margin: 0 auto 1.5rem; }
 .visit-stage-navigation__link { display: inline-flex; align-items: center; padding: .65rem .9rem; border: 1px solid #cfdfe1; border-radius: 8px; color: #176f69; background: #fff; font-size: .85rem; font-weight: 650; text-decoration: none; }
 .visit-stage-navigation__link:hover { background: #edf7f5; }
@@ -157,6 +208,7 @@ body:has(.visit-workspace) {
 .visit-care-sections--guided .visit-discharge-form__footer { flex-wrap: wrap; gap: 1rem; margin-top: .9rem; padding-top: 0; border-top: 0; }
 .visit-care-sections--guided .visit-discharge-form__footer > div:last-child { margin-left: auto; }
 .visit-care-sections--guided .visit-work-panel__header, .visit-care-sections--guided .visit-record-panel__header, .visit-care-sections--guided .visit-discharge-panel__header { margin-bottom: 1rem; }
+.visit-step-actions .button-primary:disabled { opacity: .55; cursor: not-allowed; }
 .visit-care-sections--guided .visit-discharge-panel__header {
   align-items: flex-start;
   padding: 0;
@@ -201,6 +253,7 @@ body:has(.visit-workspace) {
 .visit-care-sections #visit-care-plan .visit-work-create__actions { margin: 0; padding: 0; }
 .visit-care-sections #visit-care-plan .visit-work-create__actions .button-primary { background: #edf7f5; border-color: #c5ded9; color: #176f69; }
 .visit-care-sections #visit-care-plan .visit-work-create__actions .button-primary:hover { background: #dcefeb; }
+.visit-work-item .field-optional { color: var(--color-text-muted); font-size: .7rem; font-weight: 500; line-height: 1.4; }
 .visit-medication-options[hidden] { display: none !important; }
 .visit-care-sections--guided .visit-exam-reference { margin: 0; }
 .visit-care-sections--guided .visit-exam-reference > summary { padding: 0; }

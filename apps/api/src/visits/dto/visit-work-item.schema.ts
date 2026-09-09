@@ -47,7 +47,8 @@ export const updateVisitWorkItemSchema = z
       note: z.string().trim().max(1000).optional().nullable(),
     }).optional(),
     execution: z.object({
-      outcome: z.string().trim().min(1).max(1000),
+      outcome: z.string().trim().min(1).max(1000).optional().nullable(),
+      note: z.string().trim().max(1000).optional().nullable(),
       actualDose: z.string().trim().max(120).optional().nullable(),
       concentration: z.string().trim().max(120).optional().nullable(),
       quantity: z.string().trim().max(120).optional().nullable(),

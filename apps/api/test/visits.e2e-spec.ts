@@ -1202,8 +1202,11 @@ describe('Visits (e2e)', () => {
       const created = await request(app.getHttpServer()).post(`/visits/${visit.id}/work-items`).send({
         type: 'Medication',
         title: 'Dispense antibiotic',
+        plan: { recommendation: 'Dispense the prescribed course.' },
       });
       expect(created.status).toBe(201);
+      expect(created.body.result).toMatchObject({ plan: { recommendation: 'Dispense the prescribed course.' } });
+      expect(created.body.result.clientDecision).toBeUndefined();
 
       const completed = await request(app.getHttpServer()).put(`/visits/${visit.id}/work-items/${created.body.id}`).send({ status: 'Completed' });
       expect(completed.status).toBe(200);
@@ -1251,6 +1254,7 @@ describe('Visits (e2e)', () => {
 
       const care = await request(app.getHttpServer()).post(`/visits/${visit.id}/work-items`).send({ type: 'Treatment', title: 'Administer first dose' });
       expect(care.status).toBe(201);
+      expect(care.body.result?.clientDecision).toBeUndefined();
       const blockedDischarge = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({ instructions: 'Rest', followUpRequired: false });
       expect(blockedDischarge.status).toBe(409);
       expect((blockedDischarge.body.message as string)).toContain('Administer first dose');

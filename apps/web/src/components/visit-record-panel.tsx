@@ -88,9 +88,10 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const { user } = useCurrentUser();
   const note = visit.soapNotes[0];
   const isAssignedDoctor = user?.id === visit.primaryVeterinarian?.id;
+  const isUnassignedClinicalCompleter = !visit.primaryVeterinarian && Boolean(user?.permissions.includes('clinical:complete'));
   const isAssignedTechnician = visit.visitType === 'TechnicianAppointment' && user?.id === visit.assignedTechnician?.id;
   const isDelegate = visit.signoffDelegates.some((entry) => entry.delegateId === user?.id);
-  const canEdit = Boolean(user && (isAssignedDoctor || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
+  const canEdit = Boolean(user && (isAssignedDoctor || isUnassignedClinicalCompleter || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
   const canDelegate = Boolean(user && (isAssignedDoctor || ['OWNER', 'PRACTICE_MANAGER'].includes(user.role)) && note && ['Draft', 'ReadyForReview'].includes(note.status));
   const signed = note?.status === 'Locked';
   const signedOn = note?.lockedAt ?? note?.signedAt ?? null;
@@ -103,7 +104,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const [eligibleSigners, setEligibleSigners] = useState<StaffMember[]>([]);
   const [delegateId, setDelegateId] = useState('');
   const [amending, setAmending] = useState(false);
-  const [confirmFinalize, setConfirmFinalize] = useState(false);
   const [missingSoap, setMissingSoap] = useState<string[]>([]);
   const lockedNote = visit.soapNotes.find((entry) => entry.status === 'Locked');
   const canAmend = Boolean(user && lockedNote && (user.id === visit.primaryVeterinarian?.id || user.id === lockedNote.veterinarianId || isAssignedTechnician));
@@ -115,6 +115,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revision = useRef(0);
   const [saveStatus, setSaveStatus] = useState('All changes saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
   useEffect(() => {
@@ -146,11 +147,13 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
       version.current = payload.version;
       if (savedRevision === revision.current) {
         setSaveStatus('All changes saved');
+        setSaveError(null);
         setError(null);
       }
     }).catch((caught: unknown) => {
       setSaveStatus('Changes not saved');
-      setError(caught instanceof Error ? caught.message : 'Could not save the record.');
+      setSaveError(caught instanceof Error ? caught.message : 'Could not save the record.');
+      setError(null);
       throw caught;
     });
     saveQueue.current = operation;
@@ -174,6 +177,10 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   }
 
   function requestFinalize() {
+    if (saveError) {
+      setError(null);
+      return;
+    }
     const gaps = pendingSoapGaps();
     const firstGap = gaps[0];
     if (firstGap) {
@@ -186,7 +193,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     }
     setMissingSoap([]);
     setError(null);
-    setConfirmFinalize(true);
+    void finalize();
   }
 
   async function finalize() {
@@ -197,7 +204,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
       const response = await fetch(`/api/visits/${visit.id}/record/finalize`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(payload.message ?? 'Could not sign the record.');
-      setConfirmFinalize(false);
+      router.push('/');
       router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not sign the record.'); }
     finally { setSaving(false); }
@@ -330,7 +337,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
       ) : null}
       {canEdit ? (
         <div className="visit-record-panel__save">
-          <span className={`autosave-indicator autosave-indicator--${saveStatus === 'Changes not saved' ? 'error' : saveStatus === 'Saving…' ? 'saving' : 'saved'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saveStatus}</span>
+          <span id={`visit-record-save-status-${visit.id}`} className={`autosave-indicator autosave-indicator--${saveStatus === 'Changes not saved' ? 'error' : saveStatus === 'Saving…' ? 'saving' : 'saved'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saveError ? `Not saved — ${saveError}` : saveStatus}</span>
           {saveStatus === 'Changes not saved' ? <button type="button" className="visit-record-save-draft" onClick={() => { if (recordForm.current) void saveForm(recordForm.current).catch(() => undefined); }}>Retry</button> : null}
         </div>
       ) : null}
@@ -338,21 +345,8 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     {step || canEdit ? (
       <footer className="visit-step-actions visit-record-footer">
         {step ? <button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to discharge</button> : <span />}
-        {canEdit ? <button type="button" className="button-primary" disabled={saving} onClick={requestFinalize}>{saving ? 'Signing…' : 'Sign record'}</button> : null}
+          {canEdit ? <button type="button" className="button-primary" disabled={saving || Boolean(saveError)} aria-describedby={saveError ? `visit-record-save-status-${visit.id}` : undefined} onClick={requestFinalize}>{saving ? 'Completing…' : 'Complete visit'}</button> : null}
       </footer>
-    ) : null}
-    {confirmFinalize ? (
-      <div className="visit-confirm-overlay" role="presentation" onMouseDown={() => { if (!saving) { setConfirmFinalize(false); setError(null); } }} onKeyDown={(event) => { if (event.key === 'Escape' && !saving) { setConfirmFinalize(false); setError(null); } }}>
-        <div className="visit-confirm" role="dialog" aria-modal="true" aria-labelledby="sign-confirm-title" aria-describedby="sign-confirm-body" onMouseDown={(event) => event.stopPropagation()}>
-          <h2 id="sign-confirm-title">Sign this medical record?</h2>
-          <p id="sign-confirm-body">Signing enters the record into the patient&rsquo;s permanent medical history. Any later change must be made as an amendment.</p>
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="visit-confirm__actions">
-            <button type="button" className="button-secondary" disabled={saving} onClick={() => { setConfirmFinalize(false); setError(null); }}>Cancel</button>
-            <button type="button" className="button-primary" autoFocus disabled={saving} onClick={() => void finalize()}>{saving ? 'Signing…' : 'Sign record'}</button>
-          </div>
-        </div>
-      </div>
     ) : null}
     </>
   );

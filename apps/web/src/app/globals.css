@@ -5543,6 +5543,7 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 .visit-work-item details summary { padding: .48rem .66rem; border: 1px solid #cfe0e1; border-radius: .52rem; background: #f5faf9; cursor: pointer; color: #17756f; font-size: .72rem; font-weight: 850; list-style: none; }
 .visit-work-item details summary::-webkit-details-marker { display: none; }
 .visit-work-item form { display: grid; gap: .65rem; margin-top: .7rem; }
+.visit-work-item__helper { margin: .7rem 0 0; max-width: 34rem; color: var(--color-text-muted); font-size: .78rem; line-height: 1.5; }
 .visit-work-item textarea { min-height: 4.5rem; resize: vertical; }
 
 /* Care-plan review is a single decision workspace: supporting clinical

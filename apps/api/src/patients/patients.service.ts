@@ -21,6 +21,7 @@ import type {
   UpdatePatientMedicationInput,
 } from './dto/patient-medication.schema';
 import type { UpdatePatientInput } from './dto/update-patient.schema';
+import { MEDICATION_CATALOG } from './medication-catalog';
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
   include: { clients: { include: { client: true } } },
@@ -34,38 +35,6 @@ const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
  *  applied to an explicit search — only the no-query default listing. */
 const TEST_DEBRIS_NAME_FRAGMENTS = ['Playwright', 'Schedule Patient', 'Visit Patient'];
 
-const MEDICATION_CATALOG = [
-  'Amoxicillin',
-  'Amoxicillin-clavulanate / Clavamox',
-  'Cephalexin',
-  'Cefpodoxime',
-  'Enrofloxacin / Baytril',
-  'Metronidazole',
-  'Gabapentin',
-  'Trazodone',
-  'Carprofen / Rimadyl',
-  'Meloxicam',
-  'Prednisone',
-  'Prednisolone',
-  'Apoquel',
-  'Cytopoint',
-  'Simparica',
-  'NexGard',
-  'Bravecto',
-  'Revolution',
-  'Heartgard',
-  'Interceptor',
-  'Fluoxetine',
-  'Levothyroxine',
-  'Methimazole',
-  'Pimobendan / Vetmedin',
-  'Furosemide',
-  'Cerenia',
-  'Ondansetron',
-  'Famotidine',
-  'Omeprazole',
-  'Insulin',
-];
 
 function excludingTestDebris(): Prisma.PatientWhereInput {
   if (process.env.NODE_ENV === 'production') return {};

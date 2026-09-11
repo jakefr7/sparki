@@ -25,7 +25,7 @@ const EXAM_SYSTEM_LABELS: Record<string, string> = { eyes: 'Eyes', ears: 'Ears',
 interface StructuredExam {
   kind?: string;
   general?: { painScore?: string; bodyConditionScore?: string };
-  systems?: Record<string, { status?: string; notes?: string }>;
+  systems?: Record<string, { status?: string; notes?: string; documented?: boolean }>;
   additionalNotes?: string;
 }
 
@@ -35,7 +35,9 @@ function readableObjective(value: string | null | undefined): string {
     const parsed = JSON.parse(value) as StructuredExam;
     if (parsed.kind !== 'sparki-small-animal-exam') return value;
     const general = [parsed.general?.painScore && `Pain: ${parsed.general.painScore}`, parsed.general?.bodyConditionScore && `BCS: ${parsed.general.bodyConditionScore}/9`].filter(Boolean).join('; ');
-    const systems = Object.entries(parsed.systems ?? {}).map(([key, finding]) => `${EXAM_SYSTEM_LABELS[key] ?? key}: ${finding.status ?? 'Not examined'}${finding.notes ? ` — ${finding.notes}` : ''}`);
+    const systems = Object.entries(parsed.systems ?? {})
+      .filter(([, finding]) => finding.documented === true && (finding.status !== 'Not examined' || Boolean(finding.notes?.trim())))
+      .map(([key, finding]) => `${EXAM_SYSTEM_LABELS[key] ?? key}: ${finding.status ?? 'Not examined'}${finding.notes ? ` — ${finding.notes}` : ''}`);
     return [general, ...systems, parsed.additionalNotes].filter(Boolean).join('\n');
   } catch { return value; }
 }
@@ -52,7 +54,10 @@ function summarizeObjective(value: string | null | undefined): { normalHeadline:
     if (parsed.kind === 'sparki-small-animal-exam') {
       const notable: string[] = [];
       let normalCount = 0;
+      let documentedCount = 0;
       for (const [key, finding] of Object.entries(parsed.systems ?? {})) {
+        if (finding.documented !== true || (finding.status === 'Not examined' && !finding.notes?.trim())) continue;
+        documentedCount += 1;
         if ((finding.status && finding.status !== 'Normal') || finding.notes) {
           notable.push(`${EXAM_SYSTEM_LABELS[key] ?? key}: ${finding.status ?? 'Not examined'}${finding.notes ? ` — ${finding.notes}` : ''}`);
         } else {
@@ -62,7 +67,7 @@ function summarizeObjective(value: string | null | undefined): { normalHeadline:
       const general = [parsed.general?.painScore && `Pain ${parsed.general.painScore}`, parsed.general?.bodyConditionScore && `BCS ${parsed.general.bodyConditionScore}/9`].filter(Boolean).join(' · ');
       if (general) notable.unshift(general);
       if (parsed.additionalNotes) notable.push(parsed.additionalNotes);
-      return { normalHeadline: notable.length || normalCount < 6 ? null : 'All body systems normal', notable, normalCount, full };
+      return { normalHeadline: notable.length || documentedCount !== Object.keys(EXAM_SYSTEM_LABELS).length ? null : 'All body systems normal', notable, normalCount, full };
     }
   } catch { /* not structured JSON — fall through to the text parser */ }
 

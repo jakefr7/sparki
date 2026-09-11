@@ -76,7 +76,7 @@ export function TodayOperationsPage() {
   const statuses = useMemo(() => enabledStatuses(colors ?? []), [colors]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [quickView, setQuickView] = useState<SchedulerAppointment | null>(null);
-  const rows = useMemo(() => buildTodayRows(dashboard?.todaysAppointments ?? [], dashboard?.activeVisits ?? [], statuses), [dashboard, statuses]);
+  const rows = useMemo(() => buildTodayRows(dashboard?.todaysAppointments ?? [], dashboard?.todaysVisits ?? [], statuses), [dashboard, statuses]);
   const visibleRows = selected.size ? rows.filter((row) => selected.has(row.status.status)) : rows;
   const groups = statuses.map((status) => ({ status, rows: visibleRows.filter((row) => row.status.status === status.status) })).filter((group) => group.rows.length);
   const inClinicCount = rows.filter(isCurrentlyInClinic).length;

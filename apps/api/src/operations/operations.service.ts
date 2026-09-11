@@ -41,7 +41,7 @@ export class OperationsService {
    * everything else is derived in memory.
    */
   async getDashboard(organizationId: string, locationId: string): Promise<OperationsDashboard> {
-    const [todaysAppointments, upcomingAppointments, activeVisits] = await Promise.all([
+    const [todaysAppointments, upcomingAppointments, activeVisits, todaysVisits] = await Promise.all([
       this.appointments.listTodayForOrganization(organizationId, locationId) as Promise<
         AppointmentWithContext[]
       >,
@@ -49,10 +49,12 @@ export class OperationsService {
         AppointmentWithContext[]
       >,
       this.visits.listActiveForOrganization(organizationId, locationId) as Promise<VisitWithContext[]>,
+      this.visits.listForTodaysAppointments(organizationId, locationId) as Promise<VisitWithContext[]>,
     ]);
 
     const now = new Date();
     const dashboardVisits = activeVisits.map((visit) => toDashboardVisit(visit, now));
+    const dashboardTodaysVisits = todaysVisits.map((visit) => toDashboardVisit(visit, now));
     const arrivedOrWaiting = dashboardVisits.filter((visit) =>
       (ARRIVED_OR_WAITING_STATES as string[]).includes(visit.state),
     );
@@ -80,6 +82,7 @@ export class OperationsService {
       todaysAppointments: todaysAppointments.map(toDashboardAppointment),
       upcomingAppointments: upcomingAppointments.map(toDashboardAppointment),
       activeVisits: dashboardVisits,
+      todaysVisits: dashboardTodaysVisits,
       arrivedOrWaiting,
       visitsByState: countByState(dashboardVisits),
     };

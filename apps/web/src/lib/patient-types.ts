@@ -325,6 +325,7 @@ export interface OperationsDashboard {
   todaysAppointments: DashboardAppointmentSummary[];
   upcomingAppointments: DashboardAppointmentSummary[];
   activeVisits: DashboardVisitSummary[];
+  todaysVisits: DashboardVisitSummary[];
   arrivedOrWaiting: DashboardVisitSummary[];
   visitsByState: { state: string; count: number }[];
 }
@@ -418,6 +419,7 @@ export interface VisitDetail {
     alerts: string | null;
     patientAlerts: PatientAlertSummary[];
     medications: PatientMedicationSummary[];
+    medicationCatalog: string[];
   };
   client: {
     id: string;

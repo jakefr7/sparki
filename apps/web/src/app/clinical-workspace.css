@@ -315,6 +315,173 @@ body:has(.visit-workspace) {
   margin-left: auto;
 }
 
+.visit-care-sections #visit-care-plan .visit-work-list:has(.visit-work-empty) {
+  display: none;
+}
+
+.visit-medication-autocomplete { position: relative; }
+.visit-medication-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 0.15rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px solid #c8d9df;
+  border-radius: 0.7rem;
+  background: #fff;
+  box-shadow: 0 0.6rem 1.25rem rgb(24 48 64 / 14%);
+}
+.visit-medication-suggestions button {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: #183040;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.visit-medication-suggestions button:hover,
+.visit-medication-suggestions button.is-highlighted { background: #eaf6f5; color: #167b76; }
+
+.visit-discharge-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  margin-bottom: 1rem;
+  border: 1px solid #dce7e8;
+  border-radius: 0.72rem;
+  background: #f9fbfb;
+}
+.visit-discharge-summary section { min-width: 0; padding: 0.95rem; }
+.visit-discharge-summary section + section { border-left: 1px solid #dce7e8; }
+.visit-discharge-summary h3 { margin: 0; color: #526575; font-size: 0.72rem; font-weight: 850; letter-spacing: 0.04em; text-transform: uppercase; }
+.visit-discharge-summary p { margin: 0.5rem 0 0; color: #172633; font-size: 0.86rem; line-height: 1.45; white-space: pre-wrap; }
+.visit-discharge-additional { margin-top: 0; }
+.visit-discharge-derived-note { color: #667586; font-size: 0.78rem; }
+@media (max-width: 700px) {
+  .visit-discharge-summary { grid-template-columns: 1fr; }
+  .visit-discharge-summary section + section { border-top: 1px solid #dce7e8; border-left: 0; }
+}
+
+.visit-work-item--editing {
+  align-items: start;
+}
+
+.visit-work-item__edit,
+.visit-work-item__delete,
+.visit-work-item__cancel {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cfdfe1;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #526575;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.visit-work-item__edit { align-self: start; }
+.visit-work-item__edit:hover,
+.visit-work-item__cancel:hover { border-color: #92c9c4; background: #edf7f5; color: #13766f; }
+.visit-work-item__edit:focus-visible,
+.visit-work-item__delete:focus-visible,
+.visit-work-item__cancel:focus-visible { outline: 2px solid #1b9e97; outline-offset: 2px; }
+
+.visit-work-item__edit-fields {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.visit-work-item__edit-fields label {
+  display: grid;
+  gap: 0.35rem;
+  color: #526575;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.visit-work-item__edit-fields textarea { min-height: 5rem; resize: vertical; }
+
+.visit-work-item__edit-actions {
+  display: flex !important;
+  align-items: center;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  width: max-content;
+  gap: 0.55rem;
+}
+
+.visit-work-item--editing > div:first-child {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.visit-work-item--editing .visit-work-item__edit-actions {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.visit-work-item--editing .visit-work-item__delete--icon {
+  z-index: 1;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+}
+
+.visit-work-item__edit-actions .button-primary {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.visit-work-item__delete {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 4.5rem;
+  padding: 0.45rem 0.75rem;
+  border-color: #edc9c9;
+  background: #fff3f3;
+  color: #9a4141;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+.visit-work-item__delete:hover:not(:disabled) { border-color: #dba4a4; background: #ffe8e8; color: #7e2929; }
+.visit-work-item__delete--icon {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 0.9rem;
+}
+.visit-work-item__delete--icon:hover:not(:disabled) { border-color: transparent; background: #fff1f1; }
+
+.visit-work-item__cancel {
+  width: auto;
+  min-width: 4.75rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+.visit-work-item__delete:disabled,
+.visit-work-item__cancel:disabled,
+.visit-work-item__edit-actions .button-primary:disabled { cursor: not-allowed; opacity: 0.45; }
+
 /* Clinical handoff recap: full intake picture from the tech, collapsible. */
 .exam-intake-drawer__content { grid-template-columns: 1fr; }
 .exam-intake-drawer__vitals dl {

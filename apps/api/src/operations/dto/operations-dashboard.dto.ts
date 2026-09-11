@@ -113,6 +113,9 @@ export interface OperationsDashboard {
   todaysAppointments: DashboardAppointmentSummary[];
   upcomingAppointments: DashboardAppointmentSummary[];
   activeVisits: DashboardVisitSummary[];
+  /** Today's visit records, including closed records for the schedule's
+   * patient-flow history. */
+  todaysVisits: DashboardVisitSummary[];
   arrivedOrWaiting: DashboardVisitSummary[];
   visitsByState: DashboardStateCount[];
 }

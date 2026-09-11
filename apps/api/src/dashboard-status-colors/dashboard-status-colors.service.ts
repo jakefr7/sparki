@@ -9,6 +9,21 @@ function statusKey(name: string) {
   return name.replace(/[^a-zA-Z0-9]+/g, '').replace(/^./, (letter) => letter.toUpperCase()) || 'Status';
 }
 
+// These are the built-in workflow steps, not free-form display labels. A new
+// instance of one must be attached to the phase its state transition uses;
+// otherwise moving a visit to (for example) Treatment would incorrectly put
+// it back in the arrived/check-in state.
+const BUILT_IN_STEP_PHASES = {
+  Appointment: 'Arrived',
+  CheckIn: 'Arrived',
+  BeginIntake: 'Intake',
+  ReadyForVeterinarian: 'Exam',
+  Exam: 'PlanAndApproval',
+  Treatment: 'CareInProgress',
+  Discharge: 'Discharge',
+  Checkout: 'RecordClosure',
+} as const;
+
 @Injectable()
 export class DashboardStatusColorsService {
   async getConfig(user: AuthenticatedUser) {
@@ -28,7 +43,9 @@ export class DashboardStatusColorsService {
       isEnabled: input.isEnabled,
       isInClinic: input.isInClinic,
       allowedTransitionKeys: input.allowedTransitionKeys,
-      lifecyclePhase: input.lifecyclePhase,
+      lifecyclePhase: input.id
+        ? input.lifecyclePhase
+        : (BUILT_IN_STEP_PHASES[statusKey(input.name) as keyof typeof BUILT_IN_STEP_PHASES] ?? input.lifecyclePhase),
     };
     if (input.id) {
       const existing = await prisma.dashboardStatusColorSetting.findFirst({

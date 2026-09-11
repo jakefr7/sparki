@@ -120,6 +120,8 @@ export class VisitWorkItemsService {
           Boolean(input.clientDecision),
         );
         const priorResult = isJsonObject(item.result) ? item.result : {};
+        const priorPlan = isJsonObject(priorResult.plan) ? priorResult.plan : {};
+        const planChanged = Boolean(input.title || input.plan);
         const reopening = item.status === 'Completed' && input.status !== 'Completed';
         if (reopening && !input.reason)
           throw new ConflictException('A reason is required to reopen completed work.');
@@ -153,6 +155,16 @@ export class VisitWorkItemsService {
                 },
               }
             : {}),
+          ...(input.plan
+            ? {
+                plan: {
+                  ...priorPlan,
+                  ...input.plan,
+                },
+                planEditedById: actorId,
+                planEditedAt: new Date().toISOString(),
+              }
+            : {}),
         };
         const metadata = medicationReversal
           ? {
@@ -179,6 +191,7 @@ export class VisitWorkItemsService {
           where: { id: item.id, status: item.status },
           data: {
             status: input.status,
+            title: input.title ?? item.title,
             completedAt: input.status === 'Completed' ? new Date() : null,
             completedById: input.status === 'Completed' ? actorId : null,
             ...(metadata ? { result: metadata } : {}),
@@ -193,7 +206,7 @@ export class VisitWorkItemsService {
             actorId,
             fromStatus: item.status,
             toStatus: input.status,
-            reason: input.reason ?? null,
+            reason: input.reason ?? (planChanged ? 'Care plan revised' : null),
             ...(metadata ? { metadata: metadata as Prisma.InputJsonValue } : {}),
           },
         });

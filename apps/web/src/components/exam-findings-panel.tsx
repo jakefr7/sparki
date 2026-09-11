@@ -13,7 +13,9 @@ const STRUCTURED_EXAM_KIND = 'sparki-small-animal-exam';
 type ExamFindings = NonNullable<VisitDetail['examFindings']>;
 type Intake = VisitDetail['intake'];
 type FindingStatus = 'Normal' | 'Abnormal' | 'Not examined';
-type SystemFinding = { status: FindingStatus; notes: string };
+// A status is not a documented finding until the clinician selects it or adds a note.
+// This keeps the structured exam from turning untouched controls into clinical facts.
+type SystemFinding = { status: FindingStatus; notes: string; documented?: boolean };
 
 const EXAM_SYSTEMS = [
   ['eyes', 'Eyes'],
@@ -58,7 +60,7 @@ interface ExamFindingsPayload {
 }
 
 function emptySystems(): Record<SystemKey, SystemFinding> {
-  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Normal', notes: '' }])) as Record<SystemKey, SystemFinding>;
+  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Not examined', notes: '', documented: false }])) as Record<SystemKey, SystemFinding>;
 }
 
 function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
@@ -80,7 +82,13 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
       ...fallback,
       ...parsed,
       general: { ...fallback.general, ...parsed.general },
-      systems: { ...fallback.systems, ...parsed.systems },
+      // Records created before explicit documentation tracking may contain the
+      // old default of "Normal". Do not present that inferred value as an exam
+      // finding; clinicians can affirm the relevant findings during review.
+      systems: {
+        ...fallback.systems,
+        ...Object.fromEntries(Object.entries(parsed.systems ?? {}).filter(([, finding]) => finding?.documented === true)),
+      },
       problemList: findings.assessment ?? '',
       recommendations: findings.plan ?? '',
     };
@@ -164,7 +172,7 @@ function IntakeRecap({ intake }: { intake: Intake }) {
 
 function ExamFindingsSummary({ examFindings }: { examFindings: ExamFindings }) {
   const draft = draftFromFindings(examFindings);
-  const examined = EXAM_SYSTEMS.filter(([key]) => draft.systems[key].status !== 'Not examined');
+  const examined = EXAM_SYSTEMS.filter(([key]) => draft.systems[key].documented && (draft.systems[key].status !== 'Not examined' || Boolean(draft.systems[key].notes.trim())));
   return (
     <div className="visit-intake-summary">
       <h3>Physical exam summary</h3>
@@ -264,7 +272,7 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake, return
             </div></fieldset>
 
             <fieldset className="physical-exam-section"><legend>Body systems</legend><div className="physical-exam-systems">
-              {EXAM_SYSTEMS.map(([key, label]) => <div className="physical-exam-system" key={key}><fieldset className="physical-exam-pill-field"><legend>{label}</legend><div className="physical-exam-pills">{(['Normal', 'Abnormal', 'Not examined'] as FindingStatus[]).map((status) => <button type="button" key={status} aria-pressed={draft.systems[key].status === status} className={draft.systems[key].status === status ? `is-selected is-${status.toLowerCase().replace(' ', '-')}` : ''} onClick={() => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], status } } }))}>{status}</button>)}</div></fieldset><label className="physical-exam-system__notes"><span className="sr-only">{label} notes</span><input maxLength={150} placeholder="Add findings or notes" value={draft.systems[key].notes} onChange={(e) => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], notes: e.target.value } } }))} /></label></div>)}
+              {EXAM_SYSTEMS.map(([key, label]) => <div className="physical-exam-system" key={key}><fieldset className="physical-exam-pill-field"><legend>{label}</legend><div className="physical-exam-pills">{(['Normal', 'Abnormal', 'Not examined'] as FindingStatus[]).map((status) => <button type="button" key={status} aria-pressed={draft.systems[key].status === status} className={draft.systems[key].status === status ? `is-selected is-${status.toLowerCase().replace(' ', '-')}` : ''} onClick={() => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], status, documented: true } } }))}>{status}</button>)}</div></fieldset><label className="physical-exam-system__notes"><span className="sr-only">{label} notes</span><input maxLength={150} placeholder="Add findings or notes" value={draft.systems[key].notes} onChange={(e) => updateDraft((d) => ({ ...d, systems: { ...d.systems, [key]: { ...d.systems[key], notes: e.target.value, documented: true } } }))} /></label></div>)}
             </div></fieldset>
 
             <div className="physical-exam-conclusion physical-exam-conclusion--stacked">

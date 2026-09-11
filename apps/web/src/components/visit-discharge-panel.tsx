@@ -6,6 +6,12 @@ import { useState, type FormEvent } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+
 export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   const router = useRouter();
   const step = useVisitStep();
@@ -13,20 +19,50 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [missingFields, setMissingFields] = useState<string[]>([]);
+  const [additionalInstructions, setAdditionalInstructions] = useState('');
   const canDischarge = ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? '');
   const canCheckout = ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST'].includes(user?.role ?? '');
-  const medicationPlan = visit.workItems.filter((item) => item.type === 'Medication' && !['Cancelled', 'Declined'].includes(item.status)).map((item) => item.title).join('\n');
+  const activeCare = visit.workItems.filter((item) =>
+    ['Treatment', 'Diagnostic', 'Medication'].includes(item.type) &&
+    item.status === 'Completed',
+  );
+  const careSummary = activeCare
+    .filter((item) => item.type !== 'Medication')
+    .map((item) => {
+      const recommendation = text(record(record(item.result).plan).recommendation);
+      return [item.title, recommendation].filter(Boolean).join(' — ');
+    })
+    .filter(Boolean)
+    .join('\n');
+  const medicationPlan = activeCare
+    .filter((item) => item.type === 'Medication' && !['Cancelled', 'Declined'].includes(item.status))
+    .map((item) => {
+      const plan = record(record(item.result).plan);
+      const medication = record(plan.medication);
+      // Only take-home medication belongs in the client's discharge directions.
+      // Older orders without a documented disposition remain visible so their
+      // instructions are not silently omitted.
+      if (text(medication.disposition) === 'AdministeredInClinic') return null;
+      const directions = [text(medication.orderedDose), text(medication.route), text(medication.frequency), text(medication.duration)].filter(Boolean);
+      return [item.title, directions.length ? directions.join(' · ') : null].filter(Boolean).join(' — ');
+    })
+    .filter((line): line is string => Boolean(line))
+    .join('\n');
+  const followUpPlan = visit.workItems
+    .filter((item) => item.type === 'FollowUp' && !['Cancelled', 'Declined'].includes(item.status))
+    .map((item) => {
+      const recommendation = text(record(record(item.result).plan).recommendation);
+      return [item.title, recommendation].filter(Boolean).join(' — ');
+    })
+    .filter(Boolean)
+    .join('\n');
+  const generatedHomeCare = careSummary || visit.examFindings?.plan?.trim() || '';
 
   async function saveDischarge(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    const missing = [
-      !String(form.get('instructions') ?? '').trim() ? 'instructions' : null,
-      form.get('followUpRequired') === 'yes' && !String(form.get('followUpPlan') ?? '').trim() ? 'followUpPlan' : null,
-    ].filter((field): field is string => Boolean(field));
-    setMissingFields(missing);
-    if (missing.length) {
-      setError('Fill in the required fields to continue.');
+    event.preventDefault();
+    const instructions = [generatedHomeCare, additionalInstructions.trim()].filter(Boolean).join('\n\n');
+    if (!instructions) {
+      setError('Add client-facing instructions before continuing.');
       return;
     }
     setSaving(true); setError(null);
@@ -34,9 +70,11 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
       const response = await fetch(`/api/visits/${visit.id}/discharge`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          instructions: form.get('instructions'), medicationInstructions: form.get('medicationInstructions'),
-          warningSigns: form.get('warningSigns'), followUpPlan: form.get('followUpPlan'),
-          followUpRequired: form.get('followUpRequired') === 'yes',
+          instructions,
+          medicationInstructions: medicationPlan || null,
+          warningSigns: visit.discharge?.warningSigns ?? null,
+          followUpPlan: followUpPlan || null,
+          followUpRequired: Boolean(followUpPlan),
         }),
       });
       const body = (await response.json()) as { message?: string };
@@ -85,17 +123,17 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   return (
     <>
     <section id="visit-discharge" className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
-      <div className="visit-discharge-panel__header"><div><h2 id="visit-discharge-heading">Discharge</h2></div><span className={visit.discharge ? 'is-complete' : ''}>{visit.discharge ? 'Prepared' : 'Draft'}</span></div>
+      <div className="visit-discharge-panel__header"><div><h2 id="visit-discharge-heading">Discharge</h2><p>Review the client-facing summary assembled from completed care and take-home medication.</p></div><span className={visit.discharge ? 'is-complete' : ''}>{visit.discharge ? 'Prepared' : 'Draft'}</span></div>
       {canDischarge ? (
         <form id={`discharge-form-${visit.id}`} onSubmit={saveDischarge} onChange={() => setHasUnsavedChanges(true)} className="visit-discharge-form" noValidate>
-          <div className="visit-discharge-form__grid">
-            <label className={`visit-discharge-field visit-discharge-field--wide${missingFields.includes('instructions') ? ' is-missing' : ''}`}><span className="visit-discharge-field__label">Home care{missingFields.includes('instructions') ? <em>Required</em> : null}</span><textarea aria-invalid={missingFields.includes('instructions')} name="instructions" rows={3} placeholder="Activity, diet, wound care, or other at-home directions" defaultValue={visit.discharge?.instructions ?? visit.examFindings?.plan ?? ''} onChange={() => setMissingFields((fields) => fields.filter((field) => field !== 'instructions'))} /></label>
-            <label className="visit-discharge-field"><span className="visit-discharge-field__label">Medications</span><textarea name="medicationInstructions" rows={3} placeholder="Dose, route, frequency, duration — or leave blank if none" defaultValue={visit.discharge?.medicationInstructions ?? medicationPlan} /></label>
-            <label className="visit-discharge-field"><span className="visit-discharge-field__label">Watch for</span><textarea name="warningSigns" rows={3} placeholder="Warning signs and when to contact the clinic" defaultValue={visit.discharge?.warningSigns ?? ''} /></label>
-            <label className={`visit-discharge-field visit-discharge-field--wide${missingFields.includes('followUpPlan') ? ' is-missing' : ''}`}><span className="visit-discharge-field__label">Follow-up{missingFields.includes('followUpPlan') ? <em>Required when follow-up is on</em> : null}</span><textarea aria-invalid={missingFields.includes('followUpPlan')} name="followUpPlan" rows={2} placeholder="Recheck timing, pending results, who will contact the client" defaultValue={visit.discharge?.followUpPlan ?? ''} onChange={() => setMissingFields((fields) => fields.filter((field) => field !== 'followUpPlan'))} /></label>
+          <div className="visit-discharge-summary" aria-label="Client discharge summary">
+            <section><h3>Home care</h3><p>{generatedHomeCare || 'No home-care directions recorded.'}</p></section>
+            <section><h3>Take-home medications</h3><p>{medicationPlan || 'None.'}</p></section>
+            <section><h3>Follow-up</h3><p>{followUpPlan || 'None.'}</p></section>
           </div>
+          <label className="visit-discharge-field visit-discharge-field--wide visit-discharge-additional"><span className="visit-discharge-field__label">Additional instructions <small>Optional</small></span><textarea name="additionalInstructions" rows={3} autoComplete="off" placeholder="Add any client-facing guidance not already covered above" value={additionalInstructions} onChange={(event) => setAdditionalInstructions(event.target.value)} /></label>
           {error ? <p className="visit-discharge-validation" role="alert">{error}</p> : null}
-          <div className="visit-discharge-form__footer"><label className="visit-discharge-check"><input type="checkbox" name="followUpRequired" value="yes" defaultChecked={visit.discharge?.followUpRequired ?? false} onChange={(event) => { if (!event.target.checked) setMissingFields((fields) => fields.filter((field) => field !== 'followUpPlan')); }} /><span className="visit-discharge-field__label">Follow-up required — create a front-desk task</span></label>{!step ? <div><button className="button-primary" disabled={saving}>{saving ? 'Saving…' : visit.discharge ? 'Update discharge' : 'Prepare discharge'}</button></div> : null}</div>
+          <div className="visit-discharge-form__footer">{followUpPlan ? <span className="visit-discharge-derived-note">A front-desk follow-up task will be created.</span> : <span />}{!step ? <div><button className="button-primary" disabled={saving}>{saving ? 'Saving…' : visit.discharge ? 'Update discharge' : 'Prepare discharge'}</button></div> : null}</div>
           {step ? <div className="visit-discharge-form__save"><span className={`autosave-indicator autosave-indicator--${saving ? 'saving' : error ? 'error' : hasUnsavedChanges ? 'saving' : 'saved'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saving ? 'Saving…' : error ? 'Changes not saved' : hasUnsavedChanges ? 'Unsaved changes' : 'All changes saved'}</span></div> : null}
         </form>
       ) : null}

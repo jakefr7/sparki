@@ -36,9 +36,22 @@ export const createVisitWorkItemSchema = z.object({
 });
 export type CreateVisitWorkItemInput = z.infer<typeof createVisitWorkItemSchema>;
 
+const carePlanSchema = z.object({
+  recommendation: z.string().trim().min(1).max(2000),
+  medication: z.object({
+    orderedDose: z.string().trim().min(1).max(120).optional(),
+    route: z.string().trim().min(1).max(80).optional(),
+    frequency: z.string().trim().min(1).max(120).optional(),
+    duration: z.string().trim().min(1).max(120).optional(),
+    disposition: z.enum(['AdministeredInClinic', 'DispensedTakeHome']).optional(),
+  }).optional(),
+});
+
 export const updateVisitWorkItemSchema = z
   .object({
     status: z.nativeEnum(VisitWorkItemStatus),
+    title: z.string().trim().min(1).max(240).optional(),
+    plan: carePlanSchema.optional(),
     reason: z.string().trim().min(1).max(1000).optional().nullable(),
     inventoryUsage: usagePostSchema.optional(),
     clientDecision: z.object({

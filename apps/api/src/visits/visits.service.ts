@@ -9,6 +9,7 @@ import { defaultAllowedTransitionKeys, workflowStatusKey } from '@sparki/config'
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
+import { MEDICATION_CATALOG } from '../patients/medication-catalog';
 import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
@@ -235,6 +236,7 @@ export class VisitsService {
     }
     return {
       ...visit,
+      patient: { ...visit.patient, medicationCatalog: MEDICATION_CATALOG },
       clinicalAttachments: visit.clinicalAttachments.map((attachment) => ({
         ...attachment,
         href: `/clinical-attachments/${attachment.id}/content`,
@@ -247,6 +249,28 @@ export class VisitsService {
   async listActiveForOrganization(organizationId: string, locationId: string) {
     return prisma.visit.findMany({
       where: { organizationId, locationId, state: { notIn: TERMINAL_VISIT_STATES } },
+      include: visitInclude,
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  /**
+   * All Visits attached to appointments scheduled today, including terminal
+   * records. This is intentionally separate from the live-floor query above:
+   * a completed visit belongs in the day's patient-flow history, but must not
+   * be treated as an active patient elsewhere in Operations.
+   */
+  async listForTodaysAppointments(organizationId: string, locationId: string) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return prisma.visit.findMany({
+      where: {
+        organizationId,
+        locationId,
+        appointment: { scheduledAt: { gte: start, lt: end } },
+      },
       include: visitInclude,
       orderBy: { createdAt: 'asc' },
     });

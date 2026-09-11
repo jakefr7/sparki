@@ -38,4 +38,5 @@ describe('configured dashboard status resolver', () => {
     const visits = [{ appointment: { id: 'linked' } }, { appointment: null }];
     expect(appointmentsWithoutActiveVisits(appointments, visits)).toEqual([{ id: 'standalone' }]);
   });
+
 });

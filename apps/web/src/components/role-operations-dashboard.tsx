@@ -8,6 +8,7 @@ import type { DashboardVisitSummary, OperationsDashboard } from '../lib/patient-
 import { useCurrentUser } from '../lib/use-current-user';
 import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 import { DashboardCard } from './dashboard-shell';
+import { StickyNotesWidget, TasksWidget } from './operations-command-center';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 
 interface OpenRecordWorkItem {
@@ -285,6 +286,7 @@ function metricData(
 function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: DashboardRole }) {
   const router = useRouter();
   const [startingExam, setStartingExam] = useState(false);
+  const [startingIntake, setStartingIntake] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const critical = exceptionsFor(visit).some((exception) => exception.severity === 'Critical');
   const workItems = workItemsFor(visit);
@@ -308,13 +310,36 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
     }
   }
 
+  async function openTechnicianIntake(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      role !== 'technician' ||
+      !INTAKE_STATES.has(visit.state) ||
+      (visit.state === 'IntakeInProgress' && Boolean(visit.assignedTechnician))
+    ) return;
+    event.preventDefault();
+    setStartingIntake(true);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
+      const payload = (await response.json()) as { message?: string };
+      if (!response.ok) throw new Error(payload.message ?? 'Could not start intake.');
+      router.push(`/visits/${visit.id}?from=command-center&resume=visit-care-plan`);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'Could not start intake.');
+      setStartingIntake(false);
+    }
+  }
+
   return (
     <Link
       href={`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, role)}`}
       className="role-queue-row"
       data-critical={critical || undefined}
       aria-disabled={startingExam || undefined}
-      onClick={(event) => void openVisit(event)}
+      onClick={(event) => {
+        void openVisit(event);
+        void openTechnicianIntake(event);
+      }}
     >
       <PetPhotoPlaceholder
         name={visit.patient.name}
@@ -345,7 +370,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
         <small>in clinic</small>
       </span>
       <span className="role-queue-row__action">
-        {startingExam ? 'Starting exam…' : actionLabel(visit, role)} <b aria-hidden="true">→</b>
+        {startingExam ? 'Starting exam…' : startingIntake ? 'Starting intake…' : actionLabel(visit, role)} <b aria-hidden="true">→</b>
       </span>
     </Link>
   );
@@ -491,7 +516,7 @@ export function RoleOperationsDashboard({ role }: { role: DashboardRole }) {
         </div>
       </section>
 
-      <div className="role-command-grid">
+      <div className={`role-command-grid${role === 'technician' ? ' role-command-grid--single' : ''}`}>
         <DashboardCard className="role-primary-queue" aria-labelledby="role-primary-queue-heading">
           <div className="role-primary-queue__header">
             <div>
@@ -522,17 +547,18 @@ export function RoleOperationsDashboard({ role }: { role: DashboardRole }) {
             ) : null}
           </div>
         </DashboardCard>
-        <aside className="role-command-rail">
-          {role === 'veterinarian' ? (
-            <RecordsQueue records={records} />
-          ) : (
-            <WatchList visits={dashboard.activeVisits} />
-          )}
-          {role === 'manager' ? <RecordsQueue records={records} manager /> : null}
-          <DashboardCard
-            className="role-side-card role-side-card--flow"
-            aria-labelledby="flow-now-heading"
-          >
+        {role !== 'technician' ? (
+          <aside className="role-command-rail">
+            {role === 'veterinarian' ? (
+              <RecordsQueue records={records} />
+            ) : (
+              <WatchList visits={dashboard.activeVisits} />
+            )}
+            {role === 'manager' ? <RecordsQueue records={records} manager /> : null}
+            <DashboardCard
+              className="role-side-card role-side-card--flow"
+              aria-labelledby="flow-now-heading"
+            >
             <div className="role-side-card__header">
               <div>
                 <p className="eyebrow">Clinic pulse</p>
@@ -571,9 +597,16 @@ export function RoleOperationsDashboard({ role }: { role: DashboardRole }) {
                 </div>
               ))}
             </div>
-          </DashboardCard>
-        </aside>
+            </DashboardCard>
+          </aside>
+        ) : null}
       </div>
+      {role === 'technician' ? (
+        <div className="dashboard-widget-row dashboard-widget-row--shift role-command-shared-work">
+          <StickyNotesWidget />
+          <TasksWidget />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -24,7 +24,7 @@
 .physical-exam-pills--score button { min-width: 1.8rem; }
 .physical-exam-form input::placeholder, .physical-exam-form textarea::placeholder { color: #7a8994; }
 .exam-findings-actions { border-top: 1px solid #e5eeee; padding-top: 1rem; }
-#visit-attachments { box-sizing: border-box; width: min(1120px, calc(100% - 3rem)); margin: 0 auto 2rem; padding: 1.25rem 1.5rem; }
+#visit-attachments { box-sizing: border-box; width: min(820px, calc(100% - 3rem)); margin: 0 auto 2rem; padding: 1.25rem 1.5rem; }
 #visit-attachments h2 { font-size: 1.1rem; margin: .25rem 0; }
 #visit-attachments header > p:last-child { margin: .4rem 0 1.2rem; color: var(--text-secondary); font-size: .78rem; }
 #visit-attachments .clinical-attachment-upload-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 1rem; }
@@ -173,12 +173,12 @@ body:has(.visit-workspace) {
   .visit-workspace--post-exam .visit-care-sections { width: min(100% - 2rem, 820px); }
   .visit-workspace--post-exam .patient-context-bar__reason { flex-basis: 100%; }
 }
-.visit-stage-navigation { width: min(1120px, calc(100% - 3rem)); margin: 0 auto 1.5rem; }
+.visit-stage-navigation { width: min(820px, calc(100% - 3rem)); margin: 0 auto 1.5rem; }
 .visit-stage-navigation__link { display: inline-flex; align-items: center; padding: .65rem .9rem; border: 1px solid #cfdfe1; border-radius: 8px; color: #176f69; background: #fff; font-size: .85rem; font-weight: 650; text-decoration: none; }
 .visit-stage-navigation__link:hover { background: #edf7f5; }
 .visit-stage-navigation__link:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 3px; }
 
-.visit-care-sections { width: min(1120px, calc(100% - 3rem)); margin: 1.25rem auto; }
+.visit-care-sections { width: min(820px, calc(100% - 3rem)); margin: 1.25rem auto; }
 .visit-care-sections__nav { display: flex; gap: 1.5rem; border-bottom: 1px solid #d7e4e6; margin-bottom: 1.25rem; }
 .visit-care-sections__nav button { padding: .75rem 0; border: 0; border-bottom: 2px solid transparent; background: none; color: #667586; font: inherit; font-size: .85rem; cursor: pointer; }
 .visit-care-sections__nav button[aria-current] { border-bottom-color: #1fa9a0; color: #176f69; font-weight: 700; }
@@ -538,7 +538,7 @@ body:has(.visit-workspace) {
 
 .visit-signed-record__status {
   box-sizing: border-box;
-  width: min(1120px, calc(100% - 3rem));
+  width: min(820px, calc(100% - 3rem));
   margin: 1.25rem auto .9rem;
   padding: .6rem .9rem;
   border-radius: 8px;

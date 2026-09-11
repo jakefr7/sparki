@@ -88,7 +88,7 @@ function ActiveVisitDetailsModal({
             <h2 id="active-visit-details-heading">{visit.reason}</h2>
             <div className="active-visit-details__header-line">
               <span className="status-badge status-badge--active">{visitStateLabel(visit.state)}</span>
-              <span>{visit.visitType}</span>
+              <span className="active-visit-details__visit-type">{visit.visitType}</span>
             </div>
           </div>
         </div>

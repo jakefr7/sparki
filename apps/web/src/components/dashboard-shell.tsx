@@ -128,6 +128,7 @@ export function DashboardHeader({
   subtitle,
   userName = 'Clinic Team',
   avatarUrl,
+  avatarFallback,
   initialWeather,
   refreshing,
   onRefresh,
@@ -137,6 +138,7 @@ export function DashboardHeader({
   subtitle?: string | undefined;
   userName?: string | undefined;
   avatarUrl?: string | null | undefined;
+  avatarFallback?: string | undefined;
   initialWeather?: HeaderWeather | null | undefined;
   refreshing?: boolean | undefined;
   onRefresh?: (() => void) | undefined;
@@ -208,7 +210,7 @@ export function DashboardHeader({
             <strong>{todayLabel}</strong><span>{timeLabel}</span>
           </div>
           <div className="dashboard-header__user">
-            <span className="dashboard-header__avatar-frame" aria-hidden="true">{avatarUrl ? <img className="dashboard-header__avatar" src={avatarUrl} alt="" /> : <span>{userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>}</span>
+            <span className="dashboard-header__avatar-frame" aria-hidden="true">{avatarUrl ? <img className="dashboard-header__avatar" src={avatarUrl} alt="" /> : <span>{avatarFallback ?? userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>}</span>
             <span className="dashboard-header__user-copy"><strong>{userName}</strong></span>
           </div>
         </div>
@@ -274,6 +276,9 @@ export function DashboardShell({
   useEffect(() => { let cancelled = false; const load = () => void fetch('/api/auth/profile', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((body: HeaderProfile | null) => { if (!cancelled && body) { setProfile(body); try { window.sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(body)); } catch { /* Ignore unavailable browser storage. */ } } }); load(); const refresh = () => load(); window.addEventListener('sparki:profile-updated', refresh); return () => { cancelled = true; window.removeEventListener('sparki:profile-updated', refresh); }; }, []);
 
   const resolvedUserName = (userName ?? profile?.displayName ?? currentUser?.name)?.trim();
+  const profileInitials = profile
+    ? `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`.toUpperCase()
+    : undefined;
 
   return (
     <div
@@ -295,6 +300,7 @@ export function DashboardShell({
           subtitle={subtitle}
           userName={resolvedUserName}
           avatarUrl={profile?.avatarUrl}
+          avatarFallback={profileInitials}
           initialWeather={bootstrap.weather}
           refreshing={refreshing}
           onRefresh={onRefresh}

@@ -101,13 +101,15 @@ export function PatientAlertsPanel({
           <p className="eyebrow">Care flags</p>
           <h2 id="patient-alerts-heading">Care Alerts</h2>
         </div>
-        <button type="button" className="button-primary" onClick={() => beginCreate()}>
-          Add Alert
-        </button>
+        {!editingId ? (
+          <button type="button" className="button-primary" onClick={() => beginCreate()}>
+            Add Alert
+          </button>
+        ) : null}
       </div>
 
       {editingId ? (
-        <form className="patient-inline-form" onSubmit={submit}>
+        <form className="patient-inline-form patient-alert-form" onSubmit={submit}>
           <label>
             Alert text
             <textarea
@@ -156,56 +158,55 @@ export function PatientAlertsPanel({
 
       {error && !editingId ? <p className="form-error">{error}</p> : null}
 
-      {alerts.length > 0 ? (
-        <div className="patient-alert-card-list">
-          {alerts.map((alert) => (
-            <article key={alert.id} className={`patient-alert-card patient-alert-card--${alert.severity.toLowerCase()}`}>
+      {!editingId ? (
+        alerts.length > 0 ? (
+          <div className="patient-alert-card-list">
+            {alerts.map((alert) => (
+              <article key={alert.id} className={`patient-alert-card patient-alert-card--${alert.severity.toLowerCase()}`}>
+                <div className="patient-alert-card__body">
+                  <div className="patient-alert-card__chips">
+                    <span>{alert.severity}</span>
+                    <span>{categoryLabel(alert.category)}</span>
+                  </div>
+                  <p>{alert.message}</p>
+                  <small>
+                    Updated {dateLine(alert.updatedAt)}
+                    {alert.createdAt !== alert.updatedAt ? ` - Created ${dateLine(alert.createdAt)}` : ''}
+                  </small>
+                </div>
+                <div className="patient-alert-card__actions">
+                  <button type="button" className="button-secondary" onClick={() => beginEdit(alert)}>
+                    Edit
+                  </button>
+                  <button type="button" className="button-secondary" onClick={() => archiveAlert(alert.id)} disabled={saving}>
+                    Archive
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : legacyAlert ? (
+          <div className="patient-alert-card-list">
+            <article className="patient-alert-card patient-alert-card--legacy">
               <div className="patient-alert-card__body">
                 <div className="patient-alert-card__chips">
-                  <span>{alert.severity}</span>
-                  <span>{categoryLabel(alert.category)}</span>
+                  <span>Caution</span>
+                  <span>Legacy note</span>
                 </div>
-                <p>{alert.message}</p>
-                <small>
-                  Updated {dateLine(alert.updatedAt)}
-                  {alert.createdAt !== alert.updatedAt ? ` - Created ${dateLine(alert.createdAt)}` : ''}
-                </small>
+                <p>{legacyAlert}</p>
               </div>
-              <div className="patient-alert-card__actions">
-                <button type="button" className="button-secondary" onClick={() => beginEdit(alert)}>
-                  Edit
-                </button>
-                <button type="button" className="button-secondary" onClick={() => archiveAlert(alert.id)} disabled={saving}>
-                  Archive
-                </button>
-              </div>
+              <button type="button" className="button-secondary" onClick={() => beginCreate(legacyAlert)}>
+                Convert to alert
+              </button>
             </article>
-          ))}
-        </div>
-      ) : legacyAlert ? (
-        <div className="patient-alert-card-list">
-          <article className="patient-alert-card patient-alert-card--legacy">
-            <div className="patient-alert-card__body">
-              <div className="patient-alert-card__chips">
-                <span>Caution</span>
-                <span>Legacy note</span>
-              </div>
-              <p>{legacyAlert}</p>
-            </div>
-            <button type="button" className="button-secondary" onClick={() => beginCreate(legacyAlert)}>
-              Convert to alert
-            </button>
-          </article>
-        </div>
-      ) : (
-        <div className="profile-compact-empty profile-compact-empty--roomy">
-          <strong>No active alerts</strong>
-          <span>Add an alert for handling notes, allergies, behavior warnings, or care precautions.</span>
-          <button type="button" className="button-primary" onClick={() => beginCreate()}>
-            Add Alert
-          </button>
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="profile-compact-empty profile-compact-empty--roomy">
+            <strong>No active alerts</strong>
+            <span>Add an alert for handling notes, allergies, behavior warnings, or care precautions.</span>
+          </div>
+        )
+      ) : null}
     </section>
   );
 }

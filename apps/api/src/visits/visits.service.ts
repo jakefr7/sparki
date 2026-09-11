@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { prisma, type AppointmentType, type UserRole, type VisitState, type VisitType } from '@sparki/db';
-import { workflowStatusKey } from '@sparki/config';
+import { defaultAllowedTransitionKeys, workflowStatusKey } from '@sparki/config';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
@@ -269,6 +269,16 @@ export class VisitsService {
     }
 
     if (!STARTABLE_VISIT_STATES.includes(visit.state)) {
+      // A technician may have opened an intake that was started before
+      // technician auto-claiming was enabled. Let Start intake repair that
+      // existing ownership gap without advancing the workflow again.
+      if (visit.state === INTAKE_IN_PROGRESS_STATE && actorRole === 'TECHNICIAN' && !visit.assignedTechnicianId) {
+        return prisma.visit.update({
+          where: { id },
+          data: { assignedTechnicianId: lastUpdatedById, lastUpdatedById },
+          include: visitInclude,
+        });
+      }
       return visit;
     }
 
@@ -282,6 +292,12 @@ export class VisitsService {
       toState: INTAKE_IN_PROGRESS_STATE,
       toPhase: 'Intake',
       currentOwnerId: lastUpdatedById,
+      // Starting intake is the technician's first ownership action. Claim an
+      // unassigned technician slot so the visit header and downstream queue
+      // reflect who is actively handling the intake.
+      ...(actorRole === 'TECHNICIAN' && !visit.assignedTechnicianId
+        ? { assignedTechnicianId: lastUpdatedById }
+        : {}),
       nextAction: 'Complete intake',
       timestamps: { intakeStartedAt: new Date() },
       createWorkItems: [{ type: 'IntakeCompletion', title: 'Complete patient intake', assigneeId: lastUpdatedById }],
@@ -529,7 +545,11 @@ export class VisitsService {
     const configured = await prisma.dashboardStatusColorSetting.findFirst({
       where: { organizationId, locationId: visit.locationId, status: current, isEnabled: true },
     });
-    if (!configured || !configured.allowedTransitionKeys.includes(normalizedTarget)) {
+    const allowedTransitionKeys = [...new Set([
+      ...(configured?.allowedTransitionKeys ?? []),
+      ...defaultAllowedTransitionKeys(current),
+    ])];
+    if (!configured || !allowedTransitionKeys.includes(normalizedTarget)) {
       throw new ConflictException(`Visit ${id} cannot transition from its configured status to "${normalizedTarget}"`);
     }
     const targetStep = await prisma.dashboardStatusColorSetting.findFirst({

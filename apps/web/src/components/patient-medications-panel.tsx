@@ -54,17 +54,36 @@ export function PatientMedicationsPanel({
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [medicationSuggestionsOpen, setMedicationSuggestionsOpen] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(0);
 
   const activeMedications = medications.items.filter((item) => item.status === 'Active');
   const pastMedications = medications.items.filter((item) => item.status !== 'Active');
   const suggestions = useMemo(() => {
     const query = form.medicationName.trim().toLowerCase();
-    if (!query) return medications.catalog.slice(0, 8);
+    if (!query) return [];
     return medications.catalog.filter((item) => item.toLowerCase().includes(query)).slice(0, 8);
   }, [form.medicationName, medications.catalog]);
 
   function updateField(field: keyof typeof EMPTY_FORM, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function selectMedication(value: string) {
+    const selected = medications.catalog.find((item) => item.toLowerCase() === value.trim().toLowerCase());
+    const genericName = selected?.split('/')[0]?.trim() ?? '';
+    setForm((current) => ({
+      ...current,
+      medicationName: value,
+      ...(selected ? { genericName } : {}),
+    }));
+    setMedicationSuggestionsOpen(false);
+    setHighlightedSuggestion(0);
+  }
+
+  function updateMedicationName(value: string) {
+    setForm((current) => ({ ...current, medicationName: value }));
+    setHighlightedSuggestion(0);
   }
 
   function beginCreate() {
@@ -175,27 +194,69 @@ export function PatientMedicationsPanel({
           <p className="eyebrow">Medication profile</p>
           <h2 id="medications-heading">Medications</h2>
         </div>
-        <button type="button" className="button-primary" onClick={beginCreate}>
-          Add Medication
-        </button>
+        {!editingId ? (
+          <button type="button" className="button-primary" onClick={beginCreate}>
+            Add Medication
+          </button>
+        ) : null}
       </div>
 
       {editingId ? (
-        <form className="patient-inline-form" onSubmit={submit}>
+        <form className="patient-inline-form patient-medication-form" onSubmit={submit}>
           <label>
             Medication name
-            <input
-              list="patient-medication-catalog"
-              value={form.medicationName}
-              onChange={(event) => updateField('medicationName', event.target.value)}
-              required
-              autoFocus
-            />
-            <datalist id="patient-medication-catalog">
-              {suggestions.map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
+            <div className="patient-medication-autocomplete">
+              <input
+                value={form.medicationName}
+                onChange={(event) => updateMedicationName(event.target.value)}
+                onFocus={() => setMedicationSuggestionsOpen(true)}
+                onBlur={() => window.setTimeout(() => setMedicationSuggestionsOpen(false), 120)}
+                onKeyDown={(event) => {
+                  if (!medicationSuggestionsOpen || suggestions.length === 0) return;
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    setHighlightedSuggestion((current) => Math.min(current + 1, suggestions.length - 1));
+                  } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    setHighlightedSuggestion((current) => Math.max(current - 1, 0));
+                  } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const suggestion = suggestions[highlightedSuggestion];
+                    if (suggestion) selectMedication(suggestion);
+                  } else if (event.key === 'Escape') {
+                    setMedicationSuggestionsOpen(false);
+                  }
+                }}
+                role="combobox"
+                aria-expanded={medicationSuggestionsOpen && suggestions.length > 0}
+                aria-controls="patient-medication-suggestions"
+                aria-autocomplete="list"
+                placeholder="Search veterinary medications"
+                aria-describedby="patient-medication-catalog-hint"
+                required
+                autoFocus
+              />
+              {medicationSuggestionsOpen && suggestions.length > 0 ? (
+                <div id="patient-medication-suggestions" className="patient-medication-suggestions" role="listbox">
+                  {suggestions.map((item, index) => (
+                    <button
+                      key={item}
+                      type="button"
+                      role="option"
+                      aria-selected={index === highlightedSuggestion}
+                      className={index === highlightedSuggestion ? 'is-highlighted' : undefined}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => selectMedication(item)}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <small id="patient-medication-catalog-hint" className="patient-medication-form__hint">
+              Start typing to see common veterinary medications. Selecting one fills its generic name.
+            </small>
           </label>
           <div className="patient-inline-form__grid patient-inline-form__grid--three">
             <label>
@@ -265,35 +326,34 @@ export function PatientMedicationsPanel({
 
       {error && !editingId ? <p className="form-error">{error}</p> : null}
 
-      {medications.items.length === 0 && !medications.legacyNotes ? (
-        <div className="profile-compact-empty profile-compact-empty--roomy">
-          <strong>No active medications on file</strong>
-          <span>Add current prescriptions, supplements, or recently discontinued medications.</span>
-          <button type="button" className="button-primary" onClick={beginCreate}>
-            Add Medication
-          </button>
-        </div>
-      ) : (
-        <div className="patient-medications-sections">
-          <section>
-            <h3>Active medications</h3>
-            <MedicationList items={activeMedications} empty="No active medications." />
-          </section>
-          <section>
-            <h3>Past / discontinued</h3>
-            <MedicationList items={pastMedications} empty="No past medications recorded." />
-          </section>
-          {medications.legacyNotes ? (
-            <aside className="patient-medication-legacy">
-              <strong>Legacy medication / allergy note</strong>
-              <p>{medications.legacyNotes.notes}</p>
-              <Link href={`/visits/${medications.legacyNotes.visitId}`}>
-                Updated {dateLine(medications.legacyNotes.recordedAt)}
-              </Link>
-            </aside>
-          ) : null}
-        </div>
-      )}
+      {!editingId ? (
+        medications.items.length === 0 && !medications.legacyNotes ? (
+          <div className="profile-compact-empty profile-compact-empty--roomy">
+            <strong>No active medications on file</strong>
+            <span>Add current prescriptions, supplements, or recently discontinued medications.</span>
+          </div>
+        ) : (
+          <div className="patient-medications-sections">
+            <section>
+              <h3>Active medications</h3>
+              <MedicationList items={activeMedications} empty="No active medications." />
+            </section>
+            <section>
+              <h3>Past / discontinued</h3>
+              <MedicationList items={pastMedications} empty="No past medications recorded." />
+            </section>
+            {medications.legacyNotes ? (
+              <aside className="patient-medication-legacy">
+                <strong>Legacy medication / allergy note</strong>
+                <p>{medications.legacyNotes.notes}</p>
+                <Link href={`/visits/${medications.legacyNotes.visitId}`}>
+                  Updated {dateLine(medications.legacyNotes.recordedAt)}
+                </Link>
+              </aside>
+            ) : null}
+          </div>
+        )
+      ) : null}
     </section>
   );
 }

@@ -8,7 +8,12 @@ test('public home, demo CTAs, and protected routes retain their boundaries', asy
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your clinic.Finally in sync.');
   for (const link of await page.getByRole('link', { name: 'Book a Demo' }).all()) {
-    await expect(link).toHaveAttribute('href', '/demo');
+    await expect(link).toHaveAttribute('href', '');
+    if (await link.isVisible()) {
+      await link.click();
+      await expect(page).toHaveURL('/');
+      await expect(page.locator('#top')).toBeVisible();
+    }
   }
   for (const path of [
     '/patients',
@@ -30,7 +35,7 @@ test('public home, demo CTAs, and protected routes retain their boundaries', asy
     },
   ]);
   await page.goto('/demo');
-  await expect(page.getByRole('heading', { name: 'Book a Demo' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '404' })).toBeVisible();
   const signedHome = await request.get('/', {
     headers: { cookie: 'sparki_session=public-test-invalid-session' },
   });
@@ -63,33 +68,11 @@ test('role, platform, and patient journey controls work with keyboard', async ({
   expect(activeAnimations).toBe(0);
 });
 
-test('demo request is honest and does not transmit entered details', async ({ page }) => {
-  const writes: string[] = [];
-  page.on('request', (req) => {
-    if (req.method() === 'POST') writes.push(req.url());
-  });
-  await page.goto('/demo');
-  await expect(
-    page.getByText('Your details will not be sent or saved.', { exact: false }),
-  ).toBeVisible();
-  await page.getByLabel('Name', { exact: true }).fill('Demo Test');
-  await page.getByLabel('Work email').fill('demo@example.test');
-  await page.getByLabel('Clinic / organization name').fill('Illustrative Clinic');
-  await page.getByLabel('Role', { exact: true }).selectOption('Veterinarian');
-  await page.getByLabel('Number of veterinarians').selectOption('2–5');
-  await page.getByLabel('Phone number').fill('555-0100');
-  await page.getByLabel('Anything you’d like us to know?').fill('Testing only.');
-  await expect(page.getByRole('button', { name: 'Demo requests opening soon' })).toBeDisabled();
-  await page.getByLabel('Work email').press('Enter');
-  expect(writes).toEqual([]);
-  await expect(page.getByText('Demo requests are not open yet.')).toBeVisible();
-});
-
 for (const width of [320, 390, 768, 1024, 1440, 1920]) {
   test(`public layouts fit ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    for (const path of ['/', '/demo']) {
+    for (const path of ['/']) {
       await page.goto(path);
       const overflow = await page.evaluate(() =>
         [

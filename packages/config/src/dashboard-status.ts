@@ -28,6 +28,22 @@ const VISIT_STATUS_KEYS: Record<string, string> = {
   Cancelled: 'Checkout', CancelledAfterArrival: 'Checkout', NoShow: 'Checkout', Rescheduled: 'Appointment', Referred: 'Checkout', Deferred: 'Checkout',
 };
 
+/** Default adjacent workflow moves for status rows created without transition configuration. */
+const DEFAULT_ALLOWED_TRANSITION_KEYS: Record<string, string[]> = {
+  Appointment: ['CheckIn'],
+  CheckIn: ['Appointment', 'BeginIntake'],
+  BeginIntake: ['CheckIn', 'ReadyForVeterinarian'],
+  ReadyForVeterinarian: ['BeginIntake', 'Exam'],
+  Exam: ['ReadyForVeterinarian', 'Treatment'],
+  Treatment: ['Exam', 'Discharge'],
+  Discharge: ['Treatment', 'Checkout'],
+  Checkout: ['Discharge'],
+};
+
+export function defaultAllowedTransitionKeys(status: string) {
+  return DEFAULT_ALLOWED_TRANSITION_KEYS[status] ?? [];
+}
+
 export function workflowStatusKey(kind: 'appointment' | 'visit', state: string): string | undefined {
   return (kind === 'appointment' ? APPOINTMENT_STATUS_KEYS : VISIT_STATUS_KEYS)[state];
 }
@@ -45,7 +61,11 @@ export function enabledStatuses(statuses: ConfiguredDashboardStatus[]) {
 
 export function allowedConfiguredTransitions(statuses: ConfiguredDashboardStatus[], current: ConfiguredDashboardStatus) {
   const byKey = new Map(statuses.map((status) => [status.status, status]));
-  return current.allowedTransitionKeys.map((key) => byKey.get(key)).filter((status): status is ConfiguredDashboardStatus => Boolean(status?.isEnabled));
+  const transitionKeys = [...new Set([
+    ...current.allowedTransitionKeys,
+    ...defaultAllowedTransitionKeys(current.status),
+  ])];
+  return transitionKeys.map((key) => byKey.get(key)).filter((status): status is ConfiguredDashboardStatus => Boolean(status?.isEnabled));
 }
 
 export function appointmentsWithoutActiveVisits<T extends { id: string }>(

@@ -8,6 +8,7 @@ import {
   GUM_COLOR_OPTIONS,
   WEIGHT_UNIT_OPTIONS,
   missingRequiredFields,
+  completedRequiredFields,
   payloadFromIntake,
   weightUnitLabel,
   type IntakePayload,
@@ -152,6 +153,22 @@ export function VisitIntakeWorkspace({
   const canEditCompletedIntake = canManageIntake && state === 'VeterinarianExamReady';
   const canEditIntake = canManageIntake && (state === 'IntakeInProgress' || isDeferredEmergencyIntake || editingCompletedIntake);
   const isStartable = STARTABLE_STATES.has(state);
+
+  // Claim legacy in-progress intakes when a technician opens them directly.
+  // This keeps the context header in sync even when the visit was started
+  // before technician auto-assignment was enabled.
+  useEffect(() => {
+    if (user?.role !== 'TECHNICIAN' || state !== 'IntakeInProgress' || assignedTechnician !== 'Unassigned') return;
+    let cancelled = false;
+    fetch(`/api/visits/${visitId}/start`, { method: 'POST' })
+      .then((response) => {
+        if (response.ok && !cancelled) router.refresh();
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [assignedTechnician, router, state, user?.role, visitId]);
 
   const missing = useMemo(() => missingRequiredFields(payload), [payload]);
 
@@ -341,7 +358,7 @@ export function VisitIntakeWorkspace({
                   type="button"
                   className="button-primary intake-handoff-button"
                   onClick={() => editingCompletedIntake ? void finishEditing() : void completeHandoff()}
-                  disabled={submitting}
+                  disabled={submitting || (!editingCompletedIntake && completedRequiredFields(payload) === 0)}
                 >
                   {submitting ? 'Saving…' : editingCompletedIntake ? 'Done editing' : 'Ready for Veterinarian'}
                 </button>

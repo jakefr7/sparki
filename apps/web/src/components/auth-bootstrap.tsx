@@ -4,6 +4,8 @@ import { createContext, useContext, type ReactNode } from 'react';
 import type { CurrentUser } from '../lib/use-current-user';
 
 export interface BootstrapProfile {
+  firstName: string;
+  lastName: string;
   displayName: string | null;
   phone: string | null;
   avatarUrl: string | null;

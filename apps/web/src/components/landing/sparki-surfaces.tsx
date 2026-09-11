@@ -40,7 +40,6 @@ const NAV: ReadonlyArray<{ label: string; scene?: SparkiScene; muted?: boolean; 
   { label: 'Today', scene: 'today', d: 'M4 8h16M4 8v11h16V8M4 8l1-3h14l1 3M9 12h6' },
   { label: 'Scheduler', scene: 'scheduler', d: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4' },
   { label: 'Patients / Clients', scene: 'patient', d: 'M12 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM5 20c0-3.5 3-6 7-6s7 2.5 7 6' },
-  { label: 'Team Messages', scene: 'messages', d: 'M4 5h16v11H9l-4 4V5Z' },
   { label: 'Client Communication', d: 'M4 6h16v10H4zM4 6l8 6 8-6' },
   { label: 'Tasks', muted: true, d: 'M5 12l4 4 10-10' },
   { label: 'Reports', muted: true, d: 'M5 20V8m5 12V4m5 16v-7m5 7V10' },

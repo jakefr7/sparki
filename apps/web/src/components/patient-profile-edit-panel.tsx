@@ -207,13 +207,13 @@ export function PatientProfileEditPanel({
   return (
     <div className="patient-profile-modal-overlay" role="presentation" onClick={() => setEditing(false)}>
       <div
-        className="patient-profile-modal"
+        className="patient-profile-modal patient-profile-edit-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="patient-profile-edit-heading"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="patient-profile-modal-header">
+        <div className="patient-profile-modal-header patient-profile-edit-modal__header">
           <button
             type="button"
             className="patient-profile-modal-close"
@@ -224,7 +224,7 @@ export function PatientProfileEditPanel({
           </button>
           <h2 id="patient-profile-edit-heading">Edit Profile</h2>
         </div>
-        <div className="patient-profile-modal-body">
+        <div className="patient-profile-modal-body patient-profile-edit-modal__body">
           <form className="front-desk-form patient-profile-modal-edit-form" onSubmit={handleSubmit}>
             <fieldset className="front-desk-section">
               <legend>Pet</legend>

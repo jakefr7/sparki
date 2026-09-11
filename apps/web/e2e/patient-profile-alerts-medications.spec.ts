@@ -55,10 +55,9 @@ test('patient profile manages care alerts and medications end to end', async ({ 
   await page.goto(`/patients/${patientId}`);
   await expect(page.getByRole('heading', { level: 1, name: PATIENT_NAME })).toBeVisible();
   await expect(page.locator('.patient-profile-hero__badges')).toContainText('Active');
-  await expect(page.locator('.patient-profile-hero__badges')).toContainText('Current Visit');
-  await expect(page.locator('.patient-profile-hero__badges')).not.toContainText('Active Visit');
-  await expect(page.getByLabel('Care Flow')).toBeVisible();
-  await page.getByRole('button', { name: 'View Active Visit' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Current Visit' })).toBeVisible();
+  await expect(page.getByLabel('Clinical summary')).toContainText('No active medications');
+  await page.getByRole('button', { name: 'View Visit' }).first().click();
   const currentVisitDialog = page.getByRole('dialog', { name: 'Vaccine booster appointment' });
   await expect(currentVisitDialog).toBeVisible();
   await expect(currentVisitDialog).toContainText('Current Visit');
@@ -92,7 +91,7 @@ test('patient profile manages care alerts and medications end to end', async ({ 
   await expect(page.getByText('No active medications on file', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Add Medication' }).first().click();
   await page.getByLabel('Medication name').fill('Gab');
-  await expect(page.locator('#patient-medication-catalog option[value="Gabapentin"]')).toHaveCount(1);
+  await expect(page.getByRole('option', { name: 'Gabapentin' })).toHaveCount(1);
   await page.getByLabel('Medication name').fill('Custom compounded drops');
   await page.getByLabel('Dose').fill('2 drops');
   await page.getByLabel('Frequency').fill('Daily');

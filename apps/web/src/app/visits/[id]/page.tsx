@@ -5,9 +5,7 @@ import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { PostExamReview } from '../../../components/post-exam-review';
-import { VisitJourneyStatus } from '../../../components/visit-journey-status';
 import { VisitRecordPanel } from '../../../components/visit-record-panel';
-import { ClinicalAttachmentsPanel } from '../../../components/clinical-attachments-panel';
 import { VisitResumeLocation } from '../../../components/visit-resume-location';
 import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
@@ -85,15 +83,6 @@ export default async function VisitWorkspacePage({
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
     return ['Pending', 'InProgress'].includes(item.status);
   });
-  const attachmentsPanel = (
-    <ClinicalAttachmentsPanel
-      patientId={visit.patient.id}
-      visitId={visit.id}
-      attachments={visit.clinicalAttachments}
-      finalized={recordSigned}
-    />
-  );
-
   return (
     <DashboardShell
       activeHref="/today"
@@ -130,8 +119,6 @@ export default async function VisitWorkspacePage({
           headerOnly={Boolean(visit.examFindings?.completedAt)}
         />
 
-        <VisitJourneyStatus visit={visit} />
-
         {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
         {showClinicalWork && !recordSigned ? <VisitCareSections
@@ -141,7 +128,7 @@ export default async function VisitWorkspacePage({
           plan={<div className="care-plan-workspace care-plan-workspace--focused"><details className="visit-exam-reference"><summary>Exam findings</summary><PostExamReview visit={visit} /></details><VisitWorkItemsPanel visit={visit} /></div>}
           care={<VisitWorkItemsPanel visit={visit} mode="care" />}
           discharge={<VisitDischargePanel visit={visit} />}
-          record={<VisitRecordPanel visit={visit} attachments={attachmentsPanel} />}
+          record={<VisitRecordPanel visit={visit} />}
         /> : null}
         {showClinicalWork && recordSigned ? (
           <div className="visit-signed-record">
@@ -150,11 +137,10 @@ export default async function VisitWorkspacePage({
                 ? 'Visit complete — record signed and patient checked out.'
                 : 'Clinical work is done. Front-desk checkout is the only step left.'}
             </p>
-            <VisitRecordPanel visit={visit} attachments={attachmentsPanel} />
+            <VisitRecordPanel visit={visit} />
             {!visit.checkout ? <VisitDischargePanel visit={visit} /> : null}
           </div>
         ) : null}
-        {!examComplete && visit.state !== 'VeterinarianExamInProgress' ? attachmentsPanel : null}
       </div>
     </DashboardShell>
   );

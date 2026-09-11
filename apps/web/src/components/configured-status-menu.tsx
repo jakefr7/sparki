@@ -54,10 +54,13 @@ export function ConfiguredStatusMenu({ row, statuses, onChanged }: {
       const width = menuRef.current?.offsetWidth ?? 304;
       const height = menuRef.current?.offsetHeight ?? 150;
       const margin = 12;
-      let left = trigger.right + 10;
-      if (left + width > window.innerWidth - margin) left = trigger.left - width - 10;
+      const gap = 8;
+      let left = trigger.left;
+      if (left + width > window.innerWidth - margin) left = trigger.right - width;
       left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
-      const top = Math.max(margin, Math.min(trigger.top + trigger.height / 2 - height / 2, window.innerHeight - height - margin));
+      let top = trigger.bottom + gap;
+      if (top + height > window.innerHeight - margin) top = trigger.top - height - gap;
+      top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
       setPosition({ top, left });
     }
     place();
@@ -91,7 +94,11 @@ export function ConfiguredStatusMenu({ row, statuses, onChanged }: {
           ...(row.kind === 'visit' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ statusKey: target.status }) } : {}),
         });
       }
-      if (!response.ok) throw new Error(`Status update failed (${response.status})`);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+        const message = Array.isArray(payload?.message) ? payload.message.join(' ') : payload?.message;
+        throw new Error(message ?? `Status update failed (${response.status})`);
+      }
       setOpen(false); onChanged?.();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Status update failed.'); }
     finally { setPending(false); }
@@ -102,8 +109,8 @@ export function ConfiguredStatusMenu({ row, statuses, onChanged }: {
       <span>{row.status.name}</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     {open ? createPortal(<div ref={menuRef} className="configured-status-menu__popover" role="dialog" aria-label={`Change ${row.status.name} status`} style={position ? { top: position.top, left: position.left } : { top: -9999, left: -9999, visibility: 'hidden' }}>
-      <div className="configured-status-menu__heading"><strong>Change status</strong><button type="button" aria-label="Close status menu" onClick={() => setOpen(false)}>×</button></div>
-      {transitions.length ? transitions.map((target) => <button key={target.status} type="button" disabled={pending} onClick={() => void update(target)}><span className="configured-status-menu__action-label">Transition to</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h13m-4-4 4 4-4 4" /></svg><span className="configured-status-menu__target" style={statusStyle(target.color)}>{pending ? 'Updating…' : target.name}</span></button>) : <div className="configured-status-menu__empty"><span aria-hidden="true">✓</span><div><strong>No status changes available</strong><p>This status has no available next step.</p></div></div>}
+      <div className="configured-status-menu__heading"><div className="configured-status-menu__heading-copy"><strong>Change status</strong><small>{row.status.name}</small></div></div>
+      {transitions.length ? transitions.map((target) => <button key={target.status} type="button" disabled={pending} onClick={() => void update(target)}><span className="configured-status-menu__action-label">Move to</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h13m-4-4 4 4-4 4" /></svg><span className="configured-status-menu__target" style={statusStyle(target.color)}>{pending ? 'Updating…' : target.name}</span></button>) : <div className="configured-status-menu__empty"><span aria-hidden="true">✓</span><strong>No next steps available</strong></div>}
       {error ? <p role="alert">{error}</p> : null}
     </div>, document.body) : null}
   </div>;

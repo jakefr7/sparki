@@ -2,7 +2,6 @@
 
 import { resolveConfiguredStatus, type ConfiguredDashboardStatus } from '@sparki/config';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   useEffect,
   useMemo,
@@ -12,10 +11,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { DashboardCard, DashboardShell, type DashboardRoute } from './dashboard-shell';
-import { NewAppointmentAction } from './new-appointment-action';
-import { NewPatientModal, type NewPatientCreationResult } from './new-patient-modal';
 import { EmptyQueue } from './command-center/empty-states';
-import { useNewAppointmentModal } from '../hooks/use-new-appointment-modal';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { ConfiguredStatusMenu } from './configured-status-menu';
 import {
@@ -167,97 +163,6 @@ function PatientClientCell({
   }
 
   return <div className="patient-client-cell">{content}</div>;
-}
-
-function QuickActionsWidget({ onAppointmentCreated }: { onAppointmentCreated?: () => void }) {
-  const router = useRouter();
-  const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
-  const { openNewAppointment, newAppointmentModal } = useNewAppointmentModal(() => onAppointmentCreated?.());
-
-  const linkActions = [
-    {
-      href: '/patients',
-      label: 'Find Patient',
-      description: 'Open a profile.',
-      tone: 'purple',
-    },
-  ] as const;
-
-  function handleOpenCreatedProfile(result: NewPatientCreationResult) {
-    setIsNewPatientModalOpen(false);
-    router.push(`/patients/${result.id}`);
-  }
-
-  function handleNewAppointmentForCreatedPatient(result: NewPatientCreationResult) {
-    setIsNewPatientModalOpen(false);
-    openNewAppointment({
-      patient: {
-        id: result.id,
-        name: result.name,
-        species: result.species,
-        breed: result.breed,
-        sex: result.sex,
-        dateOfBirth: result.dateOfBirth,
-        primaryClient: {
-          id: result.clientId,
-          firstName: result.clientFirstName,
-          lastName: result.clientLastName,
-          phone: result.clientPhone,
-          email: result.clientEmail,
-          preferredContactMethod: null,
-        },
-      },
-    });
-  }
-
-  return (
-    <DashboardCard className="home-widget--actions" aria-labelledby="quick-actions-heading">
-      <div className="home-widget__header">
-        <div>
-          <p className="eyebrow">Shortcuts</p>
-          <h2 id="quick-actions-heading">Quick Actions</h2>
-        </div>
-      </div>
-      <div className="quick-action-grid">
-        <NewAppointmentAction
-          className="quick-action"
-          tone="teal"
-          onCreated={onAppointmentCreated}
-        >
-          <strong>New Appointment</strong>
-          <span>Schedule a future visit.</span>
-        </NewAppointmentAction>
-        {linkActions.map((action) => (
-          <Link
-            key={action.label}
-            href={action.href}
-            className="quick-action"
-            data-tone={action.tone}
-          >
-            <strong>{action.label}</strong>
-            <span>{action.description}</span>
-          </Link>
-        ))}
-        <button
-          type="button"
-          className="quick-action"
-          data-tone="orange"
-          onClick={() => setIsNewPatientModalOpen(true)}
-        >
-          <strong>New Patient</strong>
-          <span>Create a patient profile.</span>
-        </button>
-      </div>
-      <NewPatientModal
-        open={isNewPatientModalOpen}
-        onClose={() => setIsNewPatientModalOpen(false)}
-        onCreated={() => {}}
-        onOpenProfile={handleOpenCreatedProfile}
-        onNewAppointment={handleNewAppointmentForCreatedPatient}
-      />
-      {newAppointmentModal}
-    </DashboardCard>
-  );
 }
 
 function TodaySnapshotWidget({
@@ -449,7 +354,7 @@ function TodaySchedulePreviewWidget({
   );
 }
 
-function StickyNotesWidget() {
+export function StickyNotesWidget() {
   const [notes, setNotes] = useState<StickyNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
@@ -643,7 +548,7 @@ function StickyNotesWidget() {
   );
 }
 
-function TasksWidget() {
+export function TasksWidget() {
   const { user: currentUser } = useCurrentUser();
   const [filter, setFilter] = useState<TaskState>('Pending');
   const [tasks, setTasks] = useState<ClinicTask[]>([]);
@@ -1014,7 +919,6 @@ function ReceptionistDashboard() {
       {!loading && !error && dashboard && (
         <div className="dashboard-widget-grid">
           <div className="dashboard-widget-row dashboard-widget-row--top">
-            <QuickActionsWidget onAppointmentCreated={refresh} />
             <TodaySnapshotWidget dashboard={dashboard} />
           </div>
           <div className="dashboard-widget-row dashboard-widget-row--shift">
@@ -1024,7 +928,7 @@ function ReceptionistDashboard() {
           <div className="dashboard-widget-row dashboard-widget-row--flow">
             <CurrentlyInClinicWidget visits={activeVisits} onStatusChanged={refresh} statuses={statuses} />
             <TodaySchedulePreviewWidget
-              appointments={groups.upcomingAppointments}
+              appointments={dashboard.todaysAppointments}
               onStatusChanged={refresh}
               statuses={statuses}
             />

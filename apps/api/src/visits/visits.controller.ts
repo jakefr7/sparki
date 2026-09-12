@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { requireRole } from '../auth/require-role';
 import type { AuthenticatedUser } from '../auth/types';
@@ -29,6 +29,15 @@ import { VisitDischargeService } from './visit-discharge.service';
 import { VisitsService } from './visits.service';
 import { createVisitWorkItemSchema, updateVisitWorkItemSchema, type CreateVisitWorkItemInput, type UpdateVisitWorkItemInput } from './dto/visit-work-item.schema';
 import { VisitWorkItemsService } from './visit-work-items.service';
+import {
+  addInvoiceLineSchema,
+  recordExternalPaymentSchema,
+  voidInvoiceSchema,
+  type AddInvoiceLineInput,
+  type RecordExternalPaymentInput,
+  type VoidInvoiceInput,
+} from './dto/visit-billing.schema';
+import { VisitBillingService } from './visit-billing.service';
 
 @Controller('visits')
 export class VisitsController {
@@ -37,6 +46,7 @@ export class VisitsController {
     private readonly records: VisitRecordsService,
     private readonly discharge: VisitDischargeService,
     private readonly workItems: VisitWorkItemsService,
+    private readonly billing: VisitBillingService,
   ) {}
 
   @Post()
@@ -220,5 +230,76 @@ export class VisitsController {
   ) {
     requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT']);
     return this.workItems.update(id, itemId, user.organizationId, user.locationId, user.id, user.role, body);
+  }
+
+  // --- Checkout billing: invoice, invoice lines, and externally-recorded
+  // payments (see VisitBillingService for the financial model). Sparki does
+  // not process cards here — every payment below is staff confirming an
+  // amount was already collected through the clinic's own terminal/processor.
+
+  @Get(':id/checkout')
+  getCheckoutState(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.getCheckoutState(id, user.organizationId, user.locationId, user.id);
+  }
+
+  @Get(':id/invoice')
+  getInvoice(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.getInvoice(id, user.organizationId, user.locationId, user.id);
+  }
+
+  @Post(':id/invoice/void')
+  voidInvoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(voidInvoiceSchema)) body: VoidInvoiceInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.voidInvoice(id, user.organizationId, user.locationId, user.id, body.reason);
+  }
+
+  @Post(':id/invoice/lines')
+  addInvoiceLine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(addInvoiceLineSchema)) body: AddInvoiceLineInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.addLine(id, user.organizationId, user.locationId, user.id, body);
+  }
+
+  @Delete(':id/invoice/lines/:lineId')
+  removeInvoiceLine(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('lineId') lineId: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.removeLine(id, lineId, user.organizationId, user.locationId);
+  }
+
+  @Post(':id/invoice/finalize')
+  finalizeInvoice(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.finalizeInvoice(id, user.organizationId, user.locationId, user.id);
+  }
+
+  @Get(':id/invoice/receipt')
+  getReceipt(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.getReceipt(id, user.organizationId, user.locationId);
+  }
+
+  @Get(':id/invoice/payments')
+  getPaymentHistory(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.getPaymentHistory(id, user.organizationId, user.locationId);
+  }
+
+  @Post(':id/invoice/payments')
+  recordExternalPayment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(recordExternalPaymentSchema)) body: RecordExternalPaymentInput,
+  ) {
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+    return this.billing.recordExternalPayment(id, user.organizationId, user.locationId, user.id, body);
   }
 }

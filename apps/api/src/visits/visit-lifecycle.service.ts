@@ -334,18 +334,38 @@ export function assertVisitTransitionRequirements(
     throw new ConflictException('A veterinarian exam is required before treatment for this visit.');
   }
   if (target === 'CheckoutReady') {
-    if (!visit.intake?.completedAt) throw new ConflictException('Complete intake before moving to discharge.');
-    if (visit.visitType !== 'TechnicianAppointment' && !visit.examFindings?.completedAt) {
-      throw new ConflictException('Complete the veterinarian exam before moving to discharge.');
-    }
-    if (visit.exceptions?.length) {
-      throw new ConflictException('Resolve critical visit exceptions before moving to discharge.');
-    }
-    if (visit.workItems?.length) {
-      throw new ConflictException(`Complete or defer required care before moving to discharge: ${visit.workItems.map((item) => item.title).join(', ')}.`);
-    }
+    const blockers = getCheckoutReadinessBlockers(visit);
+    if (blockers.length) throw new ConflictException(blockers[0]);
   }
   if (target === 'RecordCompletionPending' && (!visit.discharge || !visit.checkout)) {
     throw new ConflictException('Complete discharge and checkout before moving to record closure.');
   }
+}
+
+/**
+ * Non-throwing form of the CheckoutReady readiness check above — same
+ * conditions, same order, but returns every blocking reason instead of
+ * throwing on the first one. `assertVisitTransitionRequirements` throws
+ * `blockers[0]` so its existing error messages are unchanged; this is also
+ * used directly by VisitBillingService's read-only "checkout state" contract
+ * so the frontend can show every open blocker at once instead of learning
+ * about them one failed request at a time.
+ */
+export function getCheckoutReadinessBlockers(visit: {
+  visitType: string;
+  intake: { completedAt: Date | null } | null;
+  examFindings: { completedAt: Date | null } | null;
+  workItems?: Array<{ title: string }>;
+  exceptions?: Array<{ type: string }>;
+}): string[] {
+  const blockers: string[] = [];
+  if (!visit.intake?.completedAt) blockers.push('Complete intake before moving to discharge.');
+  if (visit.visitType !== 'TechnicianAppointment' && !visit.examFindings?.completedAt) {
+    blockers.push('Complete the veterinarian exam before moving to discharge.');
+  }
+  if (visit.exceptions?.length) blockers.push('Resolve critical visit exceptions before moving to discharge.');
+  if (visit.workItems?.length) {
+    blockers.push(`Complete or defer required care before moving to discharge: ${visit.workItems.map((item) => item.title).join(', ')}.`);
+  }
+  return blockers;
 }

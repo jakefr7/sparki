@@ -1,12 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type UserRole } from '@sparki/db';
 import type { CompleteVisitCheckoutInput, SaveVisitDischargeInput, UpdateVisitBalanceInput } from './dto/visit-discharge.schema';
 import { assertVisitTransitionRequirements, VisitLifecycleService } from './visit-lifecycle.service';
 import { TERMINAL_VISIT_STATES } from './visit-states';
+import { VisitBillingService } from './visit-billing.service';
 
 @Injectable()
 export class VisitDischargeService {
-  constructor(private readonly lifecycle: VisitLifecycleService) {}
+  constructor(
+    private readonly lifecycle: VisitLifecycleService,
+    private readonly billing: VisitBillingService,
+  ) {}
 
   async saveDischarge(
     visitId: string,
@@ -122,7 +126,38 @@ export class VisitDischargeService {
     if (visit.departedAt || visit.checkout) throw new ConflictException('Checkout has already been completed for this visit.');
     if (!visit.discharge) throw new ConflictException('Complete discharge instructions before checkout.');
     if (!input.clientContactConfirmed) throw new ConflictException('Confirm the client contact information before checkout.');
-    const hasOutstandingBalance = input.balanceDisposition === 'OutstandingBalanceRecorded';
+
+    // When a real Invoice exists for this visit, the server-computed ledger
+    // is authoritative — the frontend cannot mark a visit paid on its own
+    // (see VisitBillingService). Visits with no Invoice (nothing has ever
+    // called the new checkout-state/invoice endpoints for them) keep the
+    // original self-reported flow exactly as before.
+    const invoiceBalance = await this.billing.getBalanceSummary(visitId, organizationId, locationId);
+    let hasOutstandingBalance: boolean;
+    let outstandingBalanceCents: number | null;
+    let balanceDispositionForRecord: 'NoBalanceReported' | 'OutstandingBalanceRecorded';
+    if (invoiceBalance) {
+      hasOutstandingBalance = invoiceBalance.remainingBalanceCents > 0;
+      outstandingBalanceCents = hasOutstandingBalance ? invoiceBalance.remainingBalanceCents : null;
+      balanceDispositionForRecord = hasOutstandingBalance ? 'OutstandingBalanceRecorded' : 'NoBalanceReported';
+      // Every completed visit that has an Invoice should leave it finalized
+      // — a $0 invoice should never stay editable forever just because
+      // nothing ever prompted staff to freeze it, and there is no separate
+      // user action for that case. A nonzero invoice reaching a zero balance
+      // here is already guaranteed finalized: recordExternalPayment refuses
+      // to run before finalization, so this call is a no-op for it (and for
+      // an already-finalized $0 invoice — finalizeInvoice is idempotent).
+      if (!hasOutstandingBalance && !invoiceBalance.finalizedAt) {
+        await this.billing.finalizeInvoice(visitId, organizationId, locationId, userId);
+      }
+    } else {
+      if (!input.balanceDisposition) {
+        throw new BadRequestException('balanceDisposition is required when no invoice exists for this visit.');
+      }
+      hasOutstandingBalance = input.balanceDisposition === 'OutstandingBalanceRecorded';
+      outstandingBalanceCents = hasOutstandingBalance ? input.outstandingBalanceCents ?? null : null;
+      balanceDispositionForRecord = input.balanceDisposition;
+    }
     if (hasOutstandingBalance && !visit.location.allowCheckoutWithOutstandingBalance) {
       throw new ConflictException('This clinic does not allow checkout while an outstanding balance is recorded.');
     }
@@ -144,10 +179,15 @@ export class VisitDischargeService {
       timestamps: { departedAt: new Date(), ...(canClose ? { closedAt: new Date(), archivedAt: new Date() } : {}) },
       createWorkItems: hasOutstandingBalance ? [{
         type: 'Payment',
-        title: `Review outstanding balance: $${((input.outstandingBalanceCents ?? 0) / 100).toFixed(2)}`,
+        title: `Review outstanding balance: $${((outstandingBalanceCents ?? 0) / 100).toFixed(2)}`,
         assigneeRole: 'RECEPTIONIST',
       }] : [],
-      metadata: { source: 'manual_checkout_observation', balanceDisposition: input.balanceDisposition, outstandingBalanceCents: input.outstandingBalanceCents ?? null },
+      metadata: {
+        source: 'manual_checkout_observation',
+        balanceDisposition: balanceDispositionForRecord,
+        outstandingBalanceCents,
+        invoiceId: invoiceBalance?.invoiceId ?? null,
+      },
       prepare: async (tx) => {
         await tx.visitCheckout.create({
           data: {
@@ -155,7 +195,7 @@ export class VisitDischargeService {
             clientContactConfirmed: input.clientContactConfirmed,
             missingAccountInformation: input.missingAccountInformation ?? null,
             balanceStatus: hasOutstandingBalance ? 'Outstanding' : 'Paid',
-            outstandingBalanceCents: hasOutstandingBalance ? input.outstandingBalanceCents ?? null : null,
+            outstandingBalanceCents,
             completedById: userId,
           },
         });
@@ -177,6 +217,15 @@ export class VisitDischargeService {
     });
     if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
     if (visit.checkout?.balanceStatus !== 'Outstanding') throw new ConflictException('This visit does not have an outstanding checkout balance.');
+
+    // If a real Invoice exists, don't trust the self-report: only allow this
+    // to resolve the outstanding flag once the invoice's own ledger shows
+    // nothing left to collect (i.e. a payment was actually recorded).
+    const invoiceBalance = await this.billing.getBalanceSummary(visitId, organizationId, locationId);
+    if (invoiceBalance && invoiceBalance.remainingBalanceCents > 0) {
+      throw new ConflictException('This invoice still has a remaining balance. Record payment before resolving.');
+    }
+
     const canClose = visit.soapNotes.length > 0;
     return this.lifecycle.transition({
       visitId,

@@ -18,7 +18,12 @@ export type SaveVisitDischargeInput = z.infer<typeof saveVisitDischargeSchema>;
 export const completeVisitCheckoutSchema = z.object({
   clientContactConfirmed: z.boolean(),
   missingAccountInformation: optionalText,
-  balanceDisposition: z.enum(['NoBalanceReported', 'OutstandingBalanceRecorded']),
+  // Optional: when a real Invoice exists for the visit, VisitDischargeService
+  // derives the balance from it and ignores/overrides these two fields —
+  // the frontend cannot mark a visit paid on its own. They remain required
+  // (enforced in the service, not here) only for the legacy self-reported
+  // path used when no Invoice has been created for the visit.
+  balanceDisposition: z.enum(['NoBalanceReported', 'OutstandingBalanceRecorded']).optional(),
   outstandingBalanceCents: z.number().int().nonnegative().optional().nullable(),
 }).strict().superRefine((value, context) => {
   if (value.balanceDisposition === 'OutstandingBalanceRecorded' && !value.outstandingBalanceCents) {

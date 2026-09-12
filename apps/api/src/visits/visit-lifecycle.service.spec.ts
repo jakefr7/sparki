@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { assertVisitTransitionRequirements } from './visit-lifecycle.service';
+import { assertVisitTransitionRequirements, getCheckoutReadinessBlockers } from './visit-lifecycle.service';
 
 const baseVisit = { visitType: 'Scheduled', intake: null, examFindings: null };
 
@@ -37,5 +37,32 @@ describe('visit lifecycle requirements', () => {
     const ready = { ...baseVisit, intake: { completedAt: new Date() }, examFindings: { completedAt: new Date() } };
     expect(() => assertVisitTransitionRequirements({ ...ready, workItems: [{ title: 'Administer medication' }] }, 'CheckoutReady')).toThrow(ConflictException);
     expect(() => assertVisitTransitionRequirements({ ...ready, exceptions: [{ type: 'EmergencyIntakeDeferred' }] }, 'CheckoutReady')).toThrow(ConflictException);
+  });
+});
+
+describe('getCheckoutReadinessBlockers (non-throwing form used by the checkout-state read contract)', () => {
+  it('returns no blockers when a visit is ready', () => {
+    const ready = { ...baseVisit, intake: { completedAt: new Date() }, examFindings: { completedAt: new Date() } };
+    expect(getCheckoutReadinessBlockers(ready)).toEqual([]);
+  });
+
+  it('collects every open blocker instead of stopping at the first one, in the same order assertVisitTransitionRequirements throws them', () => {
+    const blockers = getCheckoutReadinessBlockers({
+      ...baseVisit,
+      workItems: [{ title: 'Administer medication' }],
+      exceptions: [{ type: 'EmergencyIntakeDeferred' }],
+    });
+    expect(blockers).toEqual([
+      'Complete intake before moving to discharge.',
+      'Complete the veterinarian exam before moving to discharge.',
+      'Resolve critical visit exceptions before moving to discharge.',
+      'Complete or defer required care before moving to discharge: Administer medication.',
+    ]);
+    expect(() => assertVisitTransitionRequirements(baseVisit, 'CheckoutReady')).toThrow(blockers[0]);
+  });
+
+  it('exempts technician appointments from the veterinarian-exam blocker', () => {
+    const blockers = getCheckoutReadinessBlockers({ ...baseVisit, visitType: 'TechnicianAppointment', intake: { completedAt: new Date() } });
+    expect(blockers).toEqual([]);
   });
 });

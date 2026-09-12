@@ -82,6 +82,9 @@ model Organization {
   catalogItems                 CatalogItem[]
   stockLocations               StockLocation[]
   inventoryTransactions        InventoryTransaction[]
+  invoices                     Invoice[]
+  invoiceLines                 InvoiceLine[]
+  payments                     Payment[]
 
   memberships    OrganizationMembership[]
   locationAccess ClinicLocationAccess[]
@@ -116,6 +119,7 @@ model Location {
   stockLocations               StockLocation[]
   inventoryTransactions        InventoryTransaction[]
   clinicalAttachments          ClinicalAttachment[]
+  invoices                     Invoice[]
 
   // Location-level policy: clinics may allow operational checkout while an
   // invoice balance remains open. The balance itself stays visible work.
@@ -212,6 +216,11 @@ model User {
   completedVisitDischarges  VisitDischarge[]             @relation("VisitDischargeCompletedBy")
   completedVisitCheckouts   VisitCheckout[]              @relation("VisitCheckoutCompletedBy")
   inventoryTransactions     InventoryTransaction[]
+  createdInvoices           Invoice[]                    @relation("InvoiceCreatedBy")
+  finalizedInvoices         Invoice[]                    @relation("InvoiceFinalizedBy")
+  voidedInvoices            Invoice[]                    @relation("InvoiceVoidedBy")
+  createdInvoiceLines       InvoiceLine[]                @relation("InvoiceLineCreatedBy")
+  recordedPayments          Payment[]                    @relation("PaymentRecordedBy")
 
   notes                              Note[]
   createdTasks                       Task[]
@@ -350,6 +359,7 @@ model Client {
   visits               Visit[]
   communicationThreads ClientCommunicationThread[]
   clinicalAttachments  ClinicalAttachment[]
+  invoices             Invoice[]
   // Fuzzy/substring matching for Patient Search's "search by client name";
   // expression index (not a plain column index) because the searchable name
   // is firstName || ' ' || lastName. See migration.sql for the raw
@@ -409,6 +419,7 @@ model Patient {
   medications          PatientMedication[]
   communicationThreads ClientCommunicationThread[]
   ClinicalAttachment   ClinicalAttachment[]
+  invoices             Invoice[]
 
   @@index([organizationId])
   @@index([organizationId, name])
@@ -1243,6 +1254,7 @@ model Visit {
   signoffDelegates    VisitRecordSignoffDelegate[]
   discharge           VisitDischarge?
   checkout            VisitCheckout?
+  invoice             Invoice?
   workflowStep        DashboardStatusColorSetting? @relation("VisitWorkflowStep", fields: [workflowStepId], references: [id], onDelete: SetNull)
   workflowStepId      String?
   workItemChanges     VisitWorkItemChange[]
@@ -1339,6 +1351,177 @@ model VisitCheckout {
 
   visit       Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
   completedBy User  @relation("VisitCheckoutCompletedBy", fields: [completedById], references: [id])
+}
+
+// --- Invoicing & Payments --------------------------------------------------
+// The financial foundation for receptionist Checkout. Clinics keep using
+// their own terminal/processor (GoDaddy/Poynt, Square, Clover, ...); Sparki
+// does not process cards. A Payment row is only ever staff attesting that an
+// amount was already collected externally (see PaymentProvider/PaymentStatus
+// below) — never Sparki claiming it processed, authorized, or charged
+// anything. `amountPaidCents` and `remainingBalanceCents` are deliberately
+// not columns anywhere in this section: VisitBillingService always derives
+// them by summing InvoiceLine/Payment rows, so there is no manually-editable
+// total that can drift from what actually happened. `Invoice.status` and
+// `Invoice.version` ARE stored, but only ever written by that service, never
+// accepted as client input.
+//
+// One Invoice per Visit for this pass (`visitId` is unique) — matches how
+// VisitDischarge/VisitCheckout/VisitIntake are already modeled 1:1 against a
+// Visit. Sparki also has no client-level accounts-receivable/running-balance
+// concept yet; a "previous balance" from an earlier visit is out of scope
+// here and must not be inferred from this model (see handoff notes).
+
+// The real clinic workflow is Build invoice -> Finalize invoice -> Process
+// that exact amount on the clinic's external terminal -> Record payment ->
+// Receipt -> Finish checkout. The business-meaningful boundary is EDITABLE
+// (DRAFT/OPEN) vs FINALIZED — not "has at least one line" — and it is
+// enforced by Invoice.finalizedAt below, not inferred from line count or
+// payment count. DRAFT/OPEN remain as internal pre-finalization nuance
+// (empty vs has-charges) for display; no code should treat DRAFT/OPEN as the
+// readiness gate.
+enum InvoiceStatus {
+  DRAFT // Editable; no charges added yet.
+  OPEN // Editable; has at least one charge, not yet finalized.
+  FINALIZED // Frozen: the amount presented for payment. No payment recorded yet.
+  PARTIALLY_PAID // Frozen; recorded payments cover part, but not all, of the total.
+  PAID // Frozen; recorded payments cover the total (or the total is zero).
+  VOID // Cancelled before any payment; excluded from checkout balance.
+}
+
+enum InvoiceLineSourceType {
+  MANUAL
+  CATALOG_ITEM
+  VISIT_WORK_ITEM
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  organizationId String
+  locationId     String
+  clientId       String?
+  patientId      String
+  visitId        String        @unique
+  status         InvoiceStatus @default(DRAFT)
+  // Bumped by VisitBillingService on every line/payment/finalize/void write.
+  // Lets a caller pass `expectedInvoiceVersion` when recording a payment and
+  // get a clear "stale financial state" error instead of racing another
+  // writer.
+  version        Int           @default(1)
+  // The freeze boundary: once set, invoice lines are immutable and this is
+  // the exact amount reception processes on the clinic's external terminal.
+  // Never cleared/overwritten once set — reopening a finalized invoice is a
+  // deliberately unimplemented future operation, not a mutation of this
+  // field. See VisitBillingService.finalizeInvoice.
+  finalizedAt    DateTime?
+  finalizedById  String?
+  voidedAt       DateTime?
+  voidedById     String?
+  voidReason     String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  location     Location      @relation(fields: [locationId], references: [id])
+  client       Client?       @relation(fields: [clientId], references: [id])
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  visit        Visit         @relation(fields: [visitId], references: [id])
+  createdBy    User?         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  finalizedBy  User?         @relation("InvoiceFinalizedBy", fields: [finalizedById], references: [id])
+  voidedBy     User?         @relation("InvoiceVoidedBy", fields: [voidedById], references: [id])
+  lines        InvoiceLine[]
+  payments     Payment[]
+
+  @@index([organizationId, locationId])
+  @@index([clientId])
+  @@index([patientId])
+}
+
+// A charge on an Invoice. Connects to CatalogItem when the charge is a
+// billable service/treatment/product Sparki already knows about, rather than
+// duplicating item/price data here.
+model InvoiceLine {
+  id               String                @id @default(cuid())
+  organizationId   String
+  invoiceId        String
+  description      String
+  quantity         Decimal               @default(1) @db.Decimal(10, 2)
+  unitAmountCents  Int
+  totalAmountCents Int
+  sourceType       InvoiceLineSourceType @default(MANUAL)
+  // Loose reference (e.g. a VisitWorkItem id) for lines that originate from
+  // something other than a CatalogItem — same shape as
+  // InventoryUsageEvent.sourceRecordType/sourceRecordId, not a hard FK, so
+  // this doesn't force a redesign of whatever produces the charge later.
+  sourceRecordId   String?
+  catalogItemId    String?               @db.Uuid
+  createdById      String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  catalogItem  CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  createdBy    User?        @relation("InvoiceLineCreatedBy", fields: [createdById], references: [id])
+
+  @@index([invoiceId])
+  @@index([organizationId, catalogItemId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  CHECK
+  OTHER
+}
+
+// Where the payment was actually collected. EXTERNAL is the only value
+// implemented today: staff collected it through the clinic's own existing
+// terminal/processor and is recording the result in Sparki afterward. A
+// future connected provider (e.g. GODADDY, STRIPE, SQUARE, CLOVER) adds a new
+// value here and populates `externalReference` from that provider's own
+// transaction id — it does not change this model's shape.
+enum PaymentProvider {
+  EXTERNAL
+}
+
+// RECORDED means staff attests the amount was successfully collected outside
+// Sparki — never that Sparki itself processed, authorized, or charged a
+// card. A future connected provider that can confirm its own transaction
+// lifecycle may add values here (e.g. PENDING, FAILED); voids/refunds/
+// reversals are also additive here later (e.g. a VOIDED status or a
+// reversal row referencing the original payment) without restructuring this
+// model.
+enum PaymentStatus {
+  RECORDED
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  organizationId    String
+  invoiceId         String
+  amountCents       Int
+  method            PaymentMethod
+  provider          PaymentProvider @default(EXTERNAL)
+  status            PaymentStatus   @default(RECORDED)
+  externalReference String?
+  note              String?
+  // Required, like InventoryUsageEvent.idempotencyKey: a client-generated
+  // key so a browser retry replays the same Payment instead of creating a
+  // second one. See @@unique below.
+  idempotencyKey    String
+  recordedById      String
+  recordedAt        DateTime        @default(now())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoice      Invoice     @relation(fields: [invoiceId], references: [id])
+  recordedBy   User        @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([invoiceId, recordedAt])
 }
 
 model VisitTransition {
@@ -2085,6 +2268,7 @@ model CatalogItem {
   transferLines      InventoryTransferLine[]
   countLines         InventoryCountLine[]
   controlledProfiles ControlledItemProfile[]
+  invoiceLines       InvoiceLine[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, locationId, status])

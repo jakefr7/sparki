@@ -2,6 +2,7 @@
 
 import { useVisitStep } from './visit-care-sections';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
@@ -86,40 +87,6 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
     finally { setSaving(false); }
   }
 
-  async function completeCheckout(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    const dollars = Number(form.get('outstandingBalance') || 0);
-    setSaving(true); setError(null);
-    try {
-      const response = await fetch(`/api/visits/${visit.id}/checkout/complete`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientContactConfirmed: form.get('clientContactConfirmed') === 'yes',
-          missingAccountInformation: form.get('missingAccountInformation'),
-          balanceDisposition: form.get('balanceDisposition'),
-          outstandingBalanceCents: Math.round(dollars * 100),
-        }),
-      });
-      const body = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(body.message ?? 'Could not complete checkout.');
-      router.refresh();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not complete checkout.'); }
-    finally { setSaving(false); }
-  }
-
-  async function updateBalance() {
-    setSaving(true); setError(null);
-    try {
-      const note = window.prompt('Record the source of this manual balance update:');
-      if (!note?.trim()) { setSaving(false); return; }
-      const response = await fetch(`/api/visits/${visit.id}/checkout/update-balance`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ balanceDisposition: 'NoBalanceReported', note }) });
-      const body = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(body.message ?? 'Could not resolve the balance.');
-      router.refresh();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not resolve the balance.'); }
-    finally { setSaving(false); }
-  }
-
   return (
     <>
     <section id="visit-discharge" className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
@@ -138,16 +105,10 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
         </form>
       ) : null}
       {canCheckout && visit.discharge ? (
-        <form onSubmit={completeCheckout} className="visit-discharge-form">
-          <h3>Reception checkout</h3>
-          <label className="visit-discharge-check"><input type="checkbox" name="clientContactConfirmed" value="yes" required defaultChecked={visit.checkout?.clientContactConfirmed ?? false} /> Phone, email, and missing account information confirmed</label>
-          <label>Missing account information<textarea name="missingAccountInformation" defaultValue={visit.checkout?.missingAccountInformation ?? ''} /></label>
-          <p>Sparki records the balance reported by staff. It does not process or verify payments.</p>
-          <label>Manual balance observation<select name="balanceDisposition" defaultValue={visit.checkout?.balanceStatus === 'Outstanding' ? 'OutstandingBalanceRecorded' : 'NoBalanceReported'}><option value="NoBalanceReported">No balance reported</option><option value="OutstandingBalanceRecorded">Outstanding balance recorded</option></select></label>
-          <label>Outstanding balance ($)<input type="number" name="outstandingBalance" min="0" step="0.01" defaultValue={visit.checkout?.outstandingBalanceCents ? visit.checkout.outstandingBalanceCents / 100 : ''} /></label>
-          <button className="button-primary" disabled={saving || Boolean(visit.checkout)}>{visit.checkout ? 'Checkout Complete' : 'Complete Checkout'}</button>
-          {visit.checkout?.balanceStatus === 'Outstanding' ? <button type="button" className="button-secondary" disabled={saving} onClick={() => void updateBalance()}>Record manual balance update</button> : null}
-        </form>
+        <div className="visit-discharge-form visit-discharge-reception-handoff">
+          <div><h3>Ready for reception</h3><p>Discharge is prepared. Review charges, collect payment, and finish the visit in Checkout.</p></div>
+          <Link className="button-primary" href={`/visits/${encodeURIComponent(visit.id)}?view=checkout`}>Open checkout</Link>
+        </div>
       ) : null}
     </section>
     {step ? <footer className="visit-step-actions">

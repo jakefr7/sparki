@@ -197,7 +197,12 @@ export function visitToClinicRow(visit: DashboardVisitSummary): ClinicDisplayRow
     workflowStatusKey: visit.workflowStatusKey,
     kind: 'visit',
     statusDetail: roomLabelFromLocation(visitLocation(visit)),
-    href: `/visits/${visit.id}`,
+    // Reception's checkout action opens the focused administrative workspace,
+    // not the clinical visit canvas. Other active states keep their normal
+    // patient-context destination.
+    href: ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state)
+      ? `/visits/${visit.id}?view=checkout`
+      : `/visits/${visit.id}`,
   };
 }
 

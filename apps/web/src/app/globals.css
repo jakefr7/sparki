@@ -6202,10 +6202,10 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 
 .clinic-table__row {
   display: grid;
-  grid-template-columns: minmax(9rem, 1fr) minmax(10rem, 15rem) minmax(6.5rem, 8rem);
+  grid-template-columns: minmax(9rem, 1fr) minmax(10rem, 15rem) minmax(6.5rem, 8rem) max-content;
   gap: 0.75rem;
   align-items: center;
-  min-width: 28rem;
+  min-width: 35rem;
 }
 
 .clinic-table__body {
@@ -6241,6 +6241,21 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.clinic-table__checkout-action {
+  align-self: center;
+  border-radius: 7px;
+  padding: .48rem .68rem;
+  color: #fff;
+  background: #176f69;
+  font-size: .76rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.clinic-table__checkout-action:hover { background: #105f59; }
+.clinic-table__checkout-action:focus-visible { outline: 2px solid #176f69; outline-offset: 3px; }
 
 .clinic-table__row > .configured-status-menu,
 .schedule-row > .configured-status-menu {

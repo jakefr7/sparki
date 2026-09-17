@@ -135,7 +135,7 @@ function stageLabel(visit: DashboardVisitSummary) {
 
 function actionLabel(visit: DashboardVisitSummary, role: DashboardRole) {
   if (role === 'receptionist') {
-    if (CHECKOUT_STATES.has(visit.state)) return 'Open checkout';
+    if (CHECKOUT_STATES.has(visit.state)) return 'Complete checkout';
     if (ARRIVAL_STATES.has(visit.state)) return 'Continue check-in';
   }
   if (role === 'technician') {
@@ -158,6 +158,16 @@ function resumeSection(visit: DashboardVisitSummary, role: DashboardRole) {
   if (role === 'technician' && visit.phase === 'Discharge') return 'visit-discharge';
   if (role === 'veterinarian' && visit.phase === 'RecordClosure') return 'visit-record';
   return 'visit-care-plan';
+}
+
+function visitHref(visit: DashboardVisitSummary, role: DashboardRole) {
+  const query = new URLSearchParams({ from: 'command-center' });
+  if (role === 'receptionist' && CHECKOUT_STATES.has(visit.state)) {
+    query.set('view', 'checkout');
+  } else {
+    query.set('resume', resumeSection(visit, role));
+  }
+  return `/visits/${visit.id}?${query}`;
 }
 
 function priorityFor(visit: DashboardVisitSummary) {
@@ -303,7 +313,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
       const response = await fetch(`/api/visits/${visit.id}/exam/start`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(payload.message ?? 'Could not start exam.');
-      router.push(`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, role)}`);
+      router.push(visitHref(visit, role));
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'Could not start exam.');
       setStartingExam(false);
@@ -323,7 +333,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
       const response = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
       if (!response.ok) throw new Error(payload.message ?? 'Could not start intake.');
-      router.push(`/visits/${visit.id}?from=command-center&resume=visit-care-plan`);
+      router.push(visitHref(visit, role));
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : 'Could not start intake.');
       setStartingIntake(false);
@@ -332,7 +342,7 @@ function QueueRow({ visit, role }: { visit: DashboardVisitSummary; role: Dashboa
 
   return (
     <Link
-      href={`/visits/${visit.id}?from=command-center&resume=${resumeSection(visit, role)}`}
+      href={visitHref(visit, role)}
       className="role-queue-row"
       data-critical={critical || undefined}
       aria-disabled={startingExam || undefined}

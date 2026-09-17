@@ -6,6 +6,7 @@ import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { PostExamReview } from '../../../components/post-exam-review';
 import { VisitRecordPanel } from '../../../components/visit-record-panel';
+import { VisitCheckoutWorkspace } from '../../../components/visit-checkout-workspace';
 import { VisitResumeLocation } from '../../../components/visit-resume-location';
 import { DashboardShell } from '../../../components/dashboard-shell';
 import { env } from '../../../lib/env';
@@ -79,6 +80,7 @@ export default async function VisitWorkspacePage({
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
   const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
+  const showingCheckout = view === 'checkout' || ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state);
   const openClinicalWork = visit.workItems.some((item) => {
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
     return ['Pending', 'InProgress'].includes(item.status);
@@ -121,7 +123,8 @@ export default async function VisitWorkspacePage({
 
         {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
-        {showClinicalWork && !recordSigned ? <VisitCareSections
+        {showingCheckout ? <VisitCheckoutWorkspace visitId={visit.id} /> : null}
+        {showClinicalWork && !recordSigned && !showingCheckout ? <VisitCareSections
           examHref={`${visitHref}?view=exam${originQuery}`}
           canContinueToDischarge={!openClinicalWork}
           initialSection={view === 'plan' ? 0 : view === 'care' ? 1 : view === 'discharge' ? 2 : view === 'record' ? 3 : visit.phase === 'RecordClosure' ? 3 : visit.phase === 'Discharge' ? 2 : 0}
@@ -130,7 +133,7 @@ export default async function VisitWorkspacePage({
           discharge={<VisitDischargePanel visit={visit} />}
           record={<VisitRecordPanel visit={visit} />}
         /> : null}
-        {showClinicalWork && recordSigned ? (
+        {showClinicalWork && recordSigned && !showingCheckout ? (
           <div className="visit-signed-record">
             <p className={`visit-signed-record__status${visit.checkout ? '' : ' visit-signed-record__status--pending'}`}>
               {visit.checkout

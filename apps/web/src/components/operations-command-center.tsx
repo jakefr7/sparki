@@ -227,6 +227,11 @@ function ClinicVisitRow({
         />
       ) : null}
       <span className="clinic-table__location">{row.location}</span>
+      {row.status === 'Ready for Checkout' && row.href ? (
+        <Link className="clinic-table__checkout-action" href={row.href}>
+          Complete checkout
+        </Link>
+      ) : null}
     </div>
   );
 }

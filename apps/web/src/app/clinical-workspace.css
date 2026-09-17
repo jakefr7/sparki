@@ -276,6 +276,71 @@ body:has(.visit-workspace) {
   text-underline-offset: 3px;
 }
 
+/* Reception checkout uses the same restrained visit-shell scale as Exam: one
+   clear task, a short invoice, and a persistent forward action. */
+.checkout-workspace { width: min(820px, calc(100% - 3rem)); margin: 1.25rem auto 2.5rem; }
+.checkout-workspace--loading { color: #667586; font-size: .88rem; padding: 2rem 0; }
+.checkout-card { overflow: visible; border: 1px solid #d7e4e6; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #17343e06; }
+.checkout-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.3rem 1.35rem 1.1rem; border-bottom: 1px solid #e5eeee; background: linear-gradient(135deg,#fff,#f7fbfb); }
+.checkout-card__header .eyebrow { margin: 0 0 .15rem; color: #176f69; font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.checkout-card__header h2 { margin: 0; color: #172633; font-size: 1.28rem; }
+.checkout-card__header p:last-child { margin: .28rem 0 0; color: #667586; font-size: .84rem; }
+.checkout-status { padding: .35rem .65rem; border-radius: 999px; background: #dff2e9; color: #16765b; font-size: .72rem; font-weight: 800; }
+.checkout-review, .checkout-payment, .checkout-done { padding: 1.25rem 1.35rem 1.35rem; }
+.checkout-invoice-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.checkout-invoice-heading h3, .checkout-followup h3, .checkout-done h3 { margin: 0; color: #172633; font-size: 1rem; }
+.checkout-invoice-heading p, .checkout-followup p, .checkout-done p { margin: .25rem 0 0; color: #667586; font-size: .84rem; line-height: 1.45; }
+.checkout-invoice-heading > strong { color: #172633; font-size: 1.1rem; }
+.checkout-lines { margin: 1rem 0 0; padding: 0; border-top: 1px solid #edf1f2; list-style: none; }
+.checkout-lines li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid #edf1f2; color: #263846; font-size: .88rem; }
+.checkout-lines li small { color: #7a8993; font-size: .76rem; }
+.checkout-lines li > span:last-child { display: flex; align-items: center; gap: .85rem; font-weight: 700; white-space: nowrap; }
+.checkout-lines button { border: 0; padding: 0; color: #a34b4b; background: transparent; font: inherit; font-size: .74rem; cursor: pointer; }
+.checkout-lines button:hover { text-decoration: underline; }
+.checkout-empty { margin: 1rem 0; color: #667586; font-size: .86rem; }
+.checkout-add-charge { position: relative; margin-top: 1rem; }
+.checkout-add-charge label, .checkout-amount-input, .checkout-cash-input { display: grid; gap: .42rem; color: #334856; font-size: .8rem; font-weight: 700; }
+.checkout-add-charge input, .checkout-money-input input { width: 100%; box-sizing: border-box; border: 1px solid #d7e4e6; border-radius: 7px; padding: .65rem .7rem; color: #172633; background: #fff; font: inherit; font-size: .88rem; }
+.checkout-catalog-results { position: absolute; z-index: 3; right: 0; left: 0; overflow: hidden; margin-top: .35rem; border: 1px solid #cfdfe1; border-radius: 8px; background: #fff; box-shadow: 0 10px 22px #17343e20; }
+.checkout-catalog-results button { display: flex; width: 100%; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid #edf1f2; padding: .7rem .8rem; color: #263846; background: #fff; font: inherit; font-size: .84rem; text-align: left; cursor: pointer; }
+.checkout-catalog-results button:hover { background: #f2f9f8; }
+.checkout-catalog-results p { margin: 0; padding: .75rem .8rem; color: #667586; font-size: .8rem; }
+.checkout-total { display: flex; align-items: flex-end; justify-content: space-between; margin-top: 1.1rem; padding-top: 1rem; border-top: 2px solid #cfdfe1; color: #263846; font-size: .9rem; font-weight: 750; }
+.checkout-total strong { color: #172633; font-size: 1.45rem; letter-spacing: -.03em; }
+.checkout-followup { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.35rem; padding-top: 1.1rem; border-top: 1px solid #e5eeee; }
+.checkout-followup .eyebrow { display: block; margin-bottom: .2rem; color: #176f69; font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.checkout-blockers { margin: 1.1rem 1.35rem 0; padding: .85rem 1rem; border: 1px solid #ecd8ae; border-radius: 8px; background: #fff8e9; color: #80520c; font-size: .83rem; }
+.checkout-blockers ul { margin: .45rem 0; padding-left: 1.2rem; }
+.checkout-blockers p { margin: 0; font-size: .78rem; }
+.checkout-amount { padding: .2rem 0 1.25rem; border-bottom: 1px solid #e5eeee; }
+.checkout-amount > span { color: #667586; font-size: .78rem; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+.checkout-amount strong { display: block; margin-top: .2rem; color: #172633; font-size: 2rem; letter-spacing: -.05em; }
+.checkout-amount p { max-width: 30rem; margin: .5rem 0 0; color: #667586; font-size: .84rem; line-height: 1.45; }
+.checkout-payment fieldset { margin: 1.1rem 0; padding: 0; border: 0; }
+.checkout-payment legend { margin-bottom: .55rem; color: #334856; font-size: .8rem; font-weight: 700; }
+.checkout-methods { display: flex; gap: .45rem; flex-wrap: wrap; }
+.checkout-methods button { border: 1px solid #cfdfe1; border-radius: 7px; padding: .52rem .82rem; color: #52616d; background: #fff; font: inherit; font-size: .82rem; cursor: pointer; }
+.checkout-methods button[aria-pressed=true] { border-color: #16867f; color: #176f69; background: #edf7f5; font-weight: 750; }
+.checkout-money-input { display: flex; align-items: center; overflow: hidden; border: 1px solid #d7e4e6; border-radius: 7px; background: #fff; }
+.checkout-money-input b { padding-left: .72rem; color: #667586; font-size: .9rem; }
+.checkout-money-input input { border: 0; outline: 0; padding-left: .3rem; }
+.checkout-cash-input { margin-top: .85rem; }
+.checkout-cash-input small { color: #667586; font-size: .72rem; font-weight: 500; }
+.checkout-payment-summary { margin: 1rem 0 0; color: #52616d; font-size: .82rem; }
+.checkout-done { display: grid; gap: 1rem; }
+.checkout-done > div:first-child { padding-bottom: 1rem; border-bottom: 1px solid #e5eeee; }
+.checkout-done__mark { display: inline-grid; width: 1.5rem; height: 1.5rem; place-items: center; margin-bottom: .5rem; border-radius: 50%; background: #dff2e9; color: #16765b; font-size: .9rem; font-weight: 900; }
+.checkout-receipt-actions { display: flex; gap: .6rem; }
+.checkout-receipt { padding: .9rem; border: 1px solid #dce7e8; border-radius: 8px; background: #fafcfc; }
+.checkout-receipt h4 { margin: 0; color: #172633; font-size: .9rem; }
+.checkout-receipt > p { display: flex; justify-content: space-between; gap: 1rem; margin: .45rem 0 0; color: #52616d; font-size: .8rem; }
+.checkout-receipt > p:first-of-type { display: block; color: #667586; }
+.checkout-receipt__total { padding-top: .55rem; border-top: 1px solid #dce7e8; color: #172633 !important; font-weight: 800; }
+.checkout-contact-confirmation { display: flex; align-items: center; gap: .55rem; color: #52616d; font-size: .82rem; }
+.checkout-error { margin: 0 1.35rem 1.2rem; }
+.checkout-actions { margin-top: 1.2rem; }
+@media (max-width: 600px) { .checkout-workspace { width: calc(100% - 2rem); } .checkout-card__header, .checkout-review, .checkout-payment, .checkout-done { padding-right: 1rem; padding-left: 1rem; } .checkout-blockers, .checkout-error { margin-right: 1rem; margin-left: 1rem; } .checkout-followup { align-items: flex-start; flex-direction: column; } }
+
 .visit-care-sections .visit-discharge-field.is-missing {
   border: 0;
   background: transparent;

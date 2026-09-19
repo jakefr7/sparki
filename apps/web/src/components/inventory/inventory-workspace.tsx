@@ -23,6 +23,10 @@ type Item = {
   tags: string[];
   brand: string | null;
   manufacturer: string | null;
+  strength: string | null;
+  form: string | null;
+  defaultFrequency: string | null;
+  markupPercent: string | null;
   internalNotes: string | null;
   billable: boolean;
   taxable: boolean;
@@ -3264,6 +3268,9 @@ function ItemEditor({
       description: value('description'),
       brand: value('brand'),
       manufacturer: value('manufacturer'),
+      strength: type === 'MEDICATION' ? value('strength') : null,
+      form: type === 'MEDICATION' ? value('form') : null,
+      defaultFrequency: type === 'MEDICATION' ? value('defaultFrequency') : null,
       route: type === 'MEDICATION' || type === 'VACCINE' ? value('route') : null,
       therapeuticClass:
         type === 'MEDICATION' || type === 'VACCINE' ? value('therapeuticClass') : null,
@@ -3285,6 +3292,7 @@ function ItemEditor({
       controlledSubstance: type === 'MEDICATION' && f.get('controlled') === 'on',
       deaSchedule: value('deaSchedule'),
       retailPrice: value('retailPrice'),
+      markupPercent: value('markupPercent'),
       minimumStock: value('minimumStock'),
       maximumStock: value('maximumStock'),
       reorderPoint: value('reorderPoint'),
@@ -3408,6 +3416,22 @@ function ItemEditor({
             </label>
             {type === 'MEDICATION' && (
               <>
+                <label>
+                  Strength
+                  <input name="strength" defaultValue={item?.strength ?? ''} placeholder="100 mg" />
+                </label>
+                <label>
+                  Form
+                  <input name="form" defaultValue={item?.form ?? ''} placeholder="Tablet" />
+                </label>
+                <label>
+                  Default frequency
+                  <input
+                    name="defaultFrequency"
+                    defaultValue={item?.defaultFrequency ?? ''}
+                    placeholder="Every 12 hours"
+                  />
+                </label>
                 <label className="check">
                   <input
                     type="checkbox"
@@ -3431,6 +3455,15 @@ function ItemEditor({
         <label>
           Retail price
           <input name="retailPrice" inputMode="decimal" defaultValue={item?.retailPrice ?? ''} />
+        </label>
+        <label>
+          Markup %
+          <input
+            name="markupPercent"
+            inputMode="decimal"
+            defaultValue={item?.markupPercent ?? ''}
+            placeholder="0"
+          />
         </label>
         <label className="check">
           <input type="checkbox" name="taxable" defaultChecked={item?.taxable} /> Taxable

@@ -17,6 +17,7 @@ const optionalDate = z.preprocess(
 );
 
 export const createPatientMedicationSchema = z.object({
+  catalogItemId: z.string().uuid().optional().nullable(),
   medicationName: z.string().trim().min(1).max(200),
   genericName: optionalText(200),
   strength: optionalText(120),
@@ -33,5 +34,15 @@ export const createPatientMedicationSchema = z.object({
 
 export const updatePatientMedicationSchema = createPatientMedicationSchema.partial();
 
+export const discontinuePatientMedicationSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+});
+
+export const flagMedicationReactionSchema = z.object({
+  reaction: z.string().trim().min(1).max(2000),
+});
+
 export type CreatePatientMedicationInput = z.infer<typeof createPatientMedicationSchema>;
 export type UpdatePatientMedicationInput = z.infer<typeof updatePatientMedicationSchema>;
+export type DiscontinuePatientMedicationInput = z.infer<typeof discontinuePatientMedicationSchema>;
+export type FlagMedicationReactionInput = z.infer<typeof flagMedicationReactionSchema>;

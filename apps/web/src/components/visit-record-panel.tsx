@@ -3,7 +3,7 @@
 import { useVisitStep } from './visit-care-sections';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import type { StaffMember, VisitDetail } from '../lib/patient-types';
+import type { VisitDetail } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
 
 const RECORD_STATUS_LABELS: Record<string, string> = {
@@ -87,6 +87,27 @@ function summarizeObjective(value: string | null | undefined): { normalHeadline:
   return { normalHeadline: notable.length || normalCount < 6 ? null : 'All body systems normal', notable, normalCount, full };
 }
 
+function VisitOverview({ visit }: { visit: VisitDetail }) {
+  const completedCare = visit.workItems.filter((item) =>
+    ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && item.status === 'Completed',
+  );
+  const [treatmentPlan, whatsNext = ''] = (visit.examFindings?.plan ?? '').split("\n\nWhat's Next\n");
+  return (
+    <section className="visit-final-overview" aria-labelledby="visit-final-overview-heading">
+      <div className="visit-record-panel__header">
+        <div><p className="eyebrow">Visit closeout</p><h2 id="visit-final-overview-heading">Visit overview</h2><p>Confirm the intake, diagnosis, and treatment plan before finalizing the medical record.</p></div>
+      </div>
+      <div className="post-exam-review__summary-grid">
+        <article><span>Intake</span><p>{visit.intake?.chiefComplaint || visit.intake?.historyNotes || visit.reason}</p></article>
+        <article><span>Diagnosis</span><p>{visit.examFindings?.assessment || 'No diagnosis documented.'}</p></article>
+        <article><span>Treatment plan</span><p>{treatmentPlan || 'No treatment plan documented.'}</p></article>
+        <article><span>What&apos;s next</span><p>{whatsNext || visit.discharge?.followUpPlan || 'No follow-up recommendation documented.'}</p></article>
+        <article className="post-exam-review__findings"><span>Care completed</span>{completedCare.length ? <ul>{completedCare.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.type}</span></li>)}</ul> : <p>No performed care documented.</p>}</article>
+      </div>
+    </section>
+  );
+}
+
 export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; attachments?: ReactNode }) {
   const router = useRouter();
   const step = useVisitStep();
@@ -97,7 +118,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const isAssignedTechnician = visit.visitType === 'TechnicianAppointment' && user?.id === visit.assignedTechnician?.id;
   const isDelegate = visit.signoffDelegates.some((entry) => entry.delegateId === user?.id);
   const canEdit = Boolean(user && (isAssignedDoctor || isUnassignedClinicalCompleter || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
-  const canDelegate = Boolean(user && (isAssignedDoctor || ['OWNER', 'PRACTICE_MANAGER'].includes(user.role)) && note && ['Draft', 'ReadyForReview'].includes(note.status));
   const signed = note?.status === 'Locked';
   const signedOn = note?.lockedAt ?? note?.signedAt ?? null;
   const signingVet = visit.primaryVeterinarian;
@@ -106,8 +126,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     : null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [eligibleSigners, setEligibleSigners] = useState<StaffMember[]>([]);
-  const [delegateId, setDelegateId] = useState('');
   const [amending, setAmending] = useState(false);
   const [missingSoap, setMissingSoap] = useState<string[]>([]);
   const lockedNote = visit.soapNotes.find((entry) => entry.status === 'Locked');
@@ -122,14 +140,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const [saveStatus, setSaveStatus] = useState('All changes saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
-
-  useEffect(() => {
-    if (!canDelegate) return;
-    fetch('/api/staff?role=VETERINARIAN,OWNER', { cache: 'no-store' })
-      .then((response) => response.json())
-      .then((staff: StaffMember[]) => setEligibleSigners(staff.filter((entry) => entry.canFinalizeRecordsForOthers)))
-      .catch(() => setError('Could not load backup record signers.'));
-  }, [canDelegate]);
 
   if (!note) return null;
 
@@ -215,20 +225,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     finally { setSaving(false); }
   }
 
-  async function delegate() {
-    if (!delegateId) return;
-    setSaving(true); setError(null);
-    try {
-      const response = await fetch(`/api/visits/${visit.id}/record/delegate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delegateId }),
-      });
-      const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not assign the backup signer.');
-      router.refresh();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not assign the backup signer.'); }
-    finally { setSaving(false); }
-  }
-
   async function amend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -250,6 +246,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
 
   return (
     <>
+    {!signed ? <VisitOverview visit={visit} /> : null}
     <section id="visit-record" className={`visit-record-panel${signed ? ' visit-record-panel--signed' : ''}`} aria-labelledby="visit-record-heading">
       <div className="visit-record-panel__header">
         <div>
@@ -260,19 +257,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
         </div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{RECORD_STATUS_LABELS[note.status] ?? note.status}</span>
       </div>
-      {canDelegate ? (
-        <details className="visit-record-delegate-options"><summary>Assign a backup signer</summary><div className="visit-record-delegate">
-          <label>Backup signer
-            <select value={delegateId} onChange={(event) => setDelegateId(event.target.value)}>
-              <option value="">Select an authorized clinician</option>
-              {eligibleSigners.filter((staff) => staff.id !== visit.primaryVeterinarian?.id).map((staff) => (
-                <option key={staff.id} value={staff.id}>{staff.displayName}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button" className="button-secondary" disabled={!delegateId || saving} onClick={() => void delegate()}>Assign</button>
-        </div></details>
-      ) : null}
       {canEdit ? (
         <form id={`visit-record-form-${visit.id}`} ref={recordForm} onChange={scheduleSave} onSubmit={(event) => event.preventDefault()} className="visit-record-form visit-record-form--review">
           {SOAP_FIELDS.map(([name, label]) => {
@@ -350,7 +334,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     {step || canEdit ? (
       <footer className="visit-step-actions visit-record-footer">
         {step ? <button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to discharge</button> : <span />}
-          {canEdit ? <button type="button" className="button-primary" disabled={saving || Boolean(saveError)} aria-describedby={saveError ? `visit-record-save-status-${visit.id}` : undefined} onClick={requestFinalize}>{saving ? 'Completing…' : 'Complete visit'}</button> : null}
+          {canEdit ? <button type="button" className="button-primary" disabled={saving || Boolean(saveError)} aria-describedby={saveError ? `visit-record-save-status-${visit.id}` : undefined} onClick={requestFinalize}>{saving ? 'Finalizing…' : 'Finalize visit'}</button> : null}
       </footer>
     ) : null}
     </>

@@ -9,7 +9,6 @@ import { defaultAllowedTransitionKeys, workflowStatusKey } from '@sparki/config'
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
-import { MEDICATION_CATALOG } from '../patients/medication-catalog';
 import type { CreateVisitInput } from './dto/create-visit.schema';
 import type { SaveExamFindingsInput } from './dto/save-exam-findings.schema';
 import type { SaveVisitIntakeInput } from './dto/save-visit-intake.schema';
@@ -227,16 +226,20 @@ export class VisitsService {
   }
 
   async findById(id: string, organizationId: string, locationId: string) {
-    const visit = await prisma.visit.findFirst({
-      where: { id, organizationId, locationId },
-      include: visitInclude,
-    });
+    const [visit, medicationCatalog] = await Promise.all([
+      prisma.visit.findFirst({ where: { id, organizationId, locationId }, include: visitInclude }),
+      prisma.catalogItem.findMany({
+        where: { organizationId, primaryType: 'MEDICATION', status: 'ACTIVE', OR: [{ locationId: null }, { locationId }] },
+        select: { name: true, strength: true, form: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
     if (!visit) {
       throw new NotFoundException(`Visit ${id} not found`);
     }
     return {
       ...visit,
-      patient: { ...visit.patient, medicationCatalog: MEDICATION_CATALOG },
+      patient: { ...visit.patient, medicationCatalog: medicationCatalog.map((item) => [item.name, item.strength, item.form].filter(Boolean).join(' · ')) },
       clinicalAttachments: visit.clinicalAttachments.map((attachment) => ({
         ...attachment,
         href: `/clinical-attachments/${attachment.id}/content`,

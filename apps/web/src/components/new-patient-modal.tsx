@@ -1053,6 +1053,30 @@ export function NewPatientModal({
               autoComplete="off"
               onSubmit={handleSubmit}
             >
+              <NewPatientPatientSection
+                patientNameRef={patientNameRef}
+                patientName={patientName}
+                onPatientNameChange={setPatientName}
+                species={species}
+                onSpeciesChange={setSpecies}
+                otherSpecies={otherSpecies}
+                onOtherSpeciesChange={setOtherSpecies}
+                breed={breed}
+                onBreedChange={setBreed}
+                sex={sex}
+                onSexChange={setSex}
+                color={color}
+                onColorChange={setColor}
+                dobMode={dobMode}
+                onDobModeChange={setDobMode}
+                exactDate={exactDate}
+                onExactDateChange={setExactDate}
+                estimatedAge={estimatedAge}
+                onEstimatedAgeChange={setEstimatedAge}
+                alerts={alerts}
+                onAlertsChange={setAlerts}
+                patientDuplicateHint={patientDuplicateHint}
+              />
               <NewPatientClientSection
                 ownerFirstNameRef={ownerFirstNameRef}
                 newClientFirstName={newClientFirstName}
@@ -1079,30 +1103,6 @@ export function NewPatientModal({
                 onNewCountryChange={setNewCountry}
                 onAddressAutofill={setAddressAutofill}
                 clientDuplicateHint={clientDuplicateHint}
-              />
-              <NewPatientPatientSection
-                patientNameRef={patientNameRef}
-                patientName={patientName}
-                onPatientNameChange={setPatientName}
-                species={species}
-                onSpeciesChange={setSpecies}
-                otherSpecies={otherSpecies}
-                onOtherSpeciesChange={setOtherSpecies}
-                breed={breed}
-                onBreedChange={setBreed}
-                sex={sex}
-                onSexChange={setSex}
-                color={color}
-                onColorChange={setColor}
-                dobMode={dobMode}
-                onDobModeChange={setDobMode}
-                exactDate={exactDate}
-                onExactDateChange={setExactDate}
-                estimatedAge={estimatedAge}
-                onEstimatedAgeChange={setEstimatedAge}
-                alerts={alerts}
-                onAlertsChange={setAlerts}
-                patientDuplicateHint={patientDuplicateHint}
               />
               {error && (
                 <p className="form-error" role="alert">

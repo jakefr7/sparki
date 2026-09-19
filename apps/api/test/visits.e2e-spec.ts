@@ -707,7 +707,7 @@ describe('Visits (e2e)', () => {
         | 'Archived' = 'IntakeInProgress',
     ) {
       const patientId = await createPatient(patientName);
-      return prisma.visit.create({
+      const visit = await prisma.visit.create({
         data: {
           organizationId: DEV_ORGANIZATION_ID,
           locationId: DEV_LOCATION_ID,
@@ -719,6 +719,17 @@ describe('Visits (e2e)', () => {
           assignedTechnicianId: DEV_USER_ID,
         },
       });
+      if (state === 'VeterinarianExamReady' || state === 'VeterinarianExamInProgress') {
+        await prisma.visitIntake.create({
+          data: {
+            visitId: visit.id,
+            chiefComplaint: 'Fixture intake',
+            historyNotes: 'Fixture history',
+            completedAt: new Date(),
+          },
+        });
+      }
+      return visit;
     }
 
     it('saves intake data with weight in LB and gum color, and returns it on the Visit payload', async () => {

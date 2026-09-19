@@ -90,6 +90,11 @@ export function useOperationsDashboard() {
 
     try {
       const response = await fetch('/api/operations/dashboard', { signal: controller.signal });
+      if (response.status === 401) {
+        const from = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login?from=${encodeURIComponent(from)}`);
+        return;
+      }
       if (!response.ok) throw new Error(`Dashboard failed to load (${response.status})`);
       const payload = (await response.json()) as OperationsDashboard;
       if (!isMountedRef.current) return;

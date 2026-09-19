@@ -33,6 +33,7 @@ export function PostExamReview({ visit }: { visit: VisitDetail }) {
     : [];
   const work = visit.workItems.filter((item) => CLINICAL_WORK_TYPES.has(item.type));
   const openWork = work.filter((item) => ['Pending', 'InProgress'].includes(item.status));
+  const [treatmentPlan, whatsNext = ''] = (exam.plan ?? '').split("\n\nWhat's Next\n");
   return (
     <section className="post-exam-review" aria-labelledby="post-exam-review-heading">
       <div className="post-exam-review__complete">
@@ -48,7 +49,8 @@ export function PostExamReview({ visit }: { visit: VisitDetail }) {
         <div className="post-exam-review__summary-header"><div><p className="eyebrow">Doctor’s review</p><h3>Clinical conclusions</h3></div><span>Read only</span></div>
         <div className="post-exam-review__summary-grid">
           <article><span>Problem list / diagnoses</span><p>{exam.assessment || 'No problems or diagnoses documented.'}</p></article>
-          <article><span>Recommendations</span><p>{exam.plan || 'No recommendations documented.'}</p></article>
+          <article><span>Treatment plan</span><p>{treatmentPlan || 'No treatment plan documented.'}</p></article>
+          <article><span>What&apos;s next</span><p>{whatsNext || 'No follow-up recommendation documented.'}</p></article>
           <article className="post-exam-review__findings"><span>Notable physical exam findings</span>{notableFindings.length ? <ul>{notableFindings.map(([key, finding]) => <li key={key}><strong>{SYSTEM_LABELS[key] ?? key}</strong><span className="post-exam-review__abnormal">{finding.status}</span>{finding.notes ? <p>{finding.notes}</p> : null}</li>)}</ul> : <p>{objective?.additionalNotes || 'No abnormal findings documented.'}</p>}</article>
           <article><span>Baseline measures</span><p>{[objective?.general?.painScore && `Pain: ${objective.general.painScore}`, objective?.general?.bodyConditionScore && `BCS: ${objective.general.bodyConditionScore}/9`].filter(Boolean).join(' · ') || 'Not captured'}</p></article>
         </div>

@@ -57,6 +57,7 @@ model Organization {
   patients                     Patient[]
   patientAlerts                PatientAlert[]
   patientMedications           PatientMedication[]
+  patientMedicationEvents      PatientMedicationEvent[]
   appointments                 Appointment[]
   appointmentChanges           AppointmentChange[]
   schedulerConfigChanges       SchedulerConfigChange[]
@@ -171,6 +172,7 @@ model User {
   // Explicit grant for a veterinarian or other legally eligible user who may
   // be delegated final record signoff when they are not the assigned doctor.
   canFinalizeRecordsForOthers Boolean  @default(false)
+  canManageMedications        Boolean  @default(false)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
@@ -221,6 +223,7 @@ model User {
   voidedInvoices            Invoice[]                    @relation("InvoiceVoidedBy")
   createdInvoiceLines       InvoiceLine[]                @relation("InvoiceLineCreatedBy")
   recordedPayments          Payment[]                    @relation("PaymentRecordedBy")
+  patientMedicationEvents   PatientMedicationEvent[]     @relation("PatientMedicationEventActor")
 
   notes                              Note[]
   createdTasks                       Task[]
@@ -472,9 +475,11 @@ model PatientMedication {
   id             String                  @id @default(cuid())
   organizationId String
   patientId      String
+  catalogItemId  String?                 @db.Uuid
   medicationName String
   genericName    String?
   strength       String?
+  form           String?
   dose           String?
   route          String?
   frequency      String?
@@ -484,13 +489,44 @@ model PatientMedication {
   status         PatientMedicationStatus @default(Active)
   prescribedBy   String?
   source         String?
+  discontinueReason String?
+  reactionNotes  String?
+  lastRefilledAt DateTime?
+  refillCount    Int                     @default(0)
   createdAt      DateTime                @default(now())
   updatedAt      DateTime                @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id])
   patient      Patient      @relation(fields: [patientId], references: [id])
+  catalogItem  CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  events       PatientMedicationEvent[]
 
   @@index([organizationId, patientId, status])
+  @@index([catalogItemId])
+}
+
+enum PatientMedicationEventType {
+  CREATED
+  EDITED
+  REFILLED
+  DISCONTINUED
+  REACTION_FLAGGED
+}
+
+model PatientMedicationEvent {
+  id             String                     @id @default(cuid())
+  organizationId String
+  medicationId   String
+  actorId         String?
+  type            PatientMedicationEventType
+  reason          String?
+  occurredAt      DateTime                   @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  medication   PatientMedication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+  actor        User?             @relation("PatientMedicationEventActor", fields: [actorId], references: [id])
+
+  @@index([organizationId, medicationId, occurredAt])
 }
 
 model PatientClient {
@@ -2228,6 +2264,9 @@ model CatalogItem {
   tags                String[]          @default([])
   brand               String?
   manufacturer        String?
+  strength            String?
+  form                String?
+  defaultFrequency    String?
   sku                 String?
   status              CatalogItemStatus @default(ACTIVE)
   imageUrl            String?
@@ -2235,6 +2274,7 @@ model CatalogItem {
   inventoryTracked    Boolean           @default(false)
   taxable             Boolean           @default(false)
   retailPrice         Decimal?          @db.Decimal(19, 4)
+  markupPercent       Decimal?          @db.Decimal(8, 3)
   internalNotes       String?
   lotTracking         Boolean           @default(false)
   expirationTracking  Boolean           @default(false)
@@ -2269,6 +2309,7 @@ model CatalogItem {
   countLines         InventoryCountLine[]
   controlledProfiles ControlledItemProfile[]
   invoiceLines       InvoiceLine[]
+  patientMedications PatientMedication[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, locationId, status])

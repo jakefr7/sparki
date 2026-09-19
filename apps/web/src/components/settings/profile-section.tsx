@@ -30,7 +30,37 @@ export function ProfileSection() {
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const [photoMenuPosition, setPhotoMenuPosition] = useState<{ top: number; left: number } | null>(null);
 
-  useEffect(() => { void fetch('/api/auth/profile', { cache: 'no-store' }).then((response) => response.json()).then((body: Profile) => { setProfile(body); setDraft({ displayName: body.displayName ?? `${body.firstName} ${body.lastName}`, phone: body.phone ?? '', avatarUrl: body.avatarUrl ?? '' }); }); }, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetch('/api/auth/profile', { cache: 'no-store' })
+      .then(async (response) => {
+        if (response.status === 401) {
+          window.location.assign('/login?from=/settings');
+          return null;
+        }
+        if (!response.ok) {
+          throw new Error('Could not load your profile.');
+        }
+        return response.json() as Promise<Profile>;
+      })
+      .then((body) => {
+        if (cancelled || !body) return;
+        setProfile(body);
+        setDraft({
+          displayName: body.displayName ?? `${body.firstName} ${body.lastName}`,
+          phone: body.phone ?? '',
+          avatarUrl: body.avatarUrl ?? '',
+        });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : 'Could not load your profile.');
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, []);
   useLayoutEffect(() => { if (!photoMenuOpen) return; const update = () => { const rect = avatarButton.current?.getBoundingClientRect(); if (!rect) return; const width = 280; const margin = 12; setPhotoMenuPosition({ top: rect.bottom + 12, left: Math.min(Math.max(margin, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - margin) }); }; update(); window.addEventListener('resize', update); window.addEventListener('scroll', update, true); return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); }; }, [photoMenuOpen]);
   useEffect(() => { if (!photoMenuOpen) return; const dismiss = (event: MouseEvent) => { const target = event.target as Node; if (!photoMenu.current?.contains(target) && !avatarButton.current?.contains(target)) setPhotoMenuOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setPhotoMenuOpen(false); }; document.addEventListener('mousedown', dismiss); document.addEventListener('keydown', escape); return () => { document.removeEventListener('mousedown', dismiss); document.removeEventListener('keydown', escape); }; }, [photoMenuOpen]);
 
@@ -61,7 +91,7 @@ export function ProfileSection() {
     setSaving(false);
   }
 
-  const fallback = profile ? `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}` : '';
+  const fallback = profile ? `${profile.firstName?.[0] ?? ''}${profile.lastName?.[0] ?? ''}` : '';
   const savedDisplayName = profile ? profile.displayName ?? `${profile.firstName} ${profile.lastName}` : '';
   const hasUnsavedChanges = Boolean(profile && (
     draft.displayName !== savedDisplayName || draft.phone !== (profile.phone ?? '')

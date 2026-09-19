@@ -11,6 +11,7 @@ describe('Staff (e2e)', () => {
   let otherOrganizationId: string;
   let veterinarianId: string;
   let technicianId: string;
+  let receptionistId: string;
   let otherOrganizationUserId: string;
 
   beforeAll(async () => {
@@ -53,12 +54,24 @@ describe('Staff (e2e)', () => {
     });
     technicianId = technician.id;
 
+    const receptionist = await prisma.user.create({
+      data: {
+        organizationId: DEV_ORGANIZATION_ID,
+        email: `staff-e2e-reception-${Date.now()}@example.com`,
+        firstName: 'Morgan',
+        lastName: 'Reed',
+        role: 'RECEPTIONIST',
+        staffProfile: { create: { jobTitle: 'Medication Clerk' } },
+      },
+    });
+    receptionistId = receptionist.id;
+
     await prisma.clinicLocationAccess.createMany({
-      data: [veterinarianId, technicianId].map((userId) => ({
+      data: [veterinarianId, technicianId, receptionistId].map((userId) => ({
         organizationId: DEV_ORGANIZATION_ID,
         clinicLocationId: DEV_LOCATION_ID,
         userId,
-        role: userId === veterinarianId ? 'VETERINARIAN' : 'TECHNICIAN',
+        role: userId === veterinarianId ? 'VETERINARIAN' : userId === technicianId ? 'TECHNICIAN' : 'RECEPTIONIST',
       })),
     });
 
@@ -75,7 +88,7 @@ describe('Staff (e2e)', () => {
   });
 
   afterAll(async () => {
-    const createdUserIds = [veterinarianId, technicianId, otherOrganizationUserId].filter(Boolean);
+    const createdUserIds = [veterinarianId, technicianId, receptionistId, otherOrganizationUserId].filter(Boolean);
     await prisma.staffProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
     await prisma.clinicLocationAccess.deleteMany({ where: { userId: { in: createdUserIds } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
@@ -144,6 +157,34 @@ describe('Staff (e2e)', () => {
       const response = await request(app.getHttpServer()).get(`/staff/${crossOrgUser.id}`);
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe('PUT /staff/:id/medication-permission', () => {
+    it('records an explicit medication-clerk grant for reception staff', async () => {
+      const response = await request(app.getHttpServer())
+        .put(`/staff/${receptionistId}/medication-permission`)
+        .send({ canManageMedications: true });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: receptionistId,
+        role: 'RECEPTIONIST',
+        canManageMedications: true,
+      });
+      await expect(
+        prisma.schedulerConfigChange.findFirstOrThrow({
+          where: { entityType: 'MedicationPermission', entityId: receptionistId, action: 'Granted' },
+        }),
+      ).resolves.toBeTruthy();
+    });
+
+    it('does not assign redundant clerk grants to clinical roles', async () => {
+      const response = await request(app.getHttpServer())
+        .put(`/staff/${technicianId}/medication-permission`)
+        .send({ canManageMedications: true });
+
+      expect(response.status).toBe(409);
     });
   });
 });

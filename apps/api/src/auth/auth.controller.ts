@@ -12,6 +12,8 @@ import { ROLE_PERMISSIONS } from './role-permissions';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from './session-cookie';
 import type { AuthenticatedUser } from './types';
 
+const MANAGE_MEDICATIONS = 'medications:manage';
+
 function toMeResponse(user: AuthenticatedUser) {
   return {
     id: user.id,
@@ -20,9 +22,11 @@ function toMeResponse(user: AuthenticatedUser) {
     role: user.role,
     // MANAGE_ADMIN_SETTINGS is a per-user grant, not role-derived — appended
     // here rather than living in ROLE_PERMISSIONS (see role-permissions.ts).
-    permissions: user.canManageAdminSettings
-      ? [...ROLE_PERMISSIONS[user.role], MANAGE_ADMIN_SETTINGS]
-      : ROLE_PERMISSIONS[user.role],
+    permissions: [
+      ...ROLE_PERMISSIONS[user.role],
+      ...(user.canManageAdminSettings ? [MANAGE_ADMIN_SETTINGS] : []),
+      ...(user.canManageMedications || ['OWNER', 'VETERINARIAN', 'TECHNICIAN'].includes(user.role) ? [MANAGE_MEDICATIONS] : []),
+    ],
   };
 }
 

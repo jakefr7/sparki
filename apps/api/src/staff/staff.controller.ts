@@ -4,6 +4,7 @@ import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { listStaffQuerySchema, type ListStaffQuery } from './dto/list-staff.schema';
 import { updateRecordSignoffPermissionSchema, type UpdateRecordSignoffPermissionInput } from './dto/update-record-signoff-permission.schema';
+import { updateMedicationPermissionSchema, type UpdateMedicationPermissionInput } from './dto/update-medication-permission.schema';
 import { requireAdminSettingsManager } from '../auth/permissions';
 import { StaffService } from './staff.service';
 
@@ -32,5 +33,15 @@ export class StaffController {
   ) {
     requireAdminSettingsManager(user);
     return this.staff.updateRecordSignoffPermission(id, user, body.canFinalizeRecordsForOthers);
+  }
+
+  @Put(':id/medication-permission')
+  updateMedicationPermission(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateMedicationPermissionSchema)) body: UpdateMedicationPermissionInput,
+  ) {
+    requireAdminSettingsManager(user);
+    return this.staff.updateMedicationPermission(id, user, body.canManageMedications);
   }
 }

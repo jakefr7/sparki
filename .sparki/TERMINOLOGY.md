@@ -1,9 +1,9 @@
 # Terminology
 
-- **Phase:** a founder-approved, bounded unit of development described by `CURRENT_PHASE.md`.
-- **Run:** one immutable-at-creation directory of plan, implementation, verification, and review artifacts.
-- **Verification:** deterministic repository commands defined in the phase configuration.
-- **Review:** Claude's independent read-only assessment of the phase diff and surrounding system.
-- **Remediation:** Codex changes limited to a failed verification or actionable review findings.
-- **Founder review:** the mandatory human checkpoint after automated verification and review pass.
+- **Current work:** the live, user-directed work list in `CURRENT_WORK.md`.
+- **Build → test → fix:** implement the smallest cohesive change, run the most relevant checks, repair failures, and broaden verification according to risk.
+- **Focused test:** the smallest test set that directly exercises the changed behavior.
+- **Broader verification:** typecheck, lint, integration, production build, or browser tests selected according to the change's reach and release risk.
+- **Historical evidence:** prior closeouts and immutable run artifacts retained for provenance, not as active scope or approval gates.
+- **Review:** an evidence-based assessment of the current change and surrounding system.
 - **Founder decision:** an immediate stop when policy, destructive action, secrets, deployment, architecture, or material scope requires human authority.

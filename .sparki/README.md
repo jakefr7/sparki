@@ -1,15 +1,15 @@
 # Sparki Agent Operations
 
-This local-first system runs a controlled phase through planning, Codex implementation, deterministic verification, independent Claude review, and at most three remediation/review cycles. Every run writes durable artifacts to `.sparki/runs/<run-id>/`; project memory lives in the concise Markdown files beside this README.
+Sparki now uses a lightweight build → test → fix workflow. The older phase orchestrator and its immutable `.sparki/runs/<run-id>/` artifacts remain available as historical tooling and evidence, but they are not the default development process or a source of current scope.
 
 ## Roles
 
 - **PM:** read-only readiness and execution planning.
-- **Codex:** implementation and narrowly scoped remediation for an approved phase.
+- **Codex:** focused implementation and remediation for the user's current request.
 - **Claude:** independent, read-only review of the objective, diff, tests, security, integrity, regressions, and scope.
-- **Founder:** makes escalated decisions and reviews every passing phase before merge.
+- **Founder:** makes escalated product, architecture, deployment, and destructive-action decisions.
 
-## Commands
+## Historical orchestration commands
 
 ```sh
 pnpm sparki:status
@@ -18,7 +18,7 @@ pnpm sparki:execute
 pnpm sparki:review
 ```
 
-`sparki:plan` only creates the PM artifact. `sparki:execute` requires a clean tracked worktree, an approved phase, a non-main phase branch, and authenticated Codex and Claude CLIs. `sparki:review` creates an independent review artifact without modifying product code.
+These commands belong to the retired phase orchestrator. Do not use them as the normal implementation path unless the user explicitly requests the legacy workflow. For current work, inspect the affected code, implement a cohesive change, run focused checks, fix failures, and broaden verification according to risk.
 
 If human authority is required, automation stops and writes `FOUNDER_DECISION.md` with the decision, reason, options, recommendation, and risks.
 

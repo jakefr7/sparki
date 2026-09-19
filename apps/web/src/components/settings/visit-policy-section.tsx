@@ -8,11 +8,18 @@ export function VisitPolicySection() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [signers, setSigners] = useState<StaffMember[]>([]);
+  const [medicationClerks, setMedicationClerks] = useState<StaffMember[]>([]);
   useEffect(() => {
     fetch('/api/visit-policy', { cache: 'no-store' })
       .then((response) => response.json())
       .then((body: { allowCheckoutWithOutstandingBalance: boolean }) => setAllowed(body.allowCheckoutWithOutstandingBalance))
       .finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    fetch('/api/staff?role=RECEPTIONIST,ASSISTANT', { cache: 'no-store' })
+      .then((response) => response.json())
+      .then((body: StaffMember[]) => setMedicationClerks(body))
+      .catch(() => setMessage('Could not load medication-clerk permissions.'));
   }, []);
   useEffect(() => {
     fetch('/api/staff?role=VETERINARIAN,OWNER', { cache: 'no-store' })
@@ -51,6 +58,23 @@ export function VisitPolicySection() {
     }
   }
 
+  async function setMedicationPermission(staff: StaffMember, next: boolean) {
+    setMessage(null);
+    setMedicationClerks((current) => current.map((entry) => entry.id === staff.id ? { ...entry, canManageMedications: next } : entry));
+    const response = await fetch(`/api/staff/${staff.id}/medication-permission`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canManageMedications: next }),
+    });
+    if (!response.ok) {
+      setMedicationClerks((current) => current.map((entry) => entry.id === staff.id ? { ...entry, canManageMedications: !next } : entry));
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      setMessage(body?.message ?? 'Could not update medication-clerk permission.');
+    } else {
+      setMessage('Medication-clerk permission saved.');
+    }
+  }
+
   return (
     <section className="settings-section-card visit-policy-settings">
       <div><p className="eyebrow">Visit lifecycle</p><h2>Checkout Policy</h2><p>Choose whether reception may finish checkout while a balance remains open.</p></div>
@@ -71,6 +95,20 @@ export function VisitPolicySection() {
             <span><strong>{staff.displayName}</strong><small>{staff.jobTitle ?? staff.role}</small></span>
           </label>
         ))}
+      </div>
+      <div className="visit-policy-settings__signers">
+        <h3>Licensed medication clerks</h3>
+        <p>Grant only after the clinic has verified the staff member&apos;s medication-clerk authorization. Reception remains view-only without this grant; technicians, veterinarians, and owners have clinical access by role.</p>
+        {medicationClerks.length ? medicationClerks.map((staff) => (
+          <label className="visit-policy-settings__toggle" key={staff.id}>
+            <input
+              type="checkbox"
+              checked={staff.canManageMedications}
+              onChange={(event) => void setMedicationPermission(staff, event.target.checked)}
+            />
+            <span><strong>{staff.displayName}</strong><small>{staff.jobTitle ?? staff.role}</small></span>
+          </label>
+        )) : <p>No reception or assistant staff are available at this location.</p>}
       </div>
       {message ? <p role="status">{message}</p> : null}
     </section>

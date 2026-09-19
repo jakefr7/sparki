@@ -406,9 +406,8 @@ describe('Patients (e2e)', () => {
         items: [],
         legacyNotes: null,
       });
-      expect(response.body.sections.medications.catalog).toEqual(
-        expect.arrayContaining(['Gabapentin', 'Carprofen / Rimadyl', 'Insulin']),
-      );
+      expect(response.body.sections.medications.catalog).toEqual([]);
+      expect(response.body.sections.medications.permissions).toEqual({ canManage: true });
       expect(response.body.sections.workItems).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.communication).toMatchObject({ status: 'unavailable' });
       expect(response.body.sections.financial).toMatchObject({ status: 'unavailable' });
@@ -571,6 +570,17 @@ describe('Patients (e2e)', () => {
           instructions: 'Give with food',
         },
       });
+      const catalogMedication = await prisma.catalogItem.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Gabapentin 100 mg capsule',
+          primaryType: 'MEDICATION',
+          strength: '100 mg',
+          form: 'Capsule',
+          route: 'Oral',
+          defaultFrequency: 'Every 12 hours',
+        },
+      });
 
       const response = await request(app.getHttpServer()).get(`/patients/${patientId}/workspace`);
 
@@ -603,9 +613,9 @@ describe('Patients (e2e)', () => {
           visitId: latestVisit.id,
         },
       });
-      expect(response.body.sections.medications.catalog).toEqual(
-        expect.arrayContaining(['Amoxicillin', 'NexGard', 'Pimobendan / Vetmedin']),
-      );
+      expect(response.body.sections.medications.catalog).toEqual([
+        expect.objectContaining({ id: catalogMedication.id, name: 'Gabapentin 100 mg capsule', strength: '100 mg', form: 'Capsule' }),
+      ]);
     });
 
     it('returns 404 when the patient belongs to a different organization', async () => {
@@ -676,7 +686,7 @@ describe('Patients (e2e)', () => {
   });
 
   describe('Patient medications', () => {
-    it('creates, edits, and discontinues a medication', async () => {
+    it('creates from hospital inventory, audits a refill, and requires a discontinuation reason', async () => {
       const created = await request(app.getHttpServer())
         .post('/patients')
         .send({
@@ -685,44 +695,71 @@ describe('Patients (e2e)', () => {
           clients: [{ clientId: primaryClientId, isPrimary: true }],
         });
 
+      const catalogMedication = await prisma.catalogItem.create({
+        data: {
+          organizationId: DEV_ORGANIZATION_ID,
+          name: 'Gabapentin',
+          primaryType: 'MEDICATION',
+          strength: '100 mg',
+          form: 'Capsule',
+          route: 'Oral',
+          defaultFrequency: 'Every 12 hours',
+          billable: true,
+          retailPrice: 24,
+        },
+      });
+
       const createResponse = await request(app.getHttpServer())
         .post(`/patients/${created.body.id}/medications`)
         .send({
-          medicationName: 'Custom free-text med',
+          catalogItemId: catalogMedication.id,
+          medicationName: 'Gabapentin',
           dose: '1 tablet',
-          frequency: 'Daily',
           instructions: 'Give at breakfast',
         });
 
       expect(createResponse.status).toBe(201);
       expect(createResponse.body).toMatchObject({
         patientId: created.body.id,
-        medicationName: 'Custom free-text med',
-        dose: '1 tablet',
-        frequency: 'Daily',
-        status: 'Active',
-      });
-
-      const editResponse = await request(app.getHttpServer())
-        .patch(`/patients/${created.body.id}/medications/${createResponse.body.id}`)
-        .send({ medicationName: 'Gabapentin', route: 'Oral', strength: '100 mg' });
-
-      expect(editResponse.status).toBe(200);
-      expect(editResponse.body).toMatchObject({
         medicationName: 'Gabapentin',
+        dose: '1 tablet',
+        frequency: 'Every 12 hours',
         route: 'Oral',
         strength: '100 mg',
         status: 'Active',
       });
+      expect(createResponse.body.startDate).toEqual(expect.any(String));
 
-      const discontinueResponse = await request(app.getHttpServer())
+      const editResponse = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}/medications/${createResponse.body.id}`)
+        .send({ instructions: 'Give with food' });
+
+      expect(editResponse.status).toBe(200);
+      expect(editResponse.body).toMatchObject({
+        medicationName: 'Gabapentin',
+        instructions: 'Give with food',
+        status: 'Active',
+      });
+
+      const invalidDiscontinueResponse = await request(app.getHttpServer())
         .patch(`/patients/${created.body.id}/medications/${createResponse.body.id}`)
         .send({ status: 'Discontinued', endDate: new Date('2026-07-10T00:00:00.000Z') });
+      expect(invalidDiscontinueResponse.status).toBe(400);
 
-      expect(discontinueResponse.status).toBe(200);
+      const refillResponse = await request(app.getHttpServer())
+        .post(`/patients/${created.body.id}/medications/${createResponse.body.id}/refill`);
+      expect(refillResponse.status).toBe(201);
+      expect(refillResponse.body).toMatchObject({ refillCount: 1, lastRefilledAt: expect.any(String) });
+
+      const discontinueResponse = await request(app.getHttpServer())
+        .post(`/patients/${created.body.id}/medications/${createResponse.body.id}/discontinue`)
+        .send({ reason: 'Treatment course complete' });
+
+      expect(discontinueResponse.status).toBe(201);
       expect(discontinueResponse.body).toMatchObject({
         medicationName: 'Gabapentin',
         status: 'Discontinued',
+        discontinueReason: 'Treatment course complete',
       });
 
       const workspace = await request(app.getHttpServer()).get(`/patients/${created.body.id}/workspace`);

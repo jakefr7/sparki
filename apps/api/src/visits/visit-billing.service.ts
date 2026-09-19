@@ -49,6 +49,39 @@ interface InvoiceTotals {
  */
 @Injectable()
 export class VisitBillingService {
+  async listForPatient(patientId: string, organizationId: string, locationId: string) {
+    const patient = await prisma.patient.findFirst({ where: { id: patientId, organizationId }, select: { id: true } });
+    if (!patient) throw new NotFoundException(`Patient ${patientId} not found`);
+    const invoices = await prisma.invoice.findMany({
+      where: { patientId, organizationId, locationId },
+      include: {
+        visit: { select: { id: true, reason: true, visitType: true, createdAt: true, state: true } },
+        lines: { orderBy: { createdAt: 'asc' } },
+        payments: { orderBy: { recordedAt: 'asc' }, include: PAYMENT_HISTORY_INCLUDE },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return invoices.map((invoice) => {
+      const totalCents = invoice.lines.reduce((sum, line) => sum + line.totalAmountCents, 0);
+      const amountPaidCents = invoice.payments.reduce((sum, payment) => sum + payment.amountCents, 0);
+      return {
+        id: invoice.id,
+        visitId: invoice.visitId,
+        visit: invoice.visit,
+        status: invoice.status,
+        version: invoice.version,
+        editable: !invoice.finalizedAt && !invoice.voidedAt,
+        finalizedAt: invoice.finalizedAt,
+        createdAt: invoice.createdAt,
+        totalCents,
+        amountPaidCents,
+        remainingBalanceCents: Math.max(totalCents - amountPaidCents, 0),
+        lines: invoice.lines,
+        payments: invoice.payments,
+      };
+    });
+  }
+
   /** Read-only: the current invoice + its computed totals, or `null` if no
    *  invoice has been created for this visit yet. Used by
    *  VisitDischargeService so checkout completion can defer to real

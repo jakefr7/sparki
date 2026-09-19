@@ -18,4 +18,7 @@ export interface AuthenticatedUser {
   /** Per-user grant allowing explicit assignment to finalize another
    * veterinarian's visit record. The actual signer is always recorded. */
   canFinalizeRecordsForOthers: boolean;
+  /** Explicit medication-clerk grant. Clinical roles may also be authorized
+   * by medication workflow policy, but reception is never inferred. */
+  canManageMedications?: boolean;
 }

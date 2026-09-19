@@ -255,6 +255,7 @@ export class AuthService {
       role: membership.role,
       canManageAdminSettings: user.canManageAdminSettings,
       canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
+      canManageMedications: user.canManageMedications,
     };
   }
 }

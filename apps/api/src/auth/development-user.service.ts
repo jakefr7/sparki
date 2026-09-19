@@ -53,6 +53,7 @@ export class DevelopmentUserService {
         locations: { connect: [{ id: location.id }] },
         canManageAdminSettings: true,
         canFinalizeRecordsForOthers: true,
+        canManageMedications: true,
       },
       create: {
         id: DEV_USER_ID,
@@ -65,6 +66,7 @@ export class DevelopmentUserService {
         // here too so local/test development is never blocked by it.
         canManageAdminSettings: true,
         canFinalizeRecordsForOthers: true,
+        canManageMedications: true,
         locations: { connect: [{ id: location.id }] },
         staffProfile: {
           create: { canReceiveAppointments: true, canOwnVisits: true },
@@ -108,6 +110,7 @@ export class DevelopmentUserService {
       role: user.role,
       canManageAdminSettings: user.canManageAdminSettings,
       canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
+      canManageMedications: user.canManageMedications,
     };
   }
 }

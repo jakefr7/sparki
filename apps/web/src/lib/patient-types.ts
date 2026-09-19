@@ -154,9 +154,11 @@ export interface PatientAlertSummary {
 
 export interface PatientMedicationSummary {
   id: string;
+  catalogItemId: string | null;
   medicationName: string;
   genericName: string | null;
   strength: string | null;
+  form: string | null;
   dose: string | null;
   route: string | null;
   frequency: string | null;
@@ -166,6 +168,11 @@ export interface PatientMedicationSummary {
   status: string;
   prescribedBy: string | null;
   source: string | null;
+  discontinueReason: string | null;
+  reactionNotes: string | null;
+  lastRefilledAt: string | null;
+  refillCount: number;
+  events: Array<{ id: string; type: string; reason: string | null; occurredAt: string }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -177,7 +184,8 @@ export interface MedicationsSummary {
     recordedAt: string;
     visitId: string;
   } | null;
-  catalog: string[];
+  catalog: Array<{ id: string; name: string; strength: string | null; form: string | null; route: string | null; defaultFrequency: string | null; retailPrice: string | null; billable: boolean }>;
+  permissions: { canManage: boolean };
 }
 
 export type MedicationsSection =
@@ -562,6 +570,7 @@ export interface StaffMember {
   canReceiveAppointments: boolean;
   canOwnVisits: boolean;
   canFinalizeRecordsForOthers: boolean;
+  canManageMedications: boolean;
 }
 
 /** Mirrors Clinic Provisioning v1's default species list (Dog, Cat); "Other"

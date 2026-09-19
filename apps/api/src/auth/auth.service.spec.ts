@@ -39,6 +39,7 @@ function createUser(overrides: Partial<User> = {}): User {
     workosUserId: 'workos_1',
     canManageAdminSettings: false,
     canFinalizeRecordsForOthers: false,
+    canManageMedications: false,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -84,6 +85,7 @@ describe('AuthService.resolveMembership', () => {
       role: 'VETERINARIAN',
       canManageAdminSettings: false,
       canFinalizeRecordsForOthers: false,
+      canManageMedications: false,
     });
     expect(findMemberships).toHaveBeenCalledWith({
       where: { userId: 'user_1', isActive: true },

@@ -1,21 +1,31 @@
-# Roadmap
+# Product Roadmap
 
-1. **Phase 1 — Trustworthy Engineering Baseline (`READY_FOR_FOUNDER_REVIEW`):** deterministic, isolated, and honest repository verification established; see [PHASE_1_CLOSEOUT.md](./PHASE_1_CLOSEOUT.md).
-2. **Phase 2 — Authentication & Tenant Safety (`COMPLETE / FOUNDER_APPROVED`):** identity propagation, authorization defaults, and tenant-isolation guarantees hardened and verified; see [PHASE_2_CLOSEOUT.md](./PHASE_2_CLOSEOUT.md).
-3. **Phase 3 — Clinical Workflow Integrity (`COMPLETE / FOUNDER_APPROVED`):** lifecycle, discharge blocking, records, and clinical safety behavior reconciled and verified; see [PHASE_3_CLOSEOUT.md](./PHASE_3_CLOSEOUT.md).
-4. **Phase 4 — Inventory Integrity Hardening (`COMPLETE / FOUNDER_APPROVED`):** inventory type safety, persistence guarantees, counts, usage, controlled inventory, and auditability hardened and verified; see [PHASE_4_CLOSEOUT.md](./PHASE_4_CLOSEOUT.md).
-5. **Phase 5 — Honest External / Financial Workflows (`COMPLETE / FOUNDER_APPROVED`):** simulated delivery is labeled honestly, attachments use a controlled private-storage boundary and authenticated access path, checkout uses non-payment balance/disposition semantics, and financial invariants are documented; see [PHASE_5_CLOSEOUT.md](./PHASE_5_CLOSEOUT.md).
-6. **Phase 6 — Clinic Pilot Core Care Completion (`READY_FOR_FOUNDER_REVIEW`):** the visible-UI routine outpatient canine/feline journey from Exam through Plan, Client Decision, Care, Discharge, and Record is implemented and verified; see [PHASE_6_CLOSEOUT.md](./PHASE_6_CLOSEOUT.md).
+Sparki uses a rolling product roadmap rather than development phases. Prior phase closeouts are historical evidence, not active planning gates.
 
-## Current roadmap state
+## Now
 
-Phase 6 — Clinic Pilot Core Care Completion has completed implementation and verification and is ready for founder review. No successor phase is active.
+- Review and stabilize the Anna-workflow implementation: patient-profile medications and invoices, exam closeout, Hospital Services, and patient-first intake.
+- Keep the loop small: build the requested behavior, run focused tests, fix failures, then run broader checks proportional to risk.
+- Keep clinical authorship, permissions, audit trails, tenant isolation, controlled inventory, and honest payment semantics intact.
 
-## Preserved deferred candidates
+## Next, after product input
 
-- Reconcile the known cross-phase Playwright product/test debt.
-- Resolve Phase 1's remaining founder-review status and preserved orchestration bookkeeping note.
-- Consider the optional Phase 4 inventory defense-in-depth follow-ups.
-- Decide whether to implement local-first GitHub PR preparation.
+- Medical-record, visit-summary, discharge, medication-label, and prescription print outputs.
+- Searchable RDVM intake directory.
+- Visitless phone-refill billing.
+- Recorded FAS score and behavioral-note workflow.
+- Automatic markup calculation, if desired.
 
-These remain documented gaps and follow-ups, not an approved successor phase.
+## Inputs needed
+
+- Example PDF and Packleader medication/invoice screenshots.
+- Phone-refill invoice policy.
+- Markup calculation behavior.
+- RDVM directory source/licensing.
+- FAS scale and capture workflow.
+
+## Ongoing engineering work
+
+- Fix product/test drift when working in the affected surface instead of carrying a permanent phase exception.
+- Use full integration, build, and browser suites for cross-cutting changes and release readiness; use focused checks for small local changes.
+- Preserve historical closeouts and run artifacts as reference-only evidence.

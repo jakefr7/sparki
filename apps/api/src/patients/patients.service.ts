@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
   prisma,
@@ -12,6 +12,7 @@ import {
   type VisitType,
 } from '@sparki/db';
 import { AppointmentsService } from '../appointments/appointments.service';
+import type { AuthenticatedUser } from '../auth/types';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
 import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
@@ -21,7 +22,6 @@ import type {
   UpdatePatientMedicationInput,
 } from './dto/patient-medication.schema';
 import type { UpdatePatientInput } from './dto/update-patient.schema';
-import { MEDICATION_CATALOG } from './medication-catalog';
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
   include: { clients: { include: { client: true } } },
@@ -300,9 +300,9 @@ export class PatientsService {
    * Appointments remain separate from Visits (see core-domain-model.md
    * "Appointment vs Visit").
    */
-  async getWorkspaceSummary(id: string, organizationId: string, locationId: string) {
+  async getWorkspaceSummary(id: string, organizationId: string, locationId: string, canManageMedications = false) {
     const patient = await this.findById(id, organizationId);
-    const [upcomingAppointments, activeVisit, recentVisits, patientAlerts, patientMedications, patientAttachments] = await Promise.all([
+    const [upcomingAppointments, activeVisit, recentVisits, patientAlerts, patientMedications, patientAttachments, medicationCatalog] = await Promise.all([
       this.appointments.listUpcomingForPatient(patient.id, organizationId),
       prisma.visit.findFirst({
         where: {
@@ -344,12 +344,23 @@ export class PatientsService {
       }),
       prisma.patientMedication.findMany({
         where: { patientId: patient.id, organizationId },
+        include: { events: { orderBy: { occurredAt: 'desc' } } },
         orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       }),
       prisma.clinicalAttachment.findMany({
         where: { patientId: patient.id, visitId: null, organizationId, locationId },
         include: { uploadedBy: true, events: { include: { actor: true }, orderBy: { createdAt: 'asc' } } },
         orderBy: { createdAt: 'desc' },
+      }),
+      prisma.catalogItem.findMany({
+        where: {
+          organizationId,
+          primaryType: 'MEDICATION',
+          status: 'ACTIVE',
+          OR: [{ locationId: null }, { locationId }],
+        },
+        select: { id: true, name: true, strength: true, form: true, route: true, defaultFrequency: true, retailPrice: true, billable: true },
+        orderBy: { name: 'asc' },
       }),
     ]);
 
@@ -511,7 +522,8 @@ export class PatientsService {
                 visitId: medicationsSource.id,
               }
             : null,
-          catalog: MEDICATION_CATALOG,
+          catalog: medicationCatalog,
+          permissions: { canManage: canManageMedications },
         },
         workItems: unavailableSection('Work system is not yet implemented.'),
         communication: unavailableSection('Communication module is not yet implemented.'),
@@ -556,36 +568,49 @@ export class PatientsService {
     });
   }
 
-  async createMedication(id: string, organizationId: string, input: CreatePatientMedicationInput) {
-    await this.findById(id, organizationId);
+  async createMedication(id: string, user: AuthenticatedUser, input: CreatePatientMedicationInput) {
+    this.requireMedicationManager(user);
+    await this.findById(id, user.organizationId);
+    const catalogItem = input.catalogItemId ? await prisma.catalogItem.findFirst({
+      where: { id: input.catalogItemId, organizationId: user.organizationId, primaryType: 'MEDICATION', status: 'ACTIVE', OR: [{ locationId: null }, { locationId: user.locationId }] },
+    }) : null;
+    if (input.catalogItemId && !catalogItem) throw new BadRequestException('Select an active medication from Hospital Inventory.');
 
-    return prisma.patientMedication.create({
+    return prisma.$transaction(async (tx) => {
+      const medication = await tx.patientMedication.create({
       data: {
-        organizationId,
+        organizationId: user.organizationId,
         patientId: id,
-        medicationName: input.medicationName,
+        catalogItemId: catalogItem?.id ?? null,
+        medicationName: catalogItem?.name ?? input.medicationName,
         genericName: input.genericName ?? null,
-        strength: input.strength ?? null,
+        strength: catalogItem?.strength ?? input.strength ?? null,
+        form: catalogItem?.form ?? null,
         dose: input.dose ?? null,
-        route: input.route ?? null,
-        frequency: input.frequency ?? null,
+        route: catalogItem?.route ?? input.route ?? null,
+        frequency: catalogItem?.defaultFrequency ?? input.frequency ?? null,
         instructions: input.instructions ?? null,
-        startDate: input.startDate ?? null,
+        startDate: input.startDate ?? new Date(),
         endDate: input.endDate ?? null,
         status: input.status,
         prescribedBy: input.prescribedBy ?? null,
         source: input.source ?? null,
       },
+      });
+      await tx.patientMedicationEvent.create({ data: { organizationId: user.organizationId, medicationId: medication.id, actorId: user.id, type: 'CREATED' } });
+      return medication;
     });
   }
 
   async updateMedication(
     id: string,
     medicationId: string,
-    organizationId: string,
+    user: AuthenticatedUser,
     input: UpdatePatientMedicationInput,
   ) {
-    await this.assertMedicationBelongsToPatient(id, medicationId, organizationId);
+    this.requireMedicationManager(user);
+    if (input.status === 'Discontinued') throw new BadRequestException('Use the discontinue action and provide a reason.');
+    await this.assertMedicationBelongsToPatient(id, medicationId, user.organizationId);
     const data: Prisma.PatientMedicationUpdateInput = compactUndefined({
       medicationName: input.medicationName,
       genericName: input.genericName,
@@ -601,10 +626,66 @@ export class PatientsService {
       source: input.source,
     });
 
-    return prisma.patientMedication.update({
-      where: { id: medicationId },
-      data,
+    return prisma.$transaction(async (tx) => {
+      const medication = await tx.patientMedication.update({ where: { id: medicationId }, data });
+      await tx.patientMedicationEvent.create({ data: { organizationId: user.organizationId, medicationId, actorId: user.id, type: 'EDITED' } });
+      return medication;
     });
+  }
+
+  async refillMedication(patientId: string, medicationId: string, user: AuthenticatedUser) {
+    this.requireMedicationManager(user);
+    await this.assertMedicationBelongsToPatient(patientId, medicationId, user.organizationId);
+    const medication = await prisma.patientMedication.findUniqueOrThrow({ where: { id: medicationId } });
+    if (medication.status !== 'Active') throw new BadRequestException('Only active medications can be refilled.');
+    const occurredAt = new Date();
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.patientMedication.update({ where: { id: medicationId }, data: { lastRefilledAt: occurredAt, refillCount: { increment: 1 } } });
+      await tx.patientMedicationEvent.create({ data: { organizationId: user.organizationId, medicationId, actorId: user.id, type: 'REFILLED', occurredAt } });
+      const visit = await tx.visit.findFirst({ where: { patientId, organizationId: user.organizationId, locationId: user.locationId, state: { notIn: TERMINAL_VISIT_STATES } }, orderBy: { createdAt: 'desc' } });
+      const item = medication.catalogItemId ? await tx.catalogItem.findFirst({ where: { id: medication.catalogItemId, organizationId: user.organizationId } }) : null;
+      if (visit && item?.billable && item.retailPrice) {
+        const invoice = await tx.invoice.upsert({
+          where: { visitId: visit.id },
+          create: { organizationId: user.organizationId, locationId: user.locationId, patientId, clientId: visit.clientId, visitId: visit.id, createdById: user.id },
+          update: {},
+        });
+        if (!invoice.finalizedAt && !invoice.voidedAt) {
+          const unitAmountCents = Math.round(Number(item.retailPrice) * 100);
+          await tx.invoiceLine.create({ data: { organizationId: user.organizationId, invoiceId: invoice.id, description: `Refill: ${medication.medicationName}`, unitAmountCents, totalAmountCents: unitAmountCents, sourceType: 'CATALOG_ITEM', sourceRecordId: medicationId, catalogItemId: item.id, createdById: user.id } });
+          await tx.invoice.update({ where: { id: invoice.id }, data: { status: 'OPEN', version: { increment: 1 } } });
+        }
+      }
+      return updated;
+    });
+  }
+
+  async discontinueMedication(patientId: string, medicationId: string, user: AuthenticatedUser, reason: string) {
+    this.requireMedicationManager(user);
+    await this.assertMedicationBelongsToPatient(patientId, medicationId, user.organizationId);
+    const occurredAt = new Date();
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.patientMedication.update({ where: { id: medicationId }, data: { status: 'Discontinued', endDate: occurredAt, discontinueReason: reason } });
+      await tx.patientMedicationEvent.create({ data: { organizationId: user.organizationId, medicationId, actorId: user.id, type: 'DISCONTINUED', reason, occurredAt } });
+      return updated;
+    });
+  }
+
+  async flagMedicationReaction(patientId: string, medicationId: string, user: AuthenticatedUser, reaction: string) {
+    this.requireMedicationManager(user);
+    await this.assertMedicationBelongsToPatient(patientId, medicationId, user.organizationId);
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.patientMedication.update({ where: { id: medicationId }, data: { reactionNotes: reaction } });
+      await tx.patientMedicationEvent.create({ data: { organizationId: user.organizationId, medicationId, actorId: user.id, type: 'REACTION_FLAGGED', reason: reaction } });
+      await tx.patientAlert.create({ data: { organizationId: user.organizationId, patientId, category: 'Allergy', severity: 'Critical', message: `${updated.medicationName}: ${reaction}` } });
+      return updated;
+    });
+  }
+
+  private requireMedicationManager(user: AuthenticatedUser) {
+    if (!(user.canManageMedications || ['OWNER', 'VETERINARIAN', 'TECHNICIAN'].includes(user.role))) {
+      throw new ForbiddenException('Medication changes require medication-clerk or clinical medication permission.');
+    }
   }
 
   private async assertClientsBelongToOrganization(
@@ -749,9 +830,11 @@ function toPatientAlertSummary(alert: {
 
 function toMedicationSummary(medication: {
   id: string;
+  catalogItemId: string | null;
   medicationName: string;
   genericName: string | null;
   strength: string | null;
+  form: string | null;
   dose: string | null;
   route: string | null;
   frequency: string | null;
@@ -761,14 +844,21 @@ function toMedicationSummary(medication: {
   status: PatientMedicationStatus;
   prescribedBy: string | null;
   source: string | null;
+  discontinueReason: string | null;
+  reactionNotes: string | null;
+  lastRefilledAt: Date | null;
+  refillCount: number;
+  events: Array<{ id: string; type: string; reason: string | null; occurredAt: Date }>;
   createdAt: Date;
   updatedAt: Date;
 }) {
   return {
     id: medication.id,
+    catalogItemId: medication.catalogItemId,
     medicationName: medication.medicationName,
     genericName: medication.genericName,
     strength: medication.strength,
+    form: medication.form,
     dose: medication.dose,
     route: medication.route,
     frequency: medication.frequency,
@@ -778,6 +868,11 @@ function toMedicationSummary(medication: {
     status: medication.status,
     prescribedBy: medication.prescribedBy,
     source: medication.source,
+    discontinueReason: medication.discontinueReason,
+    reactionNotes: medication.reactionNotes,
+    lastRefilledAt: medication.lastRefilledAt,
+    refillCount: medication.refillCount,
+    events: medication.events,
     createdAt: medication.createdAt,
     updatedAt: medication.updatedAt,
   };

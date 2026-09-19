@@ -90,6 +90,40 @@ export class StaffService {
     });
     return toStaffSummary(updated);
   }
+
+  async updateMedicationPermission(id: string, actor: AuthenticatedUser, allowed: boolean) {
+    const existing = await prisma.user.findFirst({
+      where: {
+        id,
+        organizationId: actor.organizationId,
+        isActive: true,
+        role: { in: ['RECEPTIONIST', 'ASSISTANT'] },
+      },
+    });
+    if (!existing) {
+      throw new ConflictException(
+        'Medication-clerk permission is only needed for active receptionists or assistants; clinical roles already have medication access.',
+      );
+    }
+    const updated = await prisma.user.update({
+      where: { id: existing.id },
+      data: { canManageMedications: allowed },
+      ...staffWithProfile,
+    });
+    await prisma.schedulerConfigChange.create({
+      data: {
+        organizationId: actor.organizationId,
+        locationId: actor.locationId,
+        actorId: actor.id,
+        entityType: 'MedicationPermission',
+        entityId: existing.id,
+        action: allowed ? 'Granted' : 'Revoked',
+        before: { canManageMedications: existing.canManageMedications },
+        after: { canManageMedications: allowed },
+      },
+    });
+    return toStaffSummary(updated);
+  }
 }
 
 function toStaffSummary(user: StaffWithProfile) {
@@ -104,6 +138,7 @@ function toStaffSummary(user: StaffWithProfile) {
     canReceiveAppointments: user.staffProfile?.canReceiveAppointments ?? false,
     canOwnVisits: user.staffProfile?.canOwnVisits ?? false,
     canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
+    canManageMedications: user.canManageMedications,
     color: user.staffProfile?.color ?? null,
   };
 }

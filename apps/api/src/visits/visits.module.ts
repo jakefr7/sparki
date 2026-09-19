@@ -13,10 +13,11 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ClinicalAttachmentsController } from './clinical-attachments.controller';
 import { ClinicalAttachmentsService } from './clinical-attachments.service';
+import { PatientBillingController } from './patient-billing.controller';
 
 @Module({
   imports: [PatientsModule, AppointmentsModule, InventoryModule, MessagingModule],
-  controllers: [VisitsController, VisitPolicyController, ClinicalAttachmentsController],
+  controllers: [VisitsController, VisitPolicyController, ClinicalAttachmentsController, PatientBillingController],
   providers: [
     VisitsService,
     VisitLifecycleService,

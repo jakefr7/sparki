@@ -13,6 +13,10 @@ import {
 import {
   createPatientMedicationSchema,
   type CreatePatientMedicationInput,
+  discontinuePatientMedicationSchema,
+  type DiscontinuePatientMedicationInput,
+  flagMedicationReactionSchema,
+  type FlagMedicationReactionInput,
   updatePatientMedicationSchema,
   type UpdatePatientMedicationInput,
 } from './dto/patient-medication.schema';
@@ -58,7 +62,7 @@ export class PatientsController {
 
   @Get(':id/workspace')
   getWorkspaceSummary(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.patients.getWorkspaceSummary(id, user.organizationId, user.locationId);
+    return this.patients.getWorkspaceSummary(id, user.organizationId, user.locationId, this.canManageMedications(user));
   }
 
   @Post(':id/alerts')
@@ -86,7 +90,7 @@ export class PatientsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(createPatientMedicationSchema)) body: CreatePatientMedicationInput,
   ) {
-    return this.patients.createMedication(id, user.organizationId, body);
+    return this.patients.createMedication(id, user, body);
   }
 
   @Patch(':id/medications/:medicationId')
@@ -96,7 +100,32 @@ export class PatientsController {
     @Param('medicationId') medicationId: string,
     @Body(new ZodValidationPipe(updatePatientMedicationSchema)) body: UpdatePatientMedicationInput,
   ) {
-    return this.patients.updateMedication(id, medicationId, user.organizationId, body);
+    return this.patients.updateMedication(id, medicationId, user, body);
+  }
+
+  @Post(':id/medications/:medicationId/refill')
+  refillMedication(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Param('medicationId') medicationId: string) {
+    return this.patients.refillMedication(id, medicationId, user);
+  }
+
+  @Post(':id/medications/:medicationId/discontinue')
+  discontinueMedication(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('medicationId') medicationId: string,
+    @Body(new ZodValidationPipe(discontinuePatientMedicationSchema)) body: DiscontinuePatientMedicationInput,
+  ) {
+    return this.patients.discontinueMedication(id, medicationId, user, body.reason);
+  }
+
+  @Post(':id/medications/:medicationId/reaction')
+  flagMedicationReaction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('medicationId') medicationId: string,
+    @Body(new ZodValidationPipe(flagMedicationReactionSchema)) body: FlagMedicationReactionInput,
+  ) {
+    return this.patients.flagMedicationReaction(id, medicationId, user, body.reaction);
   }
 
   @Patch(':id')
@@ -106,5 +135,9 @@ export class PatientsController {
     @Body(new ZodValidationPipe(updatePatientSchema)) body: UpdatePatientInput,
   ) {
     return this.patients.update(id, user.organizationId, body);
+  }
+
+  private canManageMedications(user: AuthenticatedUser) {
+    return Boolean(user.canManageMedications || ['OWNER', 'VETERINARIAN', 'TECHNICIAN'].includes(user.role));
   }
 }

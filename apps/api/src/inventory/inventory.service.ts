@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -44,6 +45,11 @@ const money = (value: string | null | undefined) =>
   value == null || value === '' ? null : new Prisma.Decimal(value);
 const decimalEqual = (current: Prisma.Decimal | null, next: string | null | undefined) =>
   current === null ? next == null || next === '' : next != null && next !== '' && current.eq(next);
+const canManageServices = (user: AuthenticatedUser) =>
+  ['OWNER', 'PRACTICE_MANAGER'].includes(user.role) || user.canManageAdminSettings;
+const requireServiceManager = (user: AuthenticatedUser) => {
+  if (!canManageServices(user)) throw new ForbiddenException('This action requires Hospital Settings permission.');
+};
 export const availableQuantity = (b: {
   onHand: Prisma.Decimal;
   quarantined: Prisma.Decimal;
@@ -224,6 +230,7 @@ export class InventoryService {
 
   async create(user: AuthenticatedUser, input: ItemInput) {
     requireInventory(user, 'EDIT_ITEMS');
+    if (input.primaryType === 'SERVICE') requireServiceManager(user);
     try {
       return await prisma.$transaction(async (tx) => {
         const item = await tx.catalogItem.create({
@@ -239,6 +246,9 @@ export class InventoryService {
             tags: input.tags,
             brand: input.brand ?? null,
             manufacturer: input.manufacturer ?? null,
+            strength: input.strength ?? null,
+            form: input.form ?? null,
+            defaultFrequency: input.defaultFrequency ?? null,
             sku: input.sku || null,
             status: input.status,
             imageUrl: input.imageUrl ?? null,
@@ -246,6 +256,7 @@ export class InventoryService {
             inventoryTracked: input.inventoryTracked,
             taxable: input.taxable,
             retailPrice: money(input.retailPrice),
+            markupPercent: money(input.markupPercent),
             internalNotes: input.internalNotes ?? null,
             lotTracking: input.lotTracking,
             expirationTracking: input.expirationTracking,
@@ -292,6 +303,7 @@ export class InventoryService {
   async update(user: AuthenticatedUser, id: string, input: UpdateItemInput) {
     requireInventory(user, 'EDIT_ITEMS');
     const current = await this.findItem(user, id);
+    if (current.primaryType === 'SERVICE' || input.primaryType === 'SERVICE') requireServiceManager(user);
     const { barcodes, conversion, ...data } = input;
     return prisma.$transaction(async (tx) => {
       if (barcodes) {
@@ -350,6 +362,7 @@ export class InventoryService {
           ...data,
           ...(data.sku !== undefined ? { sku: data.sku || null } : {}),
           ...(data.retailPrice !== undefined ? { retailPrice: money(data.retailPrice) } : {}),
+          ...(data.markupPercent !== undefined ? { markupPercent: money(data.markupPercent) } : {}),
           ...(data.minimumStock !== undefined ? { minimumStock: money(data.minimumStock) } : {}),
           ...(data.maximumStock !== undefined ? { maximumStock: money(data.maximumStock) } : {}),
           ...(data.reorderPoint !== undefined ? { reorderPoint: money(data.reorderPoint) } : {}),
@@ -365,6 +378,7 @@ export class InventoryService {
   async archive(user: AuthenticatedUser, id: string) {
     requireInventory(user, 'ARCHIVE');
     const item = await this.findItem(user, id);
+    if (item.primaryType === 'SERVICE') requireServiceManager(user);
     if (item.controlledSubstance) {
       const blocked = await prisma.controlledDiscrepancyCase.count({
         where: {
@@ -385,7 +399,8 @@ export class InventoryService {
   }
   async delete(user: AuthenticatedUser, id: string) {
     requireInventory(user, 'DELETE_UNUSED');
-    await this.findItem(user, id);
+    const item = await this.findItem(user, id);
+    if (item.primaryType === 'SERVICE') requireServiceManager(user);
     const history = await prisma.catalogItem.findUnique({
       where: { id },
       select: {

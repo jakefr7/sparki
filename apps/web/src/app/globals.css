@@ -26,6 +26,13 @@
   --body-gradient-tint-2: #50606f;
 }
 
+/* Phase 7: patient billing, medication safety, and final visit overview. */
+.patient-invoice-workspace{display:grid;gap:18px}.patient-invoice-receipt{display:grid;gap:16px}.patient-invoice-history{display:grid;gap:10px}.patient-invoice-history article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:18px;padding:14px 16px;border:1px solid var(--color-border,#dce4e7);border-radius:12px}.patient-invoice-history article>div{display:flex;flex-direction:column;gap:3px}.patient-invoice-history article>div:nth-child(2){text-align:right}.patient-invoice-history article span{color:var(--color-text-muted,#687981);font-size:12px}.patient-invoice-history article>a{font-weight:700;color:var(--color-primary,#176f69)}
+.patient-medication-card--discontinued{border-color:#e4b5b5;background:#fff7f7}.patient-medication-card--discontinued .medication-status{background:#f5dada;color:#8d2929}.patient-medication-card__reaction{color:#9a3030}.patient-medication-card__reason{color:#7b3e3e}.patient-medication-action{grid-column:1/-1;margin-top:12px;padding-top:12px;border-top:1px solid var(--color-border,#dce4e7)}.patient-medication-action label{display:grid;gap:6px}.patient-medication-action textarea{min-height:80px}.patient-medication-action>div{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}.patient-medication-preset{display:grid;gap:3px;padding:12px;border:1px solid #b9ddd8;border-radius:10px;background:#eff8f7}.patient-medication-preset>span,.profile-permission-note{font-size:12px;color:var(--color-text-muted,#687981)}.patient-medication-suggestions button{display:flex;flex-direction:column;align-items:flex-start}.patient-medication-suggestions button small{font-size:11px;color:var(--color-text-muted,#687981)}
+.visit-final-overview{margin-bottom:18px;padding:22px;border:1px solid var(--color-border,#dce4e7);border-radius:16px;background:var(--color-surface,#fff)}
+.settings-services{display:grid;gap:18px}.settings-section-heading{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.settings-section-heading h2{margin:0}.settings-section-heading p{margin:4px 0 0}.settings-service-list{display:grid;gap:9px}.settings-service-list article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:18px;align-items:center;padding:14px;border:1px solid var(--color-border,#dce4e7);border-radius:11px}.settings-service-list article>div{display:flex;flex-direction:column;gap:3px}.settings-service-list article>div:nth-child(2){text-align:right}.settings-service-list article span{font-size:12px;color:var(--color-text-muted,#687981)}.settings-checkbox{display:flex!important;align-items:center;gap:8px}.settings-checkbox input{width:auto}
+@media(max-width:720px){.patient-invoice-history article,.settings-service-list article{grid-template-columns:1fr}.patient-invoice-history article>div:nth-child(2),.settings-service-list article>div:nth-child(2){text-align:left}.settings-section-heading{align-items:stretch;flex-direction:column}}
+
 :root[data-theme='light'] {
   color-scheme: light;
 
@@ -11964,6 +11971,7 @@ body:has(.patient-profile-hub) {
 }
 
 .patient-profile-hub .patient-profile-hero__details dt {
+  margin: 0;
   font-size: 0.64rem;
   font-weight: 750;
 }
@@ -13551,6 +13559,12 @@ button.settings-nav__sign-out:hover {
   padding-block: 0.95rem;
 }
 
+/* Keep the editable patient photo anchored to the top of the profile card,
+   rather than vertically centering it against the taller patient summary. */
+.patient-profile-hub .patient-photo-control {
+  align-self: start;
+}
+
 .patient-profile-hub .patient-profile-actions {
   display: grid;
   grid-template-columns: 1fr;
@@ -13635,6 +13649,7 @@ button.settings-nav__sign-out:hover {
   .patient-profile-hub .patient-profile-actions .button-secondary {
     width: auto;
   }
+
 }
 
 /* Patient Profile edit is a focused, scrollable form instead of inheriting the

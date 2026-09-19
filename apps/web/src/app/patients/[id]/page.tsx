@@ -11,6 +11,7 @@ import { PatientNewAppointmentButton } from '../../../components/patient-new-app
 import { PatientProfileEditPanel } from '../../../components/patient-profile-edit-panel';
 import { PatientProfileTabs } from '../../../components/patient-profile-tabs';
 import { PatientPhotoActions } from '../../../components/patient-photo-actions';
+import { PatientInvoicePanel } from '../../../components/patient-invoice-panel';
 import { env } from '../../../lib/env';
 import { authenticatedServerFetch } from '../../../lib/server-api';
 import { formatAge, visitStateLabel } from '../../../lib/format';
@@ -97,7 +98,6 @@ export default async function PatientWorkspacePage({
   const nextAppointment = upcomingAppointments[0] ?? null;
   const headerAlert = patient.patientAlerts[0]?.message ?? patient.alerts;
   const alertCount = patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
-  const activeMedicationCount = medications?.items.filter((item) => item.status === 'Active').length ?? 0;
   const ageLine = patientDobLine(patient.dateOfBirth, patient.estimatedAge);
   const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
   const patientDetails = [
@@ -203,19 +203,6 @@ export default async function PatientWorkspacePage({
         </div>
       </header>
 
-      <section className={`patient-alert-strip${activeMedicationCount > 0 || alertCount > 0 ? ' patient-alert-strip--has-clinical-data' : ''}`} aria-label="Clinical summary">
-        <div className="patient-alert-strip__item">
-          <span>Clinical</span>
-          <strong>{activeMedicationCount > 0 ? `${activeMedicationCount} active medication${activeMedicationCount === 1 ? '' : 's'}` : 'No active medications'} · {headerAlert ?? 'No allergies or alerts'}</strong>
-          {medications?.legacyNotes && activeMedicationCount === 0 && (
-            <Link href={`/visits/${medications.legacyNotes.visitId}`}>
-              Legacy note updated {visitDate(medications.legacyNotes.recordedAt)}
-            </Link>
-          )}
-          {alertCount > 1 ? <a href="#patient-profile-tab-alerts">View all alerts</a> : null}
-        </div>
-      </section>
-
       <PatientProfileTabs
         tabs={[
           {
@@ -320,6 +307,11 @@ export default async function PatientWorkspacePage({
             id: 'alerts',
             label: 'Alerts',
             panel: <PatientAlertsPanel patientId={patient.id} alerts={patient.patientAlerts} legacyAlert={patient.alerts} />,
+          },
+          {
+            id: 'invoices',
+            label: 'Invoices',
+            panel: <PatientInvoicePanel patientId={patient.id} activeVisitId={currentVisit?.id ?? null} />,
           },
         ]}
       />

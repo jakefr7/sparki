@@ -13,8 +13,6 @@ const STRUCTURED_EXAM_KIND = 'sparki-small-animal-exam';
 type ExamFindings = NonNullable<VisitDetail['examFindings']>;
 type Intake = VisitDetail['intake'];
 type FindingStatus = 'Normal' | 'Abnormal' | 'Not examined';
-// A status is not a documented finding until the clinician selects it or adds a note.
-// This keeps the structured exam from turning untouched controls into clinical facts.
 type SystemFinding = { status: FindingStatus; notes: string; documented?: boolean };
 
 const EXAM_SYSTEMS = [
@@ -50,6 +48,7 @@ interface StructuredExam {
 interface ExamDraft extends StructuredExam {
   problemList: string;
   recommendations: string;
+  whatsNext: string;
 }
 
 interface ExamFindingsPayload {
@@ -60,10 +59,23 @@ interface ExamFindingsPayload {
 }
 
 function emptySystems(): Record<SystemKey, SystemFinding> {
-  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Not examined', notes: '', documented: false }])) as Record<SystemKey, SystemFinding>;
+  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Normal', notes: '', documented: true }])) as Record<SystemKey, SystemFinding>;
+}
+
+const WHATS_NEXT_HEADING = "\n\nWhat's Next\n";
+
+function splitPlan(value: string | null | undefined) {
+  const plan = value ?? '';
+  const marker = plan.indexOf(WHATS_NEXT_HEADING);
+  if (marker === -1) return { treatmentPlan: plan, whatsNext: '' };
+  return {
+    treatmentPlan: plan.slice(0, marker),
+    whatsNext: plan.slice(marker + WHATS_NEXT_HEADING.length),
+  };
 }
 
 function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
+  const plan = splitPlan(findings?.plan);
   const fallback: ExamDraft = {
     kind: STRUCTURED_EXAM_KIND,
     version: 1,
@@ -71,7 +83,8 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
     systems: emptySystems(),
     additionalNotes: findings?.objective ?? findings?.subjective ?? '',
     problemList: findings?.assessment ?? '',
-    recommendations: findings?.plan ?? '',
+    recommendations: plan.treatmentPlan,
+    whatsNext: plan.whatsNext,
   };
 
   if (!findings?.objective) return fallback;
@@ -82,15 +95,15 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
       ...fallback,
       ...parsed,
       general: { ...fallback.general, ...parsed.general },
-      // Records created before explicit documentation tracking may contain the
-      // old default of "Normal". Do not present that inferred value as an exam
-      // finding; clinicians can affirm the relevant findings during review.
+      // New exams begin at the clinic-confirmed Normal default. Explicitly
+      // documented historical findings still replace those defaults.
       systems: {
         ...fallback.systems,
         ...Object.fromEntries(Object.entries(parsed.systems ?? {}).filter(([, finding]) => finding?.documented === true)),
       },
       problemList: findings.assessment ?? '',
-      recommendations: findings.plan ?? '',
+      recommendations: plan.treatmentPlan,
+      whatsNext: plan.whatsNext,
     };
   } catch {
     return fallback;
@@ -98,12 +111,14 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
 }
 
 function payloadFromDraft(draft: ExamDraft): ExamFindingsPayload {
-  const { problemList, recommendations, ...structured } = draft;
+  const { problemList, recommendations, whatsNext, ...structured } = draft;
   return {
     subjective: null,
     objective: JSON.stringify(structured),
     assessment: problemList || null,
-    plan: recommendations || null,
+    plan: recommendations || whatsNext
+      ? `${recommendations}${whatsNext ? `${WHATS_NEXT_HEADING}${whatsNext}` : ''}`
+      : null,
   };
 }
 
@@ -180,7 +195,8 @@ function ExamFindingsSummary({ examFindings }: { examFindings: ExamFindings }) {
         <div><dt>General assessment</dt><dd>{[draft.general.painScore && `Pain ${draft.general.painScore}`, draft.general.bodyConditionScore && `BCS ${draft.general.bodyConditionScore}/9`].filter(Boolean).join(' · ') || 'Not captured'}</dd></div>
         <div><dt>Body systems</dt><dd>{examined.length ? examined.map(([key, label]) => `${label}: ${draft.systems[key].status}${draft.systems[key].notes ? ` — ${draft.systems[key].notes}` : ''}`).join('\n') : draft.additionalNotes || 'Not captured'}</dd></div>
         <div><dt>Problem list / diagnoses</dt><dd>{draft.problemList || 'Not captured'}</dd></div>
-        <div><dt>Recommendations / plan</dt><dd>{draft.recommendations || 'Not captured'}</dd></div>
+        <div><dt>Treatment plan</dt><dd>{draft.recommendations || 'Not captured'}</dd></div>
+        <div><dt>What&apos;s next</dt><dd>{draft.whatsNext || 'Not captured'}</dd></div>
       </dl>
     </div>
   );
@@ -277,7 +293,8 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake, return
 
             <div className="physical-exam-conclusion physical-exam-conclusion--stacked">
               <DiagnosisInput value={draft.problemList} onChange={(next) => updateDraft((d) => ({ ...d, problemList: next }))} />
-              <label className="physical-exam-plan"><span>Plan and discharges</span><textarea rows={10} maxLength={8000} placeholder="Plan, treatments, and take-home discharge instructions" value={draft.recommendations} onChange={(e) => updateDraft((d) => ({ ...d, recommendations: e.target.value }))} /></label>
+              <label className="physical-exam-plan"><span>Treatment Plan</span><textarea rows={8} maxLength={8000} placeholder="Document treatments, medications, diagnostics, and client instructions" value={draft.recommendations} onChange={(e) => updateDraft((d) => ({ ...d, recommendations: e.target.value }))} /></label>
+              <label className="physical-exam-plan"><span>What&apos;s Next</span><textarea rows={4} maxLength={4000} placeholder="Follow-up timing, recheck recommendations, monitoring, and pending results" value={draft.whatsNext} onChange={(e) => updateDraft((d) => ({ ...d, whatsNext: e.target.value }))} /></label>
             </div>
             {draft.additionalNotes.trim() ? (
               <div className="physical-exam-legacy-notes"><span>Earlier exam notes</span><p>{draft.additionalNotes}</p></div>
@@ -292,7 +309,7 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake, return
           </div>
         ) : null}
       </section>
-      {editable ? (<div className="visit-step-actions"><span /><button type="button" className="button-primary exam-complete-button" disabled={submitting} onClick={() => void completeExam()}>{submitting ? 'Saving…' : 'Continue to care plan →'}</button></div>) : null}
+      {editable ? (<div className="visit-step-actions"><span /><button type="button" className="button-primary exam-complete-button" disabled={submitting} onClick={() => void completeExam()}>{submitting ? 'Saving…' : 'Continue to treatment plan →'}</button></div>) : null}
     </div>
   );
 }

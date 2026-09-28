@@ -1,4 +1,4 @@
-import type { UserRole } from '@sparki/db';
+import type { SubscriptionStatus, UserRole } from '@sparki/db';
 
 export interface AuthenticatedUser {
   id: string;
@@ -12,6 +12,12 @@ export interface AuthenticatedUser {
   locationId: string;
   /** Identity only (User.role) — no permission framework yet. */
   role: UserRole;
+  /** The resolved membership's clinic's billing state (Organization.
+   *  subscriptionStatus), read at session-resolution time — see
+   *  SubscriptionGuard, which is what actually enforces it. Never trust a
+   *  cached copy of this for a long-lived process; it is re-read on every
+   *  session verification. */
+  subscriptionStatus: SubscriptionStatus;
   /** Standalone per-user grant (User.canManageAdminSettings), deliberately
    *  not derived from role — see permissions.ts. */
   canManageAdminSettings: boolean;

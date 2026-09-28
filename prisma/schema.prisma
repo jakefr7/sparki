@@ -45,9 +45,62 @@ datasource db {
 // and docs/blueprint/11-permission-and-ownership-v1.md (isolation). Role is
 // identity only (fixed UserRole enum below) — no permission framework yet.
 
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  SUSPENDED
+}
+
 model Organization {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   name      String
+  legalName String?
+  phone     String?
+  email     String?
+
+  // Structured clinic address, same shape as Client's (see Client model
+  // below) — discrete columns rather than one string so city/state/zip stay
+  // queryable/reportable later (billing, tax, clinic directories).
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String?
+
+  // Clinic-wide default time zone, used to seed the first Location's
+  // authoritative Location.timeZone during setup. Location remains the
+  // source of truth for scheduling; this is the clinic-level default shown
+  // during onboarding and for any future additional Location.
+  timezone String?
+
+  // --- Sparki subscription / billing state (docs/adr/ADR-007) ------------
+  // Organization is the Sparki billing tenant: one clinic, one Stripe
+  // customer, one active subscription. Authoritative only from
+  // billing-webhook-verified state (see apps/api/src/billing) — never from a
+  // client-supplied value. Defaults to ACTIVE because every *existing*
+  // Organization-creating code path (dev seeds, other modules' fixtures)
+  // predates billing and has no reason to be gated; only
+  // ClinicProvisioningService (driven by a verified Stripe webhook event)
+  // ever creates an Organization with a non-ACTIVE status, and it always
+  // sets one explicitly.
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  // Guards against out-of-order webhook delivery: an incoming event only
+  // updates subscriptionStatus if its own Stripe `created` timestamp is at
+  // least this recent. Null means status has never been set from a webhook.
+  subscriptionStatusUpdatedAt DateTime?
+  stripeCustomerId            String?   @unique
+  stripeSubscriptionId        String?   @unique
+  subscriptionPriceId         String?
+  subscriptionCurrentPeriodEnd DateTime?
+
+  // Set once the owner finishes the /setup wizard (clinic profile step, plus
+  // an explicit "finish setup" action — team invites are optional). Null
+  // means onboarding is still in progress.
+  onboardingCompletedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -89,6 +142,8 @@ model Organization {
 
   memberships    OrganizationMembership[]
   locationAccess ClinicLocationAccess[]
+  invitations    ClinicInvitation[]
+  events         OrganizationEvent[]
 }
 
 model Location {
@@ -239,6 +294,9 @@ model User {
   sentClientCommunicationMessages    ClientCommunicationMessage[]
   assignedClientCommunicationThreads ClientCommunicationThread[]
 
+  invitationsSent    ClinicInvitation[]  @relation("InvitationInvitedBy")
+  organizationEvents OrganizationEvent[] @relation("OrganizationEventActor")
+
   @@index([organizationId])
   @@index([organizationId, role])
 }
@@ -275,17 +333,34 @@ model StaffProfile {
 // no multi-org switcher yet, so AuthService.resolveMembership treats more
 // than one active row as an error rather than guessing which one to use.
 
+enum MembershipStatus {
+  ACTIVE
+  DISABLED
+}
+
 model OrganizationMembership {
   id             String   @id @default(cuid())
   organizationId String
   userId         String
   role           UserRole
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  // Kept alongside `status` below — always written together by the same
+  // call site, never independently. `isActive` remains what every
+  // pre-existing read site filters on (AuthService.resolveMembership,
+  // appointment-availability.service.ts, scheduler-config.service.ts), so
+  // this migration changes no existing query's behavior. `status` is the
+  // richer value new team-management code should prefer (surfaces ACTIVE vs
+  // DISABLED distinctly, and leaves room for future values without another
+  // migration). A later migration can drop `isActive` once every read site
+  // moves to `status`.
+  isActive Boolean          @default(true)
+  status   MembershipStatus @default(ACTIVE)
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  user         User         @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  user         User              @relation(fields: [userId], references: [id])
+  invitation   ClinicInvitation?
 
   @@unique([organizationId, userId])
   @@index([userId])
@@ -310,6 +385,115 @@ model ClinicLocationAccess {
 
   @@unique([clinicLocationId, userId])
   @@index([userId])
+}
+
+// --- Clinic invitations, membership audit trail, billing webhooks ---------
+// docs/adr/ADR-007-clinic-provisioning-and-billing.md.
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
+// A pending grant of clinic access for an email address that may not have a
+// Sparki User yet. The clinic owner's own first membership is also created
+// through this model (invitedByUserId null, role OWNER, system-generated by
+// ClinicProvisioningService) — there is no separate "owner activation"
+// concept; activating the owner account *is* accepting a ClinicInvitation.
+// See InvitationsService.
+//
+// Expiration is intentionally not a stored status: "is this invitation still
+// usable" is computed as `status = PENDING AND expiresAt > now()` at read
+// time, so there is no background job keeping a stored status in sync.
+model ClinicInvitation {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  role           UserRole
+
+  // SHA-256 hex digest of the raw activation/invite token. The raw token is
+  // only ever embedded in the emailed link, never stored — see
+  // InvitationsService.issueToken. Looked up directly by this hash.
+  tokenHash String @unique
+
+  status     InvitationStatus @default(PENDING)
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  // Null for the system-generated owner-founding invitation.
+  invitedByUserId String?
+
+  // Set once acceptance creates the resulting membership — an idempotency
+  // marker as much as an audit pointer (see InvitationsService.accept, which
+  // claims this row with a conditional update before creating anything).
+  createdMembershipId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization      Organization            @relation(fields: [organizationId], references: [id])
+  invitedBy         User?                   @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  createdMembership OrganizationMembership? @relation(fields: [createdMembershipId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([organizationId, email])
+}
+
+enum OrganizationEventType {
+  CLINIC_PROVISIONED
+  OWNER_ACTIVATED
+  INVITATION_CREATED
+  INVITATION_RESENT
+  INVITATION_REVOKED
+  INVITATION_ACCEPTED
+  MEMBERSHIP_ROLE_CHANGED
+  MEMBERSHIP_DISABLED
+  MEMBERSHIP_REENABLED
+  SUBSCRIPTION_STATUS_CHANGED
+  CLINIC_PROFILE_UPDATED
+  ONBOARDING_COMPLETED
+}
+
+// Structured audit log for clinic/membership/billing security-sensitive
+// events (docs/blueprint/11-permission-and-ownership-v1.md "Audit
+// Responsibility"). Mirrors the codebase's established per-domain event-log
+// pattern (SchedulerConfigChange, VisitTransition, PatientMedicationEvent)
+// rather than one cross-cutting table. `metadata` must never contain
+// secrets, tokens, or full payment details — see individual call sites.
+model OrganizationEvent {
+  id             String                @id @default(cuid())
+  organizationId String
+  // Null for system/webhook-driven events (a Stripe subscription update has
+  // no Sparki actor).
+  actorUserId String?
+  type        OrganizationEventType
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime              @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  actor        User?        @relation("OrganizationEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, type, createdAt])
+}
+
+// Dedupe/observability log for verified Stripe webhook deliveries. Primary
+// key is the Stripe event id itself: BillingWebhookService inserts this row
+// before processing and relies on the unique-constraint violation from a
+// retried delivery to short-circuit idempotently. Deliberately not related
+// to Organization by foreign key: a `checkout.session.completed` event must
+// be insertable before the Organization it concerns necessarily exists.
+model BillingWebhookEvent {
+  id             String    @id
+  type           String
+  organizationId String?
+  receivedAt     DateTime  @default(now())
+  processedAt    DateTime?
+  error          String?
 }
 
 // --- Client / Patient -----------------------------------------------------

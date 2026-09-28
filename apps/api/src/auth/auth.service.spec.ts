@@ -8,11 +8,13 @@ vi.mock('@sparki/db', () => ({
   prisma: {
     organizationMembership: { findMany: vi.fn() },
     clinicLocationAccess: { findMany: vi.fn() },
+    organization: { findUniqueOrThrow: vi.fn() },
   },
 }));
 
 const findMemberships = vi.mocked(prisma.organizationMembership.findMany);
 const findLocationAccesses = vi.mocked(prisma.clinicLocationAccess.findMany);
+const findOrganization = vi.mocked(prisma.organization.findUniqueOrThrow);
 
 function createService(): AuthService {
   return new AuthService({
@@ -49,6 +51,7 @@ function createUser(overrides: Partial<User> = {}): User {
 describe('AuthService.resolveMembership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    findOrganization.mockResolvedValue({ subscriptionStatus: 'ACTIVE' } as never);
   });
 
   it('resolves a user from one active organization membership and one active clinic location access', async () => {
@@ -59,6 +62,7 @@ describe('AuthService.resolveMembership', () => {
         userId: 'user_1',
         role: 'VETERINARIAN',
         isActive: true,
+        status: 'ACTIVE',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
@@ -83,6 +87,7 @@ describe('AuthService.resolveMembership', () => {
       organizationId: 'org_1',
       locationId: 'loc_1',
       role: 'VETERINARIAN',
+      subscriptionStatus: 'ACTIVE',
       canManageAdminSettings: false,
       canFinalizeRecordsForOthers: false,
       canManageMedications: false,
@@ -92,6 +97,42 @@ describe('AuthService.resolveMembership', () => {
     });
     expect(findLocationAccesses).toHaveBeenCalledWith({
       where: { userId: 'user_1', organizationId: 'org_1', isActive: true },
+    });
+  });
+
+  it('carries the resolved organization\'s current subscription status', async () => {
+    findMemberships.mockResolvedValue([
+      {
+        id: 'membership_1',
+        organizationId: 'org_1',
+        userId: 'user_1',
+        role: 'VETERINARIAN',
+        isActive: true,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+    findLocationAccesses.mockResolvedValue([
+      {
+        id: 'access_1',
+        organizationId: 'org_1',
+        clinicLocationId: 'loc_1',
+        userId: 'user_1',
+        role: 'VETERINARIAN',
+        isActive: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+    findOrganization.mockResolvedValue({ subscriptionStatus: 'PAST_DUE' } as never);
+
+    const resolved = await createService().resolveMembership(createUser());
+
+    expect(resolved.subscriptionStatus).toBe('PAST_DUE');
+    expect(findOrganization).toHaveBeenCalledWith({
+      where: { id: 'org_1' },
+      select: { subscriptionStatus: true },
     });
   });
 
@@ -112,6 +153,7 @@ describe('AuthService.resolveMembership', () => {
         userId: 'user_1',
         role: 'VETERINARIAN',
         isActive: true,
+        status: 'ACTIVE',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
@@ -121,6 +163,7 @@ describe('AuthService.resolveMembership', () => {
         userId: 'user_1',
         role: 'PRACTICE_MANAGER',
         isActive: true,
+        status: 'ACTIVE',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
@@ -140,6 +183,7 @@ describe('AuthService.resolveMembership', () => {
         userId: 'user_1',
         role: 'TECHNICIAN',
         isActive: true,
+        status: 'ACTIVE',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },
@@ -159,6 +203,7 @@ describe('AuthService.resolveMembership', () => {
         userId: 'user_1',
         role: 'RECEPTIONIST',
         isActive: true,
+        status: 'ACTIVE',
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z'),
       },

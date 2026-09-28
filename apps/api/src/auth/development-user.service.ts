@@ -108,6 +108,7 @@ export class DevelopmentUserService {
       organizationId: organization.id,
       locationId: location.id,
       role: user.role,
+      subscriptionStatus: organization.subscriptionStatus,
       canManageAdminSettings: user.canManageAdminSettings,
       canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
       canManageMedications: user.canManageMedications,

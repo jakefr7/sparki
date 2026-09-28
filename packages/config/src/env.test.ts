@@ -90,9 +90,67 @@ describe('loadApiEnv', () => {
       ATTACHMENT_S3_BUCKET: 'private-messaging',
       ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
       ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
+      STRIPE_SECRET_KEY: 'sk_live_example',
+      STRIPE_WEBHOOK_SECRET: 'whsec_example',
+      RESEND_API_KEY: 're_example',
+      EMAIL_FROM: 'onboarding@sparki.test',
     } as NodeJS.ProcessEnv);
 
     expect(env.ATTACHMENT_S3_BUCKET).toBe('private-messaging');
+  });
+
+  it('boots without Stripe or email configured outside production', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.STRIPE_SECRET_KEY).toBeUndefined();
+    expect(env.RESEND_API_KEY).toBeUndefined();
+  });
+
+  it('rejects partially configured Stripe credentials', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      STRIPE_SECRET_KEY: 'sk_test',
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together/);
+  });
+
+  it('rejects partially configured email credentials', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      EMAIL_FROM: 'onboarding@sparki.test',
+    } as NodeJS.ProcessEnv)).toThrow(/RESEND_API_KEY and EMAIL_FROM are required together/);
+  });
+
+  it('requires complete Stripe and email configuration in production', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
+      ATTACHMENT_S3_REGION: 'us-east-1',
+      ATTACHMENT_S3_BUCKET: 'private-messaging',
+      ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
+      ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together/);
+  });
+
+  it('accepts complete Stripe and email configuration in production', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
+      ATTACHMENT_S3_REGION: 'us-east-1',
+      ATTACHMENT_S3_BUCKET: 'private-messaging',
+      ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
+      ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
+      STRIPE_SECRET_KEY: 'sk_live_example',
+      STRIPE_WEBHOOK_SECRET: 'whsec_example',
+      RESEND_API_KEY: 're_example',
+      EMAIL_FROM: 'onboarding@sparki.test',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.STRIPE_SECRET_KEY).toBe('sk_live_example');
+    expect(env.EMAIL_FROM).toBe('onboarding@sparki.test');
   });
 });
 

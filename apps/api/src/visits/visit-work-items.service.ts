@@ -215,7 +215,10 @@ export class VisitWorkItemsService {
       { isolationLevel: 'Serializable' },
     );
     if (input.status === 'Completed' && input.inventoryUsage) {
-      const user = await prisma.user.findUniqueOrThrow({ where: { id: actorId } });
+      const [user, organization] = await Promise.all([
+        prisma.user.findUniqueOrThrow({ where: { id: actorId } }),
+        prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { subscriptionStatus: true } }),
+      ]);
       const inventory = await this.usage.postUsage(
         {
           id: user.id,
@@ -224,6 +227,7 @@ export class VisitWorkItemsService {
           organizationId,
           locationId,
           role: actorRole,
+          subscriptionStatus: organization.subscriptionStatus,
           canManageAdminSettings: user.canManageAdminSettings,
           canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
         },

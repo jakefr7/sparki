@@ -47,6 +47,24 @@ export const apiEnvSchema = baseEnvSchema.extend({
   ATTACHMENT_S3_BUCKET: optionalString,
   ATTACHMENT_S3_ACCESS_KEY_ID: optionalString,
   ATTACHMENT_S3_SECRET_ACCESS_KEY: optionalString,
+
+  // Stripe billing (docs/adr/ADR-007-clinic-provisioning-and-billing.md).
+  // Optional so the app still boots without live billing configured —
+  // BillingService throws ServiceUnavailable only when a billing action is
+  // actually invoked, the same graceful-degradation shape as Mapbox above,
+  // not the fail-at-boot shape WorkOS uses (billing isn't on every request).
+  // STRIPE_WEBHOOK_SECRET is required together with STRIPE_SECRET_KEY:
+  // accepting webhook calls without a way to verify them would be worse than
+  // not accepting them at all.
+  STRIPE_SECRET_KEY: optionalString,
+  STRIPE_WEBHOOK_SECRET: optionalString,
+
+  // Transactional email (owner activation + staff invitations). Optional so
+  // dev/test can run without a provider — EmailService logs the message and
+  // (test-only) callers inject a fake to capture it instead of sending.
+  // Production requires the complete pair, same shape as attachment storage.
+  RESEND_API_KEY: optionalString,
+  EMAIL_FROM: optionalString,
 }).superRefine((env, ctx) => {
   const workosValues = [env.WORKOS_API_KEY, env.WORKOS_CLIENT_ID, env.WORKOS_COOKIE_PASSWORD];
   const configuredValues = workosValues.filter(Boolean).length;
@@ -68,6 +86,16 @@ export const apiEnvSchema = baseEnvSchema.extend({
   const storageConfigured = storageValues.filter(Boolean).length;
   if ((storageConfigured > 0 && storageConfigured < storageValues.length) || (env.NODE_ENV === 'production' && storageConfigured !== storageValues.length)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Complete S3-compatible attachment storage configuration is required', path: ['ATTACHMENT_S3_ENDPOINT'] });
+  }
+  const stripeValues = [env.STRIPE_SECRET_KEY, env.STRIPE_WEBHOOK_SECRET];
+  const stripeConfigured = stripeValues.filter(Boolean).length;
+  if ((stripeConfigured > 0 && stripeConfigured < stripeValues.length) || (env.NODE_ENV === 'production' && stripeConfigured !== stripeValues.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together', path: ['STRIPE_SECRET_KEY'] });
+  }
+  const emailValues = [env.RESEND_API_KEY, env.EMAIL_FROM];
+  const emailConfigured = emailValues.filter(Boolean).length;
+  if ((emailConfigured > 0 && emailConfigured < emailValues.length) || (env.NODE_ENV === 'production' && emailConfigured !== emailValues.length)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'RESEND_API_KEY and EMAIL_FROM are required together', path: ['RESEND_API_KEY'] });
   }
 });
 

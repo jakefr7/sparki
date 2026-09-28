@@ -143,6 +143,92 @@ export class AuthService {
     return { user, ...(refreshResult.sealedSession ? { refreshedSealedSession: refreshResult.sealedSession } : {}) };
   }
 
+  /**
+   * Idempotent lookup-or-create of the WorkOS credential for a brand-new
+   * Sparki user (invitation acceptance — see InvitationsService.accept).
+   * Mirrors scripts/seed-auth-users.mjs's ensureWorkosUser, productionized:
+   * looking up by email first means a retried request (e.g. the transaction
+   * that follows this call fails and the caller retries) never creates a
+   * duplicate WorkOS user. Returns null when WorkOS isn't configured — only
+   * reachable outside production, where SPARKI_DEVELOPMENT_AUTH=fixed lets a
+   * User row with no workosUserId still sign in (see login/loginDevelopmentUser
+   * above); the constructor guard above refuses to boot that combination in
+   * production.
+   */
+  async ensureWorkosCredential(params: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+  }): Promise<string | null> {
+    if (!this.isConfigured) {
+      return null;
+    }
+    const { workos } = this.requireConfigured();
+
+    const existing = await workos.userManagement.listUsers({ email: params.email, limit: 1 });
+    const [match] = existing.data;
+    if (match) {
+      await workos.userManagement.updateUser({
+        userId: match.id,
+        password: params.password,
+        emailVerified: true,
+        firstName: params.firstName,
+        lastName: params.lastName,
+      });
+      return match.id;
+    }
+
+    const created = await workos.userManagement.createUser({
+      email: params.email,
+      password: params.password,
+      emailVerified: true,
+      firstName: params.firstName,
+      lastName: params.lastName,
+    });
+    return created.id;
+  }
+
+  /**
+   * Issues a session for a user InvitationsService just created or verified,
+   * without a second round-trip through WorkOS's password-authenticate flow
+   * as a *login* — invitation-token possession is already the trust
+   * boundary (see InvitationsService.accept), so this only needs to mint the
+   * session, not re-verify identity. Still goes through
+   * authenticateWithPassword in real-WorkOS mode because that's the only
+   * supported way to obtain a sealed session from this WorkOS SDK version;
+   * `password` is the same one ensureWorkosCredential just set, so it always
+   * succeeds barring a WorkOS outage.
+   */
+  async issueSessionForNewUser(user: User, password: string): Promise<LoginResult> {
+    const authenticatedUser = await this.resolveMembership(user);
+
+    if (!this.isConfigured && this.config.developmentAuthMode === 'fixed') {
+      return {
+        sealedSession: `${DEVELOPMENT_SESSION_PREFIX}${user.id}`,
+        user: authenticatedUser,
+      };
+    }
+
+    const { workos, clientId, cookiePassword } = this.requireConfigured();
+    let authResponse;
+    try {
+      authResponse = await workos.userManagement.authenticateWithPassword({
+        clientId,
+        email: user.email,
+        password,
+        session: { sealSession: true, cookiePassword },
+      });
+    } catch {
+      throw new ServiceUnavailableException('Unable to start a session for the newly created account.');
+    }
+    if (!authResponse.sealedSession) {
+      throw new ServiceUnavailableException('WorkOS did not return a session');
+    }
+
+    return { sealedSession: authResponse.sealedSession, user: authenticatedUser };
+  }
+
   /** Best-effort: revokes the WorkOS session server-side. Cookie clearing
    *  (done by the caller) is what actually ends the browser's session. */
   async logout(sealedSession: string | undefined): Promise<void> {
@@ -246,6 +332,16 @@ export class AuthService {
     }
     const locationAccess = locationAccesses[0]!;
 
+    // Subscription state is authoritative from Organization (billing-webhook
+    // verified — see apps/api/src/billing), read fresh on every session
+    // resolution so a lapsed subscription takes effect on the next request,
+    // not just the next login. SubscriptionGuard is what actually enforces
+    // it; this only carries the value onto the request identity.
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: membership.organizationId },
+      select: { subscriptionStatus: true },
+    });
+
     return {
       id: user.id,
       email: user.email,
@@ -253,6 +349,7 @@ export class AuthService {
       organizationId: membership.organizationId,
       locationId: locationAccess.clinicLocationId,
       role: membership.role,
+      subscriptionStatus: organization.subscriptionStatus,
       canManageAdminSettings: user.canManageAdminSettings,
       canFinalizeRecordsForOthers: user.canFinalizeRecordsForOthers,
       canManageMedications: user.canManageMedications,

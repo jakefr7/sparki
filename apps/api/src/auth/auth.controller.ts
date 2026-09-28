@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { loginSchema, type LoginInput } from './dto/login.schema';
 import { updateProfileSchema, type UpdateProfileInput } from './dto/update-profile.schema';
+import { AllowInactiveClinic } from './allow-inactive-clinic.decorator';
 import { MANAGE_ADMIN_SETTINGS } from './permissions';
 import { Public } from './public.decorator';
 import { ROLE_PERMISSIONS } from './role-permissions';
@@ -30,6 +31,10 @@ function toMeResponse(user: AuthenticatedUser) {
   };
 }
 
+// A user whose clinic's subscription has lapsed must still be able to see
+// who they are and sign out — the frontend needs /auth/me to render the
+// restricted-access screen at all.
+@AllowInactiveClinic()
 @Controller('auth')
 export class AuthController {
   constructor(

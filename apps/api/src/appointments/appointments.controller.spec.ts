@@ -11,6 +11,7 @@ const veterinarian: AuthenticatedUser = {
   organizationId: 'org-1',
   locationId: 'location-1',
   role: 'VETERINARIAN',
+  subscriptionStatus: 'ACTIVE',
   canManageAdminSettings: false,
   canFinalizeRecordsForOthers: false,
 };

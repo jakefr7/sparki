@@ -52,4 +52,26 @@ export class AppConfigService {
       secretAccessKey: this.env.ATTACHMENT_S3_SECRET_ACCESS_KEY,
     };
   }
+
+  get stripe(): { secretKey: string | undefined; webhookSecret: string | undefined } {
+    return {
+      secretKey: this.env.STRIPE_SECRET_KEY,
+      webhookSecret: this.env.STRIPE_WEBHOOK_SECRET,
+    };
+  }
+
+  get email(): { resendApiKey: string | undefined; from: string | undefined } {
+    return {
+      resendApiKey: this.env.RESEND_API_KEY,
+      from: this.env.EMAIL_FROM,
+    };
+  }
+
+  /** Web app origin — also used to build activation/invitation links
+   *  (`${webOrigin}/invite/:token`). Reuses CORS_ORIGIN rather than adding a
+   *  second "what is the frontend's URL" variable: it is already exactly
+   *  that value. */
+  get webOrigin(): string {
+    return this.env.CORS_ORIGIN;
+  }
 }

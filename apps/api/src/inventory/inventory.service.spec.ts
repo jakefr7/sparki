@@ -99,6 +99,7 @@ describe('inventory decimal and ledger rules', () => {
         organizationId: 'org',
         locationId: 'loc',
         role: 'TECHNICIAN',
+        subscriptionStatus: 'ACTIVE',
         canManageAdminSettings: false,
         canFinalizeRecordsForOthers: false,
       },

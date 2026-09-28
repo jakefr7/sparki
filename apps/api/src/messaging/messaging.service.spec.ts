@@ -22,6 +22,7 @@ const user = (id: string, organizationId: string, locationId: string): Authentic
   email: `${id}@example.test`,
   name: id,
   role: 'VETERINARIAN',
+  subscriptionStatus: 'ACTIVE',
   canManageAdminSettings: false,
   canFinalizeRecordsForOthers: false,
 });

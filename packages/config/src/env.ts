@@ -40,8 +40,10 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // rather than erroring when unset, so patient creation is never blocked.
   MAPBOX_ACCESS_TOKEN: z.string().optional(),
 
-  // Private, S3-compatible storage for staff-message attachments. Production
-  // requires the complete set; development/test use a private temporary fake.
+  // Private, S3-compatible storage for staff-message attachments. Optional so
+  // staging/production can boot without it configured — AttachmentStorageService
+  // falls back to a private local filesystem store until the complete set is
+  // provided; a partial set is always a configuration error.
   ATTACHMENT_S3_ENDPOINT: optionalString,
   ATTACHMENT_S3_REGION: optionalString,
   ATTACHMENT_S3_BUCKET: optionalString,
@@ -68,9 +70,9 @@ export const apiEnvSchema = baseEnvSchema.extend({
   STRIPE_PRICE_STANDARD: optionalString,
 
   // Transactional email (owner activation + staff invitations). Optional so
-  // dev/test can run without a provider — EmailService logs the message and
-  // (test-only) callers inject a fake to capture it instead of sending.
-  // Production requires the complete pair, same shape as attachment storage.
+  // staging/dev/test can run without a provider — EmailService logs the
+  // message and (test-only) callers inject a fake to capture it instead of
+  // sending. Required together, same shape as attachment storage.
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
 }).superRefine((env, ctx) => {
@@ -90,19 +92,24 @@ export const apiEnvSchema = baseEnvSchema.extend({
       path: ['SPARKI_DEVELOPMENT_AUTH'],
     });
   }
+  // Each optional integration below follows the same graceful-degradation
+  // shape regardless of NODE_ENV: fully unset is a valid "not enabled" state
+  // (staging can boot without it), but a partial set is always a
+  // configuration error — accepting webhooks/checkout/email/storage calls
+  // with an incomplete credential set would be worse than not accepting them.
   const storageValues = [env.ATTACHMENT_S3_ENDPOINT, env.ATTACHMENT_S3_REGION, env.ATTACHMENT_S3_BUCKET, env.ATTACHMENT_S3_ACCESS_KEY_ID, env.ATTACHMENT_S3_SECRET_ACCESS_KEY];
   const storageConfigured = storageValues.filter(Boolean).length;
-  if ((storageConfigured > 0 && storageConfigured < storageValues.length) || (env.NODE_ENV === 'production' && storageConfigured !== storageValues.length)) {
+  if (storageConfigured > 0 && storageConfigured < storageValues.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Complete S3-compatible attachment storage configuration is required', path: ['ATTACHMENT_S3_ENDPOINT'] });
   }
   const stripeValues = [env.STRIPE_SECRET_KEY, env.STRIPE_WEBHOOK_SECRET, env.STRIPE_PRICE_STANDARD];
   const stripeConfigured = stripeValues.filter(Boolean).length;
-  if ((stripeConfigured > 0 && stripeConfigured < stripeValues.length) || (env.NODE_ENV === 'production' && stripeConfigured !== stripeValues.length)) {
+  if (stripeConfigured > 0 && stripeConfigured < stripeValues.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together', path: ['STRIPE_SECRET_KEY'] });
   }
   const emailValues = [env.RESEND_API_KEY, env.EMAIL_FROM];
   const emailConfigured = emailValues.filter(Boolean).length;
-  if ((emailConfigured > 0 && emailConfigured < emailValues.length) || (env.NODE_ENV === 'production' && emailConfigured !== emailValues.length)) {
+  if (emailConfigured > 0 && emailConfigured < emailValues.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'RESEND_API_KEY and EMAIL_FROM are required together', path: ['RESEND_API_KEY'] });
   }
 });

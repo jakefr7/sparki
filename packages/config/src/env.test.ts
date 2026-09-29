@@ -68,15 +68,25 @@ describe('loadApiEnv', () => {
     expect(env.WORKOS_COOKIE_PASSWORD).toBeUndefined();
   });
 
-  it('requires complete private attachment storage configuration in production', () => {
-    expect(() => loadApiEnv({
+  it('boots in production with no attachment storage configured', () => {
+    const env = loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',
       NODE_ENV: 'production',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.ATTACHMENT_S3_ENDPOINT).toBeUndefined();
+  });
+
+  it('rejects partially configured attachment storage regardless of environment', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
     } as NodeJS.ProcessEnv)).toThrow(/Complete S3-compatible attachment storage configuration is required/);
 
     resetEnvCacheForTests();
     expect(() => loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
       ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
     } as NodeJS.ProcessEnv)).toThrow(/Complete S3-compatible attachment storage configuration is required/);
   });
@@ -124,6 +134,15 @@ describe('loadApiEnv', () => {
     } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
   });
 
+  it('rejects partially configured Stripe credentials in production', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+      STRIPE_SECRET_KEY: 'sk_live_example',
+      STRIPE_WEBHOOK_SECRET: 'whsec_example',
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
+  });
+
   it('accepts a complete Stripe key/secret/price set outside production', () => {
     const env = loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',
@@ -142,16 +161,23 @@ describe('loadApiEnv', () => {
     } as NodeJS.ProcessEnv)).toThrow(/RESEND_API_KEY and EMAIL_FROM are required together/);
   });
 
-  it('requires complete Stripe and email configuration in production', () => {
+  it('rejects partially configured email credentials in production', () => {
     expect(() => loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',
       NODE_ENV: 'production',
-      ATTACHMENT_S3_ENDPOINT: 'https://objects.example.test',
-      ATTACHMENT_S3_REGION: 'us-east-1',
-      ATTACHMENT_S3_BUCKET: 'private-messaging',
-      ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
-      ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
-    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
+      EMAIL_FROM: 'onboarding@sparki.test',
+    } as NodeJS.ProcessEnv)).toThrow(/RESEND_API_KEY and EMAIL_FROM are required together/);
+  });
+
+  it('boots in production with no storage, Stripe, or email configured', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      NODE_ENV: 'production',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.STRIPE_SECRET_KEY).toBeUndefined();
+    expect(env.RESEND_API_KEY).toBeUndefined();
+    expect(env.ATTACHMENT_S3_ENDPOINT).toBeUndefined();
   });
 
   it('accepts complete Stripe and email configuration in production', () => {

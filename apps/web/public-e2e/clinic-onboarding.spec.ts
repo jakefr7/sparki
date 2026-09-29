@@ -162,10 +162,16 @@ test('pricing renders without a price ID and submits only the approved plan', as
   await page.route('**/api/billing/checkout-sessions', (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { checkoutUrl: 'https://checkout.stripe.com/c/pay/test' } }); });
   await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Secure checkout</h1>' }));
   await page.goto('/pricing');
-  await expect(page.getByRole('heading', { name: 'Sparki for your clinic' })).toBeVisible();
-  await expect(page.getByText('Veterinary practice software')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Simple pricing for veterinary teams/ })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Sparki plan' })).toBeVisible();
+  await expect(page.getByText('Free during early access')).toBeVisible();
+  await expect(page.getByText('$0')).toBeVisible();
+  await expect(page.getByLabel('Owner email')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start free' }).click();
+  await expect(page.getByRole('heading', { name: /Start your Sparki clinic/ })).toBeVisible();
+  await expect(page.getByText('$0 today')).toBeVisible();
   await page.getByLabel('Owner email').fill('owner@clinic.test');
-  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
   await expect.poll(() => submitted).toEqual({ email: 'owner@clinic.test', plan: 'STANDARD' });
   await expect(page).toHaveURL('https://checkout.stripe.com/c/pay/test');
 });
@@ -175,8 +181,9 @@ test('pricing ignores a client-supplied price ID', async ({ page }) => {
   await page.route('**/api/billing/checkout-sessions', (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { checkoutUrl: 'https://checkout.stripe.com/c/pay/test' } }); });
   await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Secure checkout</h1>' }));
   await page.goto('/pricing?price_id=price_test_untrusted');
+  await page.getByRole('button', { name: 'Start free' }).click();
   await page.getByLabel('Owner email').fill('owner@clinic.test');
-  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
   await expect.poll(() => submitted).toEqual({ email: 'owner@clinic.test', plan: 'STANDARD' });
 });
 
@@ -184,14 +191,27 @@ test('pricing keeps email validation and offers retry after checkout error', asy
   let requests = 0;
   await page.route('**/api/billing/checkout-sessions', (route) => { requests++; return route.fulfill({ status: 503, json: { message: 'Unavailable' } }); });
   await page.goto('/pricing');
-  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  await page.getByRole('button', { name: 'Start free' }).click();
+  await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
   expect(requests).toBe(0);
   await page.getByLabel('Owner email').fill('owner@clinic.test');
-  await page.getByRole('button', { name: 'Continue to checkout' }).click();
-  await expect(page.locator('.clinic-form .form-error')).toContainText('We couldn’t start checkout. Please try again or contact Sparki support.');
-  await expect(page.getByRole('button', { name: 'Continue to checkout' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
+  await expect(page.getByText('We couldn’t start checkout. Please try again or contact Sparki support.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue to secure checkout' })).toBeEnabled();
   expect(requests).toBe(1);
 });
+
+for (const width of [320, 390]) {
+  test(`pricing and checkout fit a ${width}px mobile viewport`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 760 });
+    await page.goto('/pricing');
+    await expect(page.getByRole('button', { name: 'Start free' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.getByRole('button', { name: 'Start free' }).click();
+    await expect(page.getByLabel('Owner email')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+  });
+}
 
 test('invalid invitation and unknown checkout links recover clearly', async ({ page }) => {
   await page.route('**/api/invitations/unknown', (route) => route.fulfill({ status: 404, json: { message: 'Not Found' } }));

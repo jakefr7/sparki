@@ -4890,6 +4890,44 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   font-size: 0.85rem;
 }
 
+.login-mode-toggle {
+  display: block;
+  width: 100%;
+  margin-top: .85rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #667586;
+  font-size: .85rem;
+  text-align: center;
+  cursor: pointer;
+}
+.login-mode-toggle:hover { color: #176f69; }
+.login-mode-toggle:disabled { cursor: not-allowed; opacity: .6; }
+.login-mode-toggle:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
+
+.login-code-hint {
+  margin: 0 0 1.1rem;
+  color: #667586;
+  font-size: .9rem;
+}
+.login-code-hint strong { color: #172633; }
+
+.login-code-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.login-code-actions .login-mode-toggle { width: auto; margin-top: .85rem; }
+
+.login-code-input {
+  font-size: 1.5rem !important;
+  font-weight: 700;
+  letter-spacing: .5em;
+  text-align: center;
+  font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+}
+
 .login-page .login-submit {
   display: flex;
   width: 100%;
@@ -4926,6 +4964,26 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* Renders before .dashboard-shell mounts (its own token scope isn't in
+ * effect yet), so this needs its own explicit light values rather than the
+ * var(--surface)/var(--text-primary) tokens — otherwise it falls through to
+ * :root's dark-mode default, same as the pre-auth pages once did. */
+.dashboard-shell__loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #f7f8fb;
+  color: #172633;
+  color-scheme: light;
+}
+
+.dashboard-shell__loading > div {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  text-align: center;
 }
 
 .dashboard-shell {
@@ -12702,6 +12760,157 @@ button.settings-nav__sign-out:hover {
   letter-spacing: 0.03em;
   color: var(--text-secondary);
   opacity: 0.85;
+}
+
+.settings-text-button {
+  border: 0;
+  background: none;
+  padding: 0.3rem 0.1rem;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.settings-text-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.settings-text-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.team-roster {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.team-roster__row[data-disabled='true'] {
+  opacity: 0.65;
+}
+
+.team-roster__controls {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.team-roster__controls select {
+  min-height: 2.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  padding: 0 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.team-roster__status {
+  flex: none;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.team-roster__status[data-active='true'] {
+  background: color-mix(in srgb, var(--success) 15%, var(--surface));
+  color: var(--success);
+}
+
+.team-roster__status[data-active='false'] {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.team-invite-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.team-invite-row label {
+  display: flex;
+  flex: 1;
+  min-width: 200px;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.team-invite-row label:last-of-type {
+  flex: 0 0 auto;
+  min-width: 170px;
+}
+
+.team-invite-row input,
+.team-invite-row select {
+  min-height: 2.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0 0.7rem;
+  font: inherit;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.team-invite-row input:focus-visible,
+.team-invite-row select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.team-invite-row__submit-wrap {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.team-invite-row__submit-spacer {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1;
+  visibility: hidden;
+}
+
+.team-invite-row__submit {
+  min-height: 2.4rem;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+}
+
+.team-invite-row__submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, black);
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .settings-account-row.team-roster__row {
+    flex-wrap: wrap;
+  }
+  .team-roster__controls {
+    flex-wrap: wrap;
+  }
+  .team-invite-row label,
+  .team-invite-row label:last-of-type,
+  .team-invite-row__submit-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .team-invite-row__submit-spacer {
+    display: none;
+  }
 }
 
 .scheduler-settings-stack {

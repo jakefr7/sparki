@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
 import { useAuthBootstrap, type BootstrapProfile } from './auth-bootstrap';
-import { clinicRequest } from '../lib/clinic-api';
+import { ClinicApiError, clinicRequest } from '../lib/clinic-api';
+import { recoverFromInvalidSession } from '../lib/session-recovery';
 import { SparkiLogo } from './sparki-logo';
 import type { BillingStatus } from '../lib/clinic-contracts';
 
@@ -268,7 +269,7 @@ export function DashboardShell({
   const bootstrap = useAuthBootstrap();
   const [billing, setBilling] = useState<BillingStatus | null>(bootstrap.billing);
   const [billingError, setBillingError] = useState(false);
-  useEffect(() => { let active = true; void clinicRequest<BillingStatus>('/clinic/billing').then((status) => { if (!active) return; setBilling(status); setBillingError(false); if (status.isRestricted) window.location.assign('/billing-required'); }).catch(() => { if (active) setBillingError(true); }); return () => { active = false; }; }, []);
+  useEffect(() => { let active = true; void clinicRequest<BillingStatus>('/clinic/billing').then((status) => { if (!active) return; setBilling(status); setBillingError(false); if (status.isRestricted) window.location.assign('/billing-required'); }).catch((error) => { if (!active) return; if (error instanceof ClinicApiError && error.status === 401) { void recoverFromInvalidSession(); return; } setBillingError(true); }); return () => { active = false; }; }, []);
   const { user: currentUser } = useCurrentUser();
   const [profile, setProfile] = useState<HeaderProfile | null>(bootstrap.profile);
   useLayoutEffect(() => {

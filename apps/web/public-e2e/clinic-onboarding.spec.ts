@@ -8,11 +8,13 @@ async function signedIn(page: Page, role = 'OWNER') {
   await page.route('**/api/auth/profile', (route) => route.fulfill({ json: { firstName: 'Alex', lastName: 'Owner', displayName: 'Alex Owner', phone: null, avatarUrl: null, statusEmoji: null, statusText: null } }));
   await page.route('**/api/clinic/billing', (route) => route.fulfill({ json: { subscriptionStatus: 'ACTIVE', isRestricted: false, currentPeriodEnd: null, planId: null } }));
 }
-async function fillSignup(page: Page) {
+async function fillSignup(page: Page, stayOnPractice = false) {
   await page.getByLabel('First name').fill('Alex');
   await page.getByLabel('Last name').fill('Owner');
   await page.getByLabel('Your email').fill('owner@clinic.test');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByLabel('Business name').fill('Maple Veterinary');
+  if (!stayOnPractice) await page.getByRole('button', { name: 'Continue', exact: true }).click();
 }
 const invite = (status: string, isOwnerFounding = false) => ({ email: 'person@clinic.test', role: isOwnerFounding ? 'OWNER' : 'TECHNICIAN', clinicName: 'Maple Veterinary', isOwnerFounding, status, expiresAt: '2026-10-01T00:00:00Z' });
 
@@ -181,23 +183,31 @@ test('pricing collects owner and practice details without accepting a price ID',
   await page.route('**/api/billing/checkout-sessions', (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { checkoutUrl: 'https://checkout.stripe.com/c/pay/test' } }); });
   await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Secure checkout</h1>' }));
   await page.goto('/pricing');
-  await expect(page.getByRole('heading', { name: /Simple pricing for veterinary teams/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /A calmer clinic day.*One simple plan/ })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Sparki plan' })).toBeVisible();
   await expect(page.getByText('Free during early access')).toBeVisible();
   await expect(page.getByText('$0')).toBeVisible();
   await expect(page.getByLabel('Your email')).toHaveCount(0);
   await page.getByRole('button', { name: 'Start free' }).click();
-  await expect(page.getByRole('heading', { name: /Let’s get to know your practice/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Make room for your practice/ })).toBeVisible();
   await expect(page.getByText('$0 today')).toBeVisible();
-  await fillSignup(page);
+  await fillSignup(page, true);
   await page.getByLabel('Business phone').pressSequentially('2068527142');
   await expect(page.getByLabel('Business phone')).toHaveValue('(206) 852-7142');
   await page.getByLabel('Team size').selectOption('6-10');
   await page.getByLabel('Practice contact email').fill('hello@maplevet.test');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByLabel('Street address').fill('12 Maple Street');
   await page.getByLabel('City').fill('Madison');
   await page.getByLabel('State').fill('WI');
   await page.getByLabel('ZIP code').fill('53703');
+  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await expect(page.getByLabel('Business phone')).toHaveValue('(206) 852-7142');
+  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await expect(page.getByLabel('Your email')).toHaveValue('owner@clinic.test');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByLabel('Street address')).toHaveValue('12 Maple Street');
   await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
   await expect.poll(() => submitted).toEqual(expect.objectContaining({ email: 'owner@clinic.test', plan: 'STANDARD', ownerFirstName: 'Alex', ownerLastName: 'Owner', businessName: 'Maple Veterinary', businessPhone: '(206) 852-7142', businessEmail: 'hello@maplevet.test', teamSize: '6-10', addressLine1: '12 Maple Street', city: 'Madison', state: 'WI', postalCode: '53703' }));
   await expect(page).toHaveURL('https://checkout.stripe.com/c/pay/test');
@@ -220,7 +230,8 @@ test('pricing keeps email validation and offers retry after checkout error', asy
   await page.route('**/api/billing/checkout-sessions', (route) => { requests++; return route.fulfill({ status: 503, json: { message: 'Unavailable' } }); });
   await page.goto('/pricing');
   await page.getByRole('button', { name: 'Start free' }).click();
-  await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.getByLabel('Your email')).toBeVisible();
   expect(requests).toBe(0);
   await fillSignup(page);
   await page.getByRole('button', { name: 'Continue to secure checkout' }).click();
@@ -261,6 +272,10 @@ for (const width of [320, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await page.getByRole('button', { name: 'Start free' }).click();
     await expect(page.getByLabel('Your email')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await fillSignup(page, true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
   });
 }

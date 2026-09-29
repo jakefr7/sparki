@@ -10,6 +10,7 @@ import { Prisma, prisma, type ClinicInvitation, type UserRole } from '@sparki/db
 import { AppConfigService } from '../config/app-config.service';
 import { logOrganizationEvent } from '../common/organization-event';
 import { EmailService } from '../email/email.service';
+import { ownerActivationEmail, staffInvitationEmail } from '../email/templates';
 import { AuthService, type LoginResult } from '../auth/auth.service';
 import type { AcceptInvitationInput } from './dto/accept-invitation.schema';
 
@@ -130,16 +131,15 @@ export class InvitationsService {
     const link = `${this.config.webOrigin}/invite/${params.rawToken}`;
     const isOwnerFounding = params.invitation.invitedByUserId === null;
 
-    const subject = isOwnerFounding
-      ? `Activate your Sparki clinic — ${params.clinicName}`
-      : `You're invited to join ${params.clinicName} on Sparki`;
-
-    const introLine = isOwnerFounding
-      ? `Your Sparki subscription is confirmed. Follow the link below to create your account and finish setting up ${params.clinicName}.`
-      : `${params.invitedByName ?? 'A teammate'} invited you to join ${params.clinicName} on Sparki as a ${formatRole(params.invitation.role)}.`;
-
-    const text = `${introLine}\n\n${link}\n\nThis link expires in ${INVITATION_TTL_DAYS} days.`;
-    const html = `<p>${escapeHtml(introLine)}</p><p><a href="${link}">${link}</a></p><p>This link expires in ${INVITATION_TTL_DAYS} days.</p>`;
+    const { subject, html, text } = isOwnerFounding
+      ? ownerActivationEmail({ clinicName: params.clinicName, link, expiresInDays: INVITATION_TTL_DAYS })
+      : staffInvitationEmail({
+          clinicName: params.clinicName,
+          invitedByName: params.invitedByName,
+          role: params.invitation.role,
+          link,
+          expiresInDays: INVITATION_TTL_DAYS,
+        });
 
     await this.email.send({ to: params.invitation.email, subject, text, html });
     await prisma.clinicInvitation.update({ where: { id: params.invitation.id }, data: { emailSentAt: new Date() } });
@@ -397,94 +397,89 @@ export class InvitationsService {
       throw new ConflictException('This invitation was already accepted.');
     }
 
-    const workosUserId = await this.authService.ensureWorkosCredential({
-      email: invitation.email,
-      password: input.password,
-      firstName: input.firstName,
-      lastName: input.lastName,
-    });
+    // Everything below this point can fail on an external call (WorkOS) or a
+    // transient error, and the invitation was just claimed ACCEPTED above.
+    // Without recovery, a failure here — an expired/invalid WorkOS API key,
+    // a momentary outage — would permanently strand the invitation: ACCEPTED
+    // with no account ever created, and unrecoverable through this same
+    // method since a PENDING check gates both `accept` and `resend`. The
+    // catch reverts the claim so the link stays usable, but only when we're
+    // certain no account was actually created (`createdMembershipId` unset)
+    // — if the transaction below already succeeded and only session
+    // issuance failed after it, the account exists and reverting would be
+    // wrong; the `existingUser` check above already makes a retry in that
+    // case fail safely with EMAIL_ALREADY_REGISTERED instead.
+    try {
+      const workosUserId = await this.authService.ensureWorkosCredential({
+        email: invitation.email,
+        password: input.password,
+        firstName: input.firstName,
+        lastName: input.lastName,
+      });
 
-    const defaultLocation = await prisma.location.findFirstOrThrow({
-      where: { organizationId: invitation.organizationId },
-      orderBy: { createdAt: 'asc' },
-    });
+      const defaultLocation = await prisma.location.findFirstOrThrow({
+        where: { organizationId: invitation.organizationId },
+        orderBy: { createdAt: 'asc' },
+      });
 
-    const { user } = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
+      const { user } = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            organizationId: invitation.organizationId,
+            email: invitation.email,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            role: invitation.role,
+            isActive: true,
+            workosUserId,
+            staffProfile: { create: staffProfileDefaults(invitation.role) },
+          },
+        });
+
+        const membership = await tx.organizationMembership.create({
+          data: {
+            organizationId: invitation.organizationId,
+            userId: user.id,
+            role: invitation.role,
+            isActive: true,
+            status: 'ACTIVE',
+          },
+        });
+
+        await tx.clinicLocationAccess.create({
+          data: {
+            organizationId: invitation.organizationId,
+            clinicLocationId: defaultLocation.id,
+            userId: user.id,
+            role: invitation.role,
+            isActive: true,
+          },
+        });
+
+        await tx.clinicInvitation.update({
+          where: { id: invitation.id },
+          data: { createdMembershipId: membership.id },
+        });
+
+        await logOrganizationEvent(tx, {
           organizationId: invitation.organizationId,
-          email: invitation.email,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          role: invitation.role,
-          isActive: true,
-          workosUserId,
-          staffProfile: { create: staffProfileDefaults(invitation.role) },
-        },
+          actorUserId: user.id,
+          type: invitation.invitedByUserId === null ? 'OWNER_ACTIVATED' : 'INVITATION_ACCEPTED',
+          targetType: 'ClinicInvitation',
+          targetId: invitation.id,
+          metadata: { role: invitation.role },
+        });
+
+        return { user, membership };
       });
 
-      const membership = await tx.organizationMembership.create({
-        data: {
-          organizationId: invitation.organizationId,
-          userId: user.id,
-          role: invitation.role,
-          isActive: true,
-          status: 'ACTIVE',
-        },
+      return await this.authService.issueSessionForNewUser(user, input.password);
+    } catch (error) {
+      await prisma.clinicInvitation.updateMany({
+        where: { id: invitation.id, status: 'ACCEPTED', createdMembershipId: null },
+        data: { status: 'PENDING', acceptedAt: null },
       });
-
-      await tx.clinicLocationAccess.create({
-        data: {
-          organizationId: invitation.organizationId,
-          clinicLocationId: defaultLocation.id,
-          userId: user.id,
-          role: invitation.role,
-          isActive: true,
-        },
-      });
-
-      await tx.clinicInvitation.update({
-        where: { id: invitation.id },
-        data: { createdMembershipId: membership.id },
-      });
-
-      await logOrganizationEvent(tx, {
-        organizationId: invitation.organizationId,
-        actorUserId: user.id,
-        type: invitation.invitedByUserId === null ? 'OWNER_ACTIVATED' : 'INVITATION_ACCEPTED',
-        targetType: 'ClinicInvitation',
-        targetId: invitation.id,
-        metadata: { role: invitation.role },
-      });
-
-      return { user, membership };
-    });
-
-    return this.authService.issueSessionForNewUser(user, input.password);
-  }
-}
-
-function formatRole(role: UserRole): string {
-  return role
-    .toLowerCase()
-    .split('_')
-    .map((word) => word[0]!.toUpperCase() + word.slice(1))
-    .join(' ');
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      default:
-        return '&#39;';
+      throw error;
     }
-  });
+  }
 }

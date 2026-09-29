@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   ServiceUnavailableException,
@@ -7,11 +8,18 @@ import {
 import { WorkOS } from '@workos-inc/node';
 import { prisma, type User } from '@sparki/db';
 import { AppConfigService } from '../config/app-config.service';
+import { EmailService } from '../email/email.service';
+import { signInCodeEmail } from '../email/templates';
 import type { AuthenticatedUser } from './types';
 import type { UpdateProfileInput } from './dto/update-profile.schema';
 
 const DEVELOPMENT_LOGIN_PASSWORD = 'SparkiTest123!';
 const DEVELOPMENT_SESSION_PREFIX = 'dev:';
+// WorkOS Magic Auth codes are themselves single-use and short-lived (see
+// requestEmailCode/verifyEmailCode below); this is a separate, coarser guard
+// against one account triggering unlimited code sends/emails.
+const EMAIL_CODE_COOLDOWN_MS = 60_000;
+const EMAIL_CODE_EXPIRY_MINUTES = 10;
 
 export interface LoginResult {
   sealedSession: string;
@@ -37,9 +45,20 @@ export class AuthService {
   private readonly clientId: string | undefined;
   private readonly cookiePassword: string | undefined;
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly email: EmailService,
+  ) {
     const { apiKey, clientId, cookiePassword } = this.config.workos;
-    this.workos = apiKey ? new WorkOS(apiKey) : null;
+    // clientId must be passed here, not just per-call to
+    // authenticateWithPassword/etc: UserManagement.jwks (used by
+    // loadSealedSession(...).authenticate()/refresh() to verify a session's
+    // JWT) reads clientId from this client's own construction options, not
+    // from any per-call argument. Without it, every session verification —
+    // not just some — throws "Missing client ID" from inside the WorkOS SDK
+    // (session.js's isValidJwt), even though minting a session via login/
+    // signup works fine (that path takes clientId per-call, separately).
+    this.workos = apiKey ? new WorkOS(apiKey, clientId ? { clientId } : {}) : null;
     this.clientId = clientId;
     this.cookiePassword = cookiePassword;
 
@@ -113,6 +132,64 @@ export class AuthService {
     return { sealedSession: authResponse.sealedSession, user };
   }
 
+  /**
+   * Passwordless sign-in, additive to login() — same WorkOS-backed users,
+   * same session cookie, just a different first factor. Built on WorkOS
+   * Magic Auth rather than a bespoke OTP store: WorkOS owns code generation,
+   * expiry, and single-use enforcement (the same trust boundary as password
+   * auth), and Sparki only delivers the code through its own branded email.
+   *
+   * Never reveals whether `email` has a Sparki account — an unknown,
+   * inactive, or not-yet-activated (no workosUserId) email returns
+   * successfully having sent nothing, exactly like a real send. This also
+   * covers the cooldown case: a request inside the window returns the same
+   * way rather than surfacing a distinguishable "please wait" response.
+   */
+  async requestEmailCode(email: string): Promise<void> {
+    const normalized = email.trim().toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email: normalized } });
+    if (!user || !user.isActive || !user.workosUserId) {
+      return;
+    }
+    if (user.lastEmailCodeRequestedAt && Date.now() - user.lastEmailCodeRequestedAt.getTime() < EMAIL_CODE_COOLDOWN_MS) {
+      return;
+    }
+
+    const { workos } = this.requireConfigured();
+    const magicAuth = await workos.userManagement.createMagicAuth({ email: normalized });
+
+    await prisma.user.update({ where: { id: user.id }, data: { lastEmailCodeRequestedAt: new Date() } });
+
+    await this.email.send({
+      to: normalized,
+      ...signInCodeEmail({ code: magicAuth.code, expiresInMinutes: EMAIL_CODE_EXPIRY_MINUTES }),
+    });
+  }
+
+  async verifyEmailCode(email: string, code: string): Promise<LoginResult> {
+    const { workos, clientId, cookiePassword } = this.requireConfigured();
+    const normalized = email.trim().toLowerCase();
+
+    let authResponse;
+    try {
+      authResponse = await workos.userManagement.authenticateWithMagicAuth({
+        clientId,
+        email: normalized,
+        code,
+        session: { sealSession: true, cookiePassword },
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid or expired code');
+    }
+
+    if (!authResponse.sealedSession) {
+      throw new ServiceUnavailableException('WorkOS did not return a session');
+    }
+
+    const user = await this.resolveLocalUser(authResponse.user.id);
+    return { sealedSession: authResponse.sealedSession, user };
+  }
+
   async verifySession(sealedSession: string | undefined): Promise<SessionResult> {
     if (!this.isConfigured && this.config.developmentAuthMode === 'fixed') {
       return this.verifyDevelopmentSession(sealedSession);
@@ -134,7 +211,18 @@ export class AuthService {
       return { user };
     }
 
-    const refreshResult = await session.refresh({ cookiePassword });
+    // Unlike authenticate() above, the WorkOS SDK's session.refresh() does
+    // not catch its own cookie-unseal failure — an invalid/corrupt cookie
+    // (the same condition authenticate() just handled gracefully) throws
+    // here uncaught instead of returning { authenticated: false }. Treat it
+    // the same way authenticate() would: an expired/invalid session, not a
+    // server error.
+    let refreshResult;
+    try {
+      refreshResult = await session.refresh({ cookiePassword });
+    } catch {
+      throw new UnauthorizedException('Session expired');
+    }
     if (!refreshResult.authenticated) {
       throw new UnauthorizedException('Session expired');
     }
@@ -168,25 +256,29 @@ export class AuthService {
 
     const existing = await workos.userManagement.listUsers({ email: params.email, limit: 1 });
     const [match] = existing.data;
-    if (match) {
-      await workos.userManagement.updateUser({
-        userId: match.id,
+    try {
+      if (match) {
+        await workos.userManagement.updateUser({
+          userId: match.id,
+          password: params.password,
+          emailVerified: true,
+          firstName: params.firstName,
+          lastName: params.lastName,
+        });
+        return match.id;
+      }
+
+      const created = await workos.userManagement.createUser({
+        email: params.email,
         password: params.password,
         emailVerified: true,
         firstName: params.firstName,
         lastName: params.lastName,
       });
-      return match.id;
+      return created.id;
+    } catch (error) {
+      throw toPasswordStrengthError(error) ?? error;
     }
-
-    const created = await workos.userManagement.createUser({
-      email: params.email,
-      password: params.password,
-      emailVerified: true,
-      firstName: params.firstName,
-      lastName: params.lastName,
-    });
-    return created.id;
   }
 
   /**
@@ -355,4 +447,29 @@ export class AuthService {
       canManageMedications: user.canManageMedications,
     };
   }
+}
+
+/**
+ * WorkOS rejects createUser/updateUser with a 400 whose `code` is
+ * `password_strength_error` and an `errors` array of per-issue messages
+ * (their SDK's BadRequestException — duck-typed here rather than imported,
+ * since it isn't part of @workos-inc/node's public type exports). Without
+ * this, the real reason ("must be 10+ characters", "commonly used
+ * password") was lost behind a generic "couldn't create your account"
+ * message — see the WORKOS_API_KEY debugging session this followed.
+ */
+function toPasswordStrengthError(error: unknown): BadRequestException | null {
+  if (
+    typeof error !== 'object' ||
+    error === null ||
+    !('code' in error) ||
+    (error as { code?: unknown }).code !== 'password_strength_error'
+  ) {
+    return null;
+  }
+  const issues = (error as { errors?: Array<{ message?: string }> }).errors ?? [];
+  const message =
+    issues.map((issue) => issue.message).filter((text): text is string => Boolean(text)).join(' ') ||
+    'Choose a stronger password.';
+  return new BadRequestException({ code: 'PASSWORD_TOO_WEAK', message });
 }

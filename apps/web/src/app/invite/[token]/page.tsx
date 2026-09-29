@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { ClinicApiError, clinicRequest } from '../../../lib/clinic-api';
 import { ROLE_LABELS, type PublicInvitation } from '../../../lib/clinic-contracts';
 import { SparkiLogo } from '../../../components/sparki-logo';
+import { PASSWORD_MIN_LENGTH, PasswordStrengthMeter } from '../../../components/password-strength-meter';
 import '../../clinic-access.css';
 
 const stateCopy = {
@@ -33,7 +34,7 @@ export default function InvitationPage() {
   async function accept(event: FormEvent) {
     event.preventDefault();
     if (password !== confirm) { setError('Passwords don’t match.'); return; }
-    if (password.length < 8) { setError('Use at least 8 characters for your password.'); return; }
+    if (password.length < PASSWORD_MIN_LENGTH) { setError(`Use at least ${PASSWORD_MIN_LENGTH} characters for your password.`); return; }
     setSaving(true); setError(null);
     try {
       await clinicRequest(`/invitations/${encodeURIComponent(token)}/accept`, { method: 'POST', body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim(), password }) });
@@ -42,6 +43,7 @@ export default function InvitationPage() {
     } catch (caught) {
       if (caught instanceof ClinicApiError) {
         if (caught.code === 'EMAIL_ALREADY_REGISTERED') setError('This email already has a Sparki account.');
+        else if (caught.code === 'PASSWORD_TOO_WEAK') setError(caught.message);
         else if (caught.status === 410) setError(/revok/i.test(caught.message) ? stateCopy.REVOKED[0]! : stateCopy.EXPIRED[0]!);
         else if (caught.status === 409) setError(stateCopy.ACCEPTED[0]!);
         else if (caught.status === 404) setError('This invitation link isn’t valid.');
@@ -59,8 +61,8 @@ export default function InvitationPage() {
       <p className="clinic-access__meta">{invite.email} · {ROLE_LABELS[invite.role]}</p>
       <form onSubmit={(event) => void accept(event)} className="clinic-form">
         <div className="clinic-form__pair"><label>First name<input autoComplete="given-name" required maxLength={100} value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Last name<input autoComplete="family-name" required maxLength={100} value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></div>
-        <label>Password<input type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <label>Confirm password<input type="password" autoComplete="new-password" required minLength={8} value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
+        <label><span className="clinic-form__label-row"><span>Password</span><PasswordStrengthMeter password={password} /></span><input type="password" autoComplete="new-password" required minLength={PASSWORD_MIN_LENGTH} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label>Confirm password<input type="password" autoComplete="new-password" required minLength={PASSWORD_MIN_LENGTH} value={confirm} onChange={(event) => setConfirm(event.target.value)} /></label>
         {error && <p className="form-error" role="alert">{error} {error.includes('already') ? <Link href="/login">Sign in</Link> : null}</p>}
         <button className="button-primary" disabled={saving}>{saving ? 'Creating account…' : 'Create account'}</button>
       </form>

@@ -13,7 +13,7 @@ test('public home, checkout entry points, and protected routes retain their boun
   await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Pricing' })).toHaveAttribute('href', '/pricing');
   await page.getByRole('link', { name: 'Get Started' }).first().click();
   await expect(page).toHaveURL('/pricing');
-  await expect(page.getByRole('heading', { name: /Simple pricing for veterinary teams/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /A calmer clinic day.*One simple plan/ })).toBeVisible();
   await page.goto('/');
   for (const path of [
     '/patients',
@@ -51,7 +51,7 @@ test('mobile landing menu opens the pricing page', async ({ page }) => {
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Pricing' }).click();
   await expect(page).toHaveURL('/pricing');
-  await expect(page.getByRole('heading', { name: /Simple pricing for veterinary teams/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /A calmer clinic day.*One simple plan/ })).toBeVisible();
 });
 
 test('role, platform, and patient journey controls work with keyboard', async ({ page }) => {

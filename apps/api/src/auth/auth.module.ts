@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { AppConfigService } from '../config/app-config.service';
+import { EmailModule } from '../email/email.module';
 import { AuthController } from './auth.controller';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
@@ -26,6 +27,7 @@ import { SubscriptionGuard } from './subscription.guard';
  */
 @Global()
 @Module({
+  imports: [EmailModule],
   controllers: [AuthController],
   providers: [
     AuthService,

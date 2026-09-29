@@ -3,15 +3,22 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
+const RESEND_COOLDOWN_SECONDS = 60;
+
+type Mode = 'password' | 'code-request' | 'code-verify';
+
 export function LoginForm() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
@@ -24,12 +31,78 @@ export function LoginForm() {
       });
 
       if (!response.ok) {
-        const body: unknown = await response.json().catch(() => null);
-        const message =
-          body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
-            ? body.message
-            : 'Invalid email or password.';
-        setError(message);
+        setError(await extractError(response, 'Invalid email or password.'));
+        setSubmitting(false);
+        return;
+      }
+
+      router.push('/');
+      router.refresh();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+      setSubmitting(false);
+    }
+  }
+
+  async function requestCode(nextMode: Mode) {
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const response = await fetch('/api/auth/email-code/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        setError(await extractError(response, 'Could not send a sign-in code.'));
+        setSubmitting(false);
+        return;
+      }
+
+      setMode(nextMode);
+      setCode('');
+      startResendCooldown();
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startResendCooldown() {
+    setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    const timer = setInterval(() => {
+      setResendCooldown((current) => {
+        if (current <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return current - 1;
+      });
+    }, 1000);
+  }
+
+  async function handleCodeRequestSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await requestCode('code-verify');
+  }
+
+  async function handleCodeVerifySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const response = await fetch('/api/auth/email-code/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code }),
+      });
+
+      if (!response.ok) {
+        setError(await extractError(response, 'That code is invalid or expired.'));
         setSubmitting(false);
         return;
       }
@@ -46,8 +119,102 @@ export function LoginForm() {
     setShowPassword((current) => !current);
   }
 
+  function switchToCodeMode() {
+    setError(null);
+    setMode('code-request');
+  }
+
+  function switchToPasswordMode() {
+    setError(null);
+    setMode('password');
+  }
+
+  if (mode === 'code-request') {
+    return (
+      <form onSubmit={handleCodeRequestSubmit} noValidate>
+        <div className="login-field">
+          <label htmlFor="login-email-code">Email</label>
+          <input
+            id="login-email-code"
+            name="email"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            disabled={submitting}
+          />
+        </div>
+
+        {error && (
+          <p className="login-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="button-primary login-submit" disabled={submitting}>
+          {submitting ? 'Sending code...' : 'Send sign-in code'}
+        </button>
+
+        <button type="button" className="login-mode-toggle" onClick={switchToPasswordMode} disabled={submitting}>
+          ← Sign in with a password instead
+        </button>
+      </form>
+    );
+  }
+
+  if (mode === 'code-verify') {
+    return (
+      <form onSubmit={handleCodeVerifySubmit} noValidate>
+        <p className="login-code-hint">
+          Enter the 6-digit code we sent to <strong>{email}</strong>.
+        </p>
+        <div className="login-field">
+          <label htmlFor="login-code">Sign-in code</label>
+          <input
+            id="login-code"
+            name="code"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            required
+            className="login-code-input"
+            value={code}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+            disabled={submitting}
+          />
+        </div>
+
+        {error && (
+          <p className="login-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="button-primary login-submit" disabled={submitting || code.length !== 6}>
+          {submitting ? 'Verifying...' : 'Verify and sign in'}
+        </button>
+
+        <div className="login-code-actions">
+          <button type="button" className="login-mode-toggle" onClick={switchToPasswordMode} disabled={submitting}>
+            Use a different sign-in method
+          </button>
+          <button
+            type="button"
+            className="login-mode-toggle"
+            onClick={() => requestCode('code-verify')}
+            disabled={submitting || resendCooldown > 0}
+          >
+            {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form onSubmit={handlePasswordSubmit} noValidate>
       <div className="login-field">
         <label htmlFor="login-email">Email</label>
         <input
@@ -116,6 +283,17 @@ export function LoginForm() {
       <button type="submit" className="button-primary login-submit" disabled={submitting}>
         {submitting ? 'Signing in...' : 'Sign in'}
       </button>
+
+      <button type="button" className="login-mode-toggle" onClick={switchToCodeMode} disabled={submitting}>
+        Sign in with an email code instead
+      </button>
     </form>
   );
+}
+
+async function extractError(response: Response, fallback: string): Promise<string> {
+  const body: unknown = await response.json().catch(() => null);
+  return body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
+    ? body.message
+    : fallback;
 }

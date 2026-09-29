@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { ClinicApiError, clinicRequest } from '../../lib/clinic-api';
 import { SparkiLogo } from '../../components/sparki-logo';
 import s from './pricing.module.css';
@@ -39,6 +39,29 @@ export default function PricingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [signupStep, setSignupStep] = useState(0);
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const signupIntro = useRef<HTMLDivElement>(null);
+  const [showCompactHeading, setShowCompactHeading] = useState(false);
+  const signupSteps = ['About you', 'Your practice', 'Address'];
+
+  useEffect(() => {
+    if (step !== 'checkout') return;
+    const update = () => {
+      const intro = signupIntro.current;
+      setShowCompactHeading(Boolean(intro && intro.getBoundingClientRect().bottom <= (window.innerWidth <= 700 ? 68 : 82)));
+    };
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => { window.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== 'checkout') return;
+    stepHeading.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [step, signupStep]);
 
   function updateBusinessPhone(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
@@ -63,6 +86,11 @@ export default function PricingPage() {
 
   async function checkout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (signupStep < 2) {
+      setSignupStep(signupStep + 1);
+      setError(null);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -98,64 +126,82 @@ export default function PricingPage() {
       </div>
     </header>
 
-    <main id="main" className={s.main}>
-      {step === 'plan' ? <>
+    {step === 'checkout' && showCompactHeading && <div className={s.compactHeading}>
+      <button type="button" onClick={() => { setStep('plan'); setError(null); }}>← Back to pricing</button>
+      <span>Make room for your practice.</span>
+      <span className={s.compactStep}>Step {signupStep + 1} of 3</span>
+    </div>}
+
+    <main id="main" className={`${s.main} ${step === 'checkout' ? s.signupMain : ''}`}>
+      {step === 'plan' ? <div className={s.pricingLayout}>
         <div className={s.intro}>
           <p className={s.eyebrow}>Sparki pricing</p>
-          <h1>Simple pricing for<br /><span>veterinary teams.</span></h1>
-          <p>Everything a clinic needs to run Sparki in one place.</p>
+          <h1>A calmer clinic day.<br /><span>One simple plan.</span></h1>
+          <p>Your patients, your team, and the work between them. Together in Sparki.</p>
+          <p className={s.introNote}>Built with our first clinics.<br />Free during early access.</p>
         </div>
         <section className={s.plan} aria-label="Sparki plan">
           <div className={s.planTop}>
-            <div><p className={s.eyebrow}>One connected workspace</p><h2>Sparki</h2></div>
-            <p className={s.price}><strong>$0</strong><span>/month</span></p>
+            <h2>Sparki</h2>
+            <span className={s.earlyBadge}>Early access</span>
           </div>
-          <p className={s.early}>Free during early access</p>
-          <p className={s.planDescription}>The essentials for your clinic’s daily work, together.</p>
+          <p className={s.price}><strong>$0</strong><span>/month</span></p>
+          <p className={s.planDescription}>One connected workspace for your practice.</p>
           <button type="button" className={s.button} onClick={() => setStep('checkout')}>Start free <span aria-hidden="true">↗</span></button>
+          <p className={s.includedLabel}>Included in your workspace</p>
           <ul className={s.features}>{features.map((feature) => <li key={feature}>{feature}</li>)}</ul>
         </section>
-        <p className={s.note}>We’re keeping Sparki free while we work closely with our first clinics.</p>
-      </> : <>
-        <div className={s.checkoutHeading}>
+      </div> : <>
+        <div ref={signupIntro} className={`${s.checkoutHeading} ${s.signupHeading}`}>
           <button type="button" className={s.back} onClick={() => { setStep('plan'); setError(null); }}>← Back to pricing</button>
-          <p className={s.eyebrow}>Your next step</p>
-          <h1>Let’s get to know<br /><span>your practice.</span></h1>
-          <p>A few details now, so your Sparki workspace feels like yours from the start.</p>
+          <h1>Make room for <span>your practice.</span></h1>
+          <p>A few details. A workspace that feels like yours.</p>
         </div>
-        <section className={s.checkoutCard} aria-label="Checkout details">
-          <div className={s.summary}><p className={s.eyebrow}>Your plan</p><div><strong>Sparki</strong><strong>$0 today</strong></div><span>Free during early access</span></div>
+        <section className={`${s.checkoutCard} ${s.signupCard}`} aria-label="Checkout details">
+          <ol className={s.signupRail} aria-label="Signup progress">
+            {signupSteps.map((label, index) => <li key={label} data-status={index < signupStep ? 'done' : index === signupStep ? 'active' : 'upcoming'} aria-current={index === signupStep ? 'step' : undefined}>
+              <span className={s.signupDot} aria-hidden="true">{index < signupStep ? <svg viewBox="0 0 16 16" width="12" height="12" fill="none"><path d="M3 8.5 6.2 11.5 13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg> : index + 1}</span>
+              <span>{label}</span>
+            </li>)}
+          </ol>
+          <div className={s.stepIntro}>
+            <p className={s.eyebrow}>Step {signupStep + 1} of 3</p>
+            <h2 ref={stepHeading} tabIndex={-1}>{['First, a little about you.', 'Tell us about your practice.', 'What’s your practice address?'][signupStep]}</h2>
+            <p>{['You’ll be the owner of your Sparki workspace.', 'Start with your business name. The other details are optional.', 'Your practice address is optional. You can also add it during setup.'][signupStep]}</p>
+          </div>
           <form onSubmit={(event) => void checkout(event)}>
-            <div className={s.formSection}>
-              <p className={s.sectionTitle}>About you</p>
+            {signupStep === 0 && <div className={s.formSection}>
               <div className={s.fieldPair}>
                 <label>First name<input autoComplete="given-name" required maxLength={100} value={form.ownerFirstName} onChange={(event) => setForm({ ...form, ownerFirstName: event.target.value })} /></label>
                 <label>Last name<input autoComplete="family-name" required maxLength={100} value={form.ownerLastName} onChange={(event) => setForm({ ...form, ownerLastName: event.target.value })} /></label>
               </div>
               <label>Your email<input type="email" autoComplete="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
               <p className={s.help}>Use an email only you can access. A personal email is fine if you don’t have your own work email. We’ll send your account setup link here.</p>
-            </div>
-            <div className={s.formSection}>
-              <p className={s.sectionTitle}>Your practice</p>
+            </div>}
+            {signupStep === 1 && <div className={s.formSection}>
               <label>Business name<input autoComplete="organization" required maxLength={200} value={form.businessName} onChange={(event) => setForm({ ...form, businessName: event.target.value })} /></label>
-              <p className={s.help}>Only your business name is needed now. You can add the rest here or during setup.</p>
               <div className={s.fieldPair}>
                 <label>Business phone<input type="tel" inputMode="tel" autoComplete="organization-tel" placeholder="(555) 123-4567" value={form.businessPhone} onChange={updateBusinessPhone} onKeyDown={handleBusinessPhoneKeyDown} /></label>
                 <label>Team size<select value={form.teamSize} onChange={(event) => setForm({ ...form, teamSize: event.target.value })}><option value="">Select team size</option><option value="1">Just me</option><option value="2-5">2–5 people</option><option value="6-10">6–10 people</option><option value="11-25">11–25 people</option><option value="26+">26+ people</option></select></label>
               </div>
               <label>Practice contact email<input type="email" autoComplete="organization-email" value={form.businessEmail} onChange={(event) => setForm({ ...form, businessEmail: event.target.value })} /></label>
               <p className={s.help}>For a shared hospital inbox, if you have one. Team members use their own email addresses to sign in.</p>
-              <p className={s.optionalTitle}>Practice address</p>
+            </div>}
+            {signupStep === 2 && <div className={s.formSection}>
               <label>Street address<input autoComplete="street-address" maxLength={200} value={form.addressLine1} onChange={(event) => setForm({ ...form, addressLine1: event.target.value })} /></label>
               <div className={s.addressGrid}>
                 <label>City<input autoComplete="address-level2" maxLength={100} value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} /></label>
                 <label>State<input autoComplete="address-level1" maxLength={100} value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })} /></label>
                 <label>ZIP code<input autoComplete="postal-code" maxLength={20} value={form.postalCode} onChange={(event) => setForm({ ...form, postalCode: event.target.value })} /></label>
               </div>
-            </div>
+            </div>}
             {error && <p className={s.error} role="alert">{error}</p>}
-            <button className={s.button} disabled={busy}>{busy ? 'Opening checkout…' : 'Continue to secure checkout'} <span aria-hidden="true">↗</span></button>
+            <div className={s.signupActions}>
+              {signupStep > 0 && <button type="button" className={s.stepBack} disabled={busy} onClick={() => { setSignupStep(signupStep - 1); setError(null); }}>← Back</button>}
+              <button className={s.button} disabled={busy}>{busy ? 'Opening checkout…' : signupStep === 2 ? 'Continue to secure checkout' : 'Continue'} <span aria-hidden="true">{signupStep === 2 ? '↗' : '→'}</span></button>
+            </div>
           </form>
+          <div className={s.signupPlan}><span>Sparki · Free during early access</span><strong>$0 today</strong></div>
         </section>
       </>}
     </main>

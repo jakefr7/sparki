@@ -5,7 +5,9 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { loginSchema, type LoginInput } from './dto/login.schema';
+import { requestEmailCodeSchema, type RequestEmailCodeInput } from './dto/request-email-code.schema';
 import { updateProfileSchema, type UpdateProfileInput } from './dto/update-profile.schema';
+import { verifyEmailCodeSchema, type VerifyEmailCodeInput } from './dto/verify-email-code.schema';
 import { AllowInactiveClinic } from './allow-inactive-clinic.decorator';
 import { MANAGE_ADMIN_SETTINGS } from './permissions';
 import { Public } from './public.decorator';
@@ -49,6 +51,26 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const { sealedSession, user } = await this.auth.login(body.email, body.password);
+    setSessionCookie(response, sealedSession, this.config.nodeEnv === 'production');
+    return { user: toMeResponse(user) };
+  }
+
+  // Always returns { ok: true } — never reveals whether `email` has a
+  // Sparki account (see AuthService.requestEmailCode).
+  @Public()
+  @Post('email-code/request')
+  async requestEmailCode(@Body(new ZodValidationPipe(requestEmailCodeSchema)) body: RequestEmailCodeInput) {
+    await this.auth.requestEmailCode(body.email);
+    return { ok: true };
+  }
+
+  @Public()
+  @Post('email-code/verify')
+  async verifyEmailCode(
+    @Body(new ZodValidationPipe(verifyEmailCodeSchema)) body: VerifyEmailCodeInput,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const { sealedSession, user } = await this.auth.verifyEmailCode(body.email, body.code);
     setSessionCookie(response, sealedSession, this.config.nodeEnv === 'production');
     return { user: toMeResponse(user) };
   }

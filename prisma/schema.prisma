@@ -219,6 +219,10 @@ model User {
   // Sparki owns authorization; WorkOS AuthKit owns authentication (see
   // apps/api/src/auth). Nullable until real sign-in issues this.
   workosUserId                String?  @unique
+  // Cooldown guard for POST /auth/email-code/request (WorkOS Magic Auth) —
+  // prevents a single account from triggering unlimited code sends. See
+  // AuthService.requestEmailCode.
+  lastEmailCodeRequestedAt    DateTime?
   // Explicit per-user grant, independent of Role — Settings > Admin (scheduler
   // settings + dashboard status colors) is deliberately not tied to any
   // Role so any team member can be granted it individually without a role

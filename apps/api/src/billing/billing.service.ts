@@ -3,6 +3,7 @@ import { prisma } from '@sparki/db';
 import type Stripe from 'stripe';
 import { AppConfigService } from '../config/app-config.service';
 import { STRIPE_CLIENT } from './stripe-client.provider';
+import { resolveStripePriceId } from './plans';
 import type { CreateCheckoutSessionInput } from './dto/create-checkout-session.schema';
 
 /**
@@ -35,11 +36,15 @@ export class BillingService {
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<{ checkoutUrl: string }> {
     const stripe = this.requireConfigured();
+    // The ONLY path from a client-supplied plan identifier to a Stripe
+    // Price id — see docs/adr/ADR-008. `input` has no priceId field to
+    // read even if a caller sent one.
+    const priceId = resolveStripePriceId(this.config, input.plan);
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer_email: input.email,
-      line_items: [{ price: input.priceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${this.config.webOrigin}/setup/pending?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${this.config.webOrigin}/pricing`,
       // Stashed on both the session and the resulting subscription so the

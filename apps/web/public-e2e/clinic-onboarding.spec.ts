@@ -157,13 +157,40 @@ test('exact subscription 402 from a protected API routes to billing state', asyn
   await expect(page).toHaveURL(/\/billing-required$/);
 });
 
-test('pricing submits the selected price and owner email to checkout', async ({ page }) => {
+test('pricing renders without a price ID and submits only the approved plan', async ({ page }) => {
   let submitted: unknown;
   await page.route('**/api/billing/checkout-sessions', (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { checkoutUrl: 'https://checkout.stripe.com/c/pay/test' } }); });
-  await page.goto('/pricing?price_id=price_test_standard');
+  await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Secure checkout</h1>' }));
+  await page.goto('/pricing');
+  await expect(page.getByRole('heading', { name: 'Sparki for your clinic' })).toBeVisible();
+  await expect(page.getByText('Veterinary practice software')).toBeVisible();
   await page.getByLabel('Owner email').fill('owner@clinic.test');
   await page.getByRole('button', { name: 'Continue to checkout' }).click();
-  await expect.poll(() => submitted).toEqual({ email: 'owner@clinic.test', priceId: 'price_test_standard' });
+  await expect.poll(() => submitted).toEqual({ email: 'owner@clinic.test', plan: 'STANDARD' });
+  await expect(page).toHaveURL('https://checkout.stripe.com/c/pay/test');
+});
+
+test('pricing ignores a client-supplied price ID', async ({ page }) => {
+  let submitted: unknown;
+  await page.route('**/api/billing/checkout-sessions', (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: { checkoutUrl: 'https://checkout.stripe.com/c/pay/test' } }); });
+  await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<h1>Secure checkout</h1>' }));
+  await page.goto('/pricing?price_id=price_test_untrusted');
+  await page.getByLabel('Owner email').fill('owner@clinic.test');
+  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  await expect.poll(() => submitted).toEqual({ email: 'owner@clinic.test', plan: 'STANDARD' });
+});
+
+test('pricing keeps email validation and offers retry after checkout error', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/billing/checkout-sessions', (route) => { requests++; return route.fulfill({ status: 503, json: { message: 'Unavailable' } }); });
+  await page.goto('/pricing');
+  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  expect(requests).toBe(0);
+  await page.getByLabel('Owner email').fill('owner@clinic.test');
+  await page.getByRole('button', { name: 'Continue to checkout' }).click();
+  await expect(page.locator('.clinic-form .form-error')).toContainText('We couldn’t start checkout. Please try again or contact Sparki support.');
+  await expect(page.getByRole('button', { name: 'Continue to checkout' })).toBeEnabled();
+  expect(requests).toBe(1);
 });
 
 test('invalid invitation and unknown checkout links recover clearly', async ({ page }) => {

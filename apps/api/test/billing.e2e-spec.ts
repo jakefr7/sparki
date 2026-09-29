@@ -135,6 +135,67 @@ describe('Billing webhooks (e2e)', () => {
     } as unknown as Stripe.Subscription);
   }
 
+  describe('POST /billing/checkout-sessions (trusted plan catalog, ADR-008)', () => {
+    it('resolves plan "STANDARD" to the configured STRIPE_PRICE_STANDARD Stripe price', async () => {
+      const approvedPriceId = process.env.STRIPE_PRICE_STANDARD;
+      expect(approvedPriceId).toBeTruthy();
+
+      const createSpy = vi.spyOn(stripe.checkout.sessions, 'create').mockResolvedValue({
+        url: 'https://checkout.stripe.test/session_fixture',
+      } as unknown as Stripe.Checkout.Session);
+
+      const response = await request(app.getHttpServer())
+        .post('/billing/checkout-sessions')
+        .send({ email: 'owner@example.test', plan: 'STANDARD' });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual({ checkoutUrl: 'https://checkout.stripe.test/session_fixture' });
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: [{ price: approvedPriceId, quantity: 1 }],
+        }),
+      );
+    });
+
+    it('ignores an arbitrary client-supplied priceId even when a valid plan is also sent', async () => {
+      const approvedPriceId = process.env.STRIPE_PRICE_STANDARD;
+
+      const createSpy = vi.spyOn(stripe.checkout.sessions, 'create').mockResolvedValue({
+        url: 'https://checkout.stripe.test/session_fixture',
+      } as unknown as Stripe.Checkout.Session);
+
+      const response = await request(app.getHttpServer())
+        .post('/billing/checkout-sessions')
+        .send({ email: 'owner@example.test', plan: 'STANDARD', priceId: 'price_attacker_supplied', stripePriceId: 'price_attacker_supplied' });
+
+      expect(response.status).toBe(201);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ line_items: [{ price: approvedPriceId, quantity: 1 }] }),
+      );
+    });
+
+    it('rejects an unknown plan identifier', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/billing/checkout-sessions')
+        .send({ email: 'owner@example.test', plan: 'PRO' });
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects a missing plan', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/billing/checkout-sessions')
+        .send({ email: 'owner@example.test' });
+      expect(response.status).toBe(400);
+    });
+
+    it('rejects a request that supplies only a raw priceId with no trusted plan', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/billing/checkout-sessions')
+        .send({ email: 'owner@example.test', priceId: 'price_attacker_supplied' });
+      expect(response.status).toBe(400);
+    });
+  });
+
   it('rejects a webhook with an invalid signature', async () => {
     const response = await postWebhook(JSON.stringify({ id: 'evt_bad', type: 'checkout.session.completed' }), 'not-a-real-signature');
     expect(response.status).toBe(400);

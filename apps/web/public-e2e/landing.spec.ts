@@ -1,20 +1,20 @@
 import { expect, test } from '@playwright/test';
 
-test('public home, demo CTAs, and protected routes retain their boundaries', async ({
+test('public home, checkout entry points, and protected routes retain their boundaries', async ({
   page,
   request,
   context,
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Your clinic.Finally in sync.');
-  for (const link of await page.getByRole('link', { name: 'Book a Demo' }).all()) {
-    await expect(link).toHaveAttribute('href', '');
-    if (await link.isVisible()) {
-      await link.click();
-      await expect(page).toHaveURL('/');
-      await expect(page.locator('#top')).toBeVisible();
-    }
+  for (const link of await page.getByRole('link', { name: 'Get Started' }).all()) {
+    await expect(link).toHaveAttribute('href', '/pricing');
   }
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Pricing' })).toHaveAttribute('href', '/pricing');
+  await page.getByRole('link', { name: 'Get Started' }).first().click();
+  await expect(page).toHaveURL('/pricing');
+  await expect(page.getByLabel('Owner email')).toBeVisible();
+  await page.goto('/');
   for (const path of [
     '/patients',
     '/scheduler',
@@ -43,6 +43,15 @@ test('public home, demo CTAs, and protected routes retain their boundaries', asy
   expect(signedHtml).toContain('Loading your clinic');
   expect(signedHtml).not.toContain('aria-label="Sparki dashboard"');
   expect(signedHtml).not.toContain('THE VETERINARY PRACTICE OPERATING SYSTEM');
+});
+
+test('mobile landing menu opens the pricing page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Pricing' }).click();
+  await expect(page).toHaveURL('/pricing');
+  await expect(page.getByLabel('Owner email')).toBeVisible();
 });
 
 test('role, platform, and patient journey controls work with keyboard', async ({ page }) => {

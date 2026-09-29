@@ -58,6 +58,14 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // not accepting them at all.
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,
+  // The approved Stripe Price id for Sparki's one customer-facing plan
+  // (docs/adr/ADR-008-trusted-plan-catalog.md). Required alongside the pair
+  // above: a deployment that can create Checkout sessions but has no
+  // trusted price to sell them at is exactly as broken as one with no
+  // Stripe credentials at all. Never sent to the browser — see
+  // apps/api/src/billing/plans.ts, the only place a Sparki plan identifier
+  // resolves to a Stripe Price id.
+  STRIPE_PRICE_STANDARD: optionalString,
 
   // Transactional email (owner activation + staff invitations). Optional so
   // dev/test can run without a provider — EmailService logs the message and
@@ -87,10 +95,10 @@ export const apiEnvSchema = baseEnvSchema.extend({
   if ((storageConfigured > 0 && storageConfigured < storageValues.length) || (env.NODE_ENV === 'production' && storageConfigured !== storageValues.length)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Complete S3-compatible attachment storage configuration is required', path: ['ATTACHMENT_S3_ENDPOINT'] });
   }
-  const stripeValues = [env.STRIPE_SECRET_KEY, env.STRIPE_WEBHOOK_SECRET];
+  const stripeValues = [env.STRIPE_SECRET_KEY, env.STRIPE_WEBHOOK_SECRET, env.STRIPE_PRICE_STANDARD];
   const stripeConfigured = stripeValues.filter(Boolean).length;
   if ((stripeConfigured > 0 && stripeConfigured < stripeValues.length) || (env.NODE_ENV === 'production' && stripeConfigured !== stripeValues.length)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together', path: ['STRIPE_SECRET_KEY'] });
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together', path: ['STRIPE_SECRET_KEY'] });
   }
   const emailValues = [env.RESEND_API_KEY, env.EMAIL_FROM];
   const emailConfigured = emailValues.filter(Boolean).length;

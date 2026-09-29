@@ -53,10 +53,11 @@ export class AppConfigService {
     };
   }
 
-  get stripe(): { secretKey: string | undefined; webhookSecret: string | undefined } {
+  get stripe(): { secretKey: string | undefined; webhookSecret: string | undefined; priceStandard: string | undefined } {
     return {
       secretKey: this.env.STRIPE_SECRET_KEY,
       webhookSecret: this.env.STRIPE_WEBHOOK_SECRET,
+      priceStandard: this.env.STRIPE_PRICE_STANDARD,
     };
   }
 

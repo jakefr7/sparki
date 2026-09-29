@@ -92,6 +92,7 @@ describe('loadApiEnv', () => {
       ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
       STRIPE_SECRET_KEY: 'sk_live_example',
       STRIPE_WEBHOOK_SECRET: 'whsec_example',
+      STRIPE_PRICE_STANDARD: 'price_live_example',
       RESEND_API_KEY: 're_example',
       EMAIL_FROM: 'onboarding@sparki.test',
     } as NodeJS.ProcessEnv);
@@ -112,7 +113,26 @@ describe('loadApiEnv', () => {
     expect(() => loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',
       STRIPE_SECRET_KEY: 'sk_test',
-    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together/);
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
+  });
+
+  it('rejects a Stripe key/secret pair with no approved STANDARD plan price', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      STRIPE_SECRET_KEY: 'sk_test',
+      STRIPE_WEBHOOK_SECRET: 'whsec_test',
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
+  });
+
+  it('accepts a complete Stripe key/secret/price set outside production', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      STRIPE_SECRET_KEY: 'sk_test',
+      STRIPE_WEBHOOK_SECRET: 'whsec_test',
+      STRIPE_PRICE_STANDARD: 'price_test_standard',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.STRIPE_PRICE_STANDARD).toBe('price_test_standard');
   });
 
   it('rejects partially configured email credentials', () => {
@@ -131,7 +151,7 @@ describe('loadApiEnv', () => {
       ATTACHMENT_S3_BUCKET: 'private-messaging',
       ATTACHMENT_S3_ACCESS_KEY_ID: 'access-key',
       ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
-    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required together/);
+    } as NodeJS.ProcessEnv)).toThrow(/STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, and STRIPE_PRICE_STANDARD are required together/);
   });
 
   it('accepts complete Stripe and email configuration in production', () => {
@@ -145,11 +165,13 @@ describe('loadApiEnv', () => {
       ATTACHMENT_S3_SECRET_ACCESS_KEY: 'secret-key',
       STRIPE_SECRET_KEY: 'sk_live_example',
       STRIPE_WEBHOOK_SECRET: 'whsec_example',
+      STRIPE_PRICE_STANDARD: 'price_live_example',
       RESEND_API_KEY: 're_example',
       EMAIL_FROM: 'onboarding@sparki.test',
     } as NodeJS.ProcessEnv);
 
     expect(env.STRIPE_SECRET_KEY).toBe('sk_live_example');
+    expect(env.STRIPE_PRICE_STANDARD).toBe('price_live_example');
     expect(env.EMAIL_FROM).toBe('onboarding@sparki.test');
   });
 });

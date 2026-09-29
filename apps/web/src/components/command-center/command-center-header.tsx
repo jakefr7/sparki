@@ -4,6 +4,7 @@ import type { DashboardPersonSummary, OperationsDashboard } from '../../lib/pati
 import { PatientSearch } from '../patient-search';
 import type { ClinicHealth } from './card-helpers';
 import { StaffFocusPicker } from './staff-focus-picker';
+import { SparkiLogo } from '../sparki-logo';
 
 const CLINIC_HEALTH_LABEL: Record<ClinicHealth, string> = {
   calm: 'Calm',
@@ -35,7 +36,7 @@ export function CommandCenterHeader({
   return (
     <>
       <header className="command-home-header command-home-header--ops">
-        <span className="app-brand">Sparki</span>
+        <span className="app-brand" role="img" aria-label="Sparki"><SparkiLogo kind="mark" className="app-brand__logo" /></span>
         <div className="command-home-header__actions">
           <div className="ops-clinic-health" data-health={clinicHealth} aria-label="Clinic health">
             <span className="ops-clinic-health__dot" aria-hidden="true" />

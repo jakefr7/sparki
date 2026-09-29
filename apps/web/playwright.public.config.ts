@@ -13,6 +13,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:3001', ...devices['Desktop Chrome'] },
   webServer: {
     command: 'node_modules/.bin/next dev --hostname 127.0.0.1 --port 3001',
+    env: { SPARKI_WEB_DIST_DIR: '.next-public-e2e' },
     url: 'http://127.0.0.1:3001',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

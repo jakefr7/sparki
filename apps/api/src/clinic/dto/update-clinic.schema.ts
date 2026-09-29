@@ -7,6 +7,7 @@ export const updateClinicSchema = z.object({
   legalName: optionalTrimmed(200),
   phone: optionalTrimmed(50),
   email: z.string().trim().email().max(200).nullable().optional(),
+  teamSize: z.enum(['1', '2-5', '6-10', '11-25', '26+']).nullable().optional(),
   addressLine1: optionalTrimmed(200),
   addressLine2: optionalTrimmed(200),
   city: optionalTrimmed(100),

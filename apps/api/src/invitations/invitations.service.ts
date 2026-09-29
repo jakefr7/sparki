@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import {
   ConflictException,
   GoneException,
+  HttpException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -29,6 +30,8 @@ export interface PublicInvitationView {
   role: UserRole;
   clinicName: string;
   isOwnerFounding: boolean;
+  suggestedFirstName: string | null;
+  suggestedLastName: string | null;
   status: 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
   expiresAt: string;
 }
@@ -95,6 +98,7 @@ export class InvitationsService {
     tx: Prisma.TransactionClient,
     organizationId: string,
     email: string,
+    suggestedName?: { firstName: string | null; lastName: string | null },
   ): Promise<{ invitation: ClinicInvitation; rawToken: string }> {
     const { raw, hash } = this.issueToken();
     const invitation = await tx.clinicInvitation.create({
@@ -102,6 +106,8 @@ export class InvitationsService {
         organizationId,
         email: email.trim().toLowerCase(),
         role: 'OWNER',
+        suggestedFirstName: suggestedName?.firstName ?? null,
+        suggestedLastName: suggestedName?.lastName ?? null,
         tokenHash: hash,
         expiresAt: this.expiryDate(),
         invitedByUserId: null,
@@ -116,7 +122,7 @@ export class InvitationsService {
    *  transaction: an external HTTP call has no business holding a Postgres
    *  transaction open. */
   async sendInvitationEmail(params: {
-    invitation: Pick<ClinicInvitation, 'email' | 'role' | 'invitedByUserId'>;
+    invitation: Pick<ClinicInvitation, 'id' | 'email' | 'role' | 'invitedByUserId'>;
     rawToken: string;
     clinicName: string;
     invitedByName?: string;
@@ -136,6 +142,29 @@ export class InvitationsService {
     const html = `<p>${escapeHtml(introLine)}</p><p><a href="${link}">${link}</a></p><p>This link expires in ${INVITATION_TTL_DAYS} days.</p>`;
 
     await this.email.send({ to: params.invitation.email, subject, text, html });
+    await prisma.clinicInvitation.update({ where: { id: params.invitation.id }, data: { emailSentAt: new Date() } });
+  }
+
+  /** A Checkout session holder may request another link, but the recipient is
+   * fixed to the owner address recorded by the verified webhook. Never return
+   * the raw token to the caller. */
+  async resendOwnerActivation(organizationId: string, ownerEmail: string, clinicName: string): Promise<void> {
+    const invitation = await prisma.clinicInvitation.findFirst({
+      where: { organizationId, email: ownerEmail.trim().toLowerCase(), role: 'OWNER', invitedByUserId: null, status: 'PENDING' },
+    });
+    if (!invitation) throw new NotFoundException('Pending owner activation not found.');
+    if (invitation.emailSentAt && Date.now() - invitation.emailSentAt.getTime() < 60_000) {
+      throw new HttpException('Please wait a minute before requesting another setup link.', 429);
+    }
+
+    const { raw, hash } = this.issueToken();
+    const claimed = await prisma.clinicInvitation.updateMany({
+      where: { id: invitation.id, tokenHash: invitation.tokenHash, status: 'PENDING' },
+      data: { tokenHash: hash, expiresAt: this.expiryDate() },
+    });
+    if (claimed.count !== 1) throw new ConflictException('A setup link is already being prepared.');
+
+    await this.sendInvitationEmail({ invitation, rawToken: raw, clinicName });
   }
 
   /** Used by TeamService.invite — see that method for the actor/role
@@ -311,6 +340,8 @@ export class InvitationsService {
       role: invitation.role,
       clinicName: invitation.organization.name,
       isOwnerFounding: invitation.invitedByUserId === null,
+      suggestedFirstName: invitation.suggestedFirstName,
+      suggestedLastName: invitation.suggestedLastName,
       status: summary.status,
       expiresAt: summary.expiresAt,
     };

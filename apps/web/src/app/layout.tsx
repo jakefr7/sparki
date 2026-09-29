@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import sparkiMark from '../../public/brand/sparki-mark.png';
 import { cookies } from 'next/headers';
 import { ThemeProvider } from '../components/theme-provider';
 import { AuthBootstrapProvider, type BootstrapProfile, type BootstrapWeather } from '../components/auth-bootstrap';
@@ -15,7 +16,12 @@ import './clinical-workspace.css';
 
 export const metadata: Metadata = {
   title: 'Sparki',
-  description: 'Sparki engineering foundation',
+  description: 'The veterinary practice operating system that brings patients, scheduling, clinical care, team communication, and inventory into one connected workspace.',
+  icons: {
+    icon: [{ url: sparkiMark.src, type: 'image/png' }],
+    shortcut: [sparkiMark.src],
+    apple: [sparkiMark.src],
+  },
 };
 
 // Runs before paint so the stored theme applies immediately on load instead

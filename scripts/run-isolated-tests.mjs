@@ -133,6 +133,16 @@ try {
     SPARKI_ISOLATED_TEST_DATABASE: databaseName,
     SPARKI_DEVELOPMENT_AUTH: 'fixed',
   };
+  if (mode === 'integration') {
+    // Billing webhook fixtures sign with this fixed secret. Never use a
+    // developer's real Stripe sandbox credentials in an isolated test run.
+    env = {
+      ...env,
+      STRIPE_SECRET_KEY: 'sk_test_local_isolated_placeholder',
+      STRIPE_WEBHOOK_SECRET: 'whsec_local_placeholder_not_a_real_secret',
+      STRIPE_PRICE_STANDARD: 'price_test_standard',
+    };
+  }
   exitCode = await run(
     'pnpm',
     [
@@ -174,7 +184,7 @@ try {
   if (exitCode === 0) {
     const args =
       mode === 'integration'
-        ? ['--filter', '@sparki/api', 'run', 'test:integration:raw']
+        ? ['--filter', '@sparki/api', 'run', 'test:integration:raw', ...testArgs]
         : ['--filter', '@sparki/web', 'run', 'test:e2e:raw', ...testArgs];
     exitCode = await run('pnpm', args, env);
   }

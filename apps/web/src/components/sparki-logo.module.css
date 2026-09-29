@@ -1,0 +1,15 @@
+.image {
+  display: block;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.wordmark {
+  width: auto;
+  height: 34px;
+}
+
+.mark {
+  width: 32px;
+  height: 32px;
+}

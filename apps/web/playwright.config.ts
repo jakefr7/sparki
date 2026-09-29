@@ -71,6 +71,7 @@ export default defineConfig({
           },
           {
             command: 'pnpm --filter @sparki/web run dev',
+            env: { SPARKI_WEB_DIST_DIR: '.next-product-e2e' },
             url: WEB_URL,
             reuseExistingServer: false,
             cwd: '../..',

@@ -9,12 +9,11 @@ export interface EmailMessage {
 }
 
 /**
- * Transactional email for owner activation and staff invitations. Follows
- * the same optional-in-dev/required-together-in-production shape as
- * AttachmentStorage (see AppConfigService) rather than AuthService's
- * fail-at-boot shape — email isn't on every request, only the onboarding
- * surface, so a misconfigured deploy should fail loudly when it tries to
- * send, not refuse to start entirely.
+ * Transactional email for owner activation and staff invitations. Resend
+ * delivers real mail when configured. In local development, Mailpit captures
+ * messages in a loopback-only inbox so activation links can be tested without
+ * sending to real addresses. A missing transport must never look like a
+ * successful send.
  *
  * Uses the Resend HTTP API directly (no SDK) to avoid a dependency for a
  * single POST. Swap this implementation, not its call sites, if Sparki ever
@@ -26,19 +25,61 @@ export class EmailService {
 
   constructor(private readonly config: AppConfigService) {}
 
+  private get useLocalInbox(): boolean {
+    if (this.config.nodeEnv !== 'development') return false;
+    try {
+      return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(this.config.webOrigin).hostname);
+    } catch {
+      return false;
+    }
+  }
+
   get isConfigured(): boolean {
-    return Boolean(this.config.email.resendApiKey && this.config.email.from);
+    return Boolean(this.config.email.resendApiKey && this.config.email.from) || this.useLocalInbox;
+  }
+
+  async assertReady(): Promise<void> {
+    if (this.config.email.resendApiKey && this.config.email.from) return;
+    if (!this.useLocalInbox) {
+      throw new ServiceUnavailableException({ code: 'EMAIL_UNAVAILABLE', message: 'Account setup email is unavailable.' });
+    }
+    try {
+      const response = await fetch('http://127.0.0.1:8025/api/v1/info', { signal: AbortSignal.timeout(3000) });
+      if (response.ok) return;
+    } catch {
+      // The user can retry checkout after starting the local inbox.
+    }
+    throw new ServiceUnavailableException({ code: 'EMAIL_UNAVAILABLE', message: 'Account setup email is unavailable.' });
   }
 
   async send(message: EmailMessage): Promise<void> {
     const { resendApiKey, from } = this.config.email;
 
     if (!resendApiKey || !from) {
-      // Dev/test fallback: never throw. Tests inject a fake EmailService to
-      // capture and assert on outbound messages (see invitations.e2e-spec.ts)
-      // rather than relying on this log line, which exists only for a
-      // developer running `pnpm dev` locally without RESEND_API_KEY set.
-      this.logger.log(`[dev email — not sent, no provider configured] to=${message.to} subject="${message.subject}"`);
+      if (!this.useLocalInbox) {
+        throw new ServiceUnavailableException('Transactional email is not configured.');
+      }
+      let response: Response;
+      try {
+        response = await fetch('http://127.0.0.1:8025/api/v1/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            From: { Email: 'onboarding@sparki.local', Name: 'Sparki' },
+            To: [{ Email: message.to }],
+            Subject: message.subject,
+            HTML: message.html,
+            Text: message.text,
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch {
+        throw new ServiceUnavailableException('Local email inbox is unavailable. Start Mailpit with docker compose up -d mailpit.');
+      }
+      if (!response.ok) {
+        throw new ServiceUnavailableException('Local email inbox could not accept the message.');
+      }
+      this.logger.log(`Captured development email for ${message.to} in Mailpit.`);
       return;
     }
 

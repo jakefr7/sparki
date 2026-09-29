@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ClinicApiError, clinicRequest } from '../../../lib/clinic-api';
 import { ROLE_LABELS, type PublicInvitation } from '../../../lib/clinic-contracts';
+import { SparkiLogo } from '../../../components/sparki-logo';
 import '../../clinic-access.css';
 
 const stateCopy = {
@@ -24,7 +25,7 @@ export default function InvitationPage() {
   useEffect(() => {
     let active = true;
     clinicRequest<PublicInvitation>(`/invitations/${encodeURIComponent(token)}`)
-      .then((value) => { if (active) setInvite(value); })
+      .then((value) => { if (active) { setInvite(value); if (value.isOwnerFounding) { setFirstName(value.suggestedFirstName ?? ''); setLastName(value.suggestedLastName ?? ''); } } })
       .catch(() => { if (active) setError('This invitation link isn’t valid.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -50,7 +51,7 @@ export default function InvitationPage() {
     }
   }
   const inactive = invite && invite.status !== 'PENDING' ? stateCopy[invite.status] : null;
-  return <main className="clinic-access"><section className="clinic-access__panel"><Link className="clinic-access__brand" href="/">Sparki</Link>
+  return <main className="clinic-access"><section className="clinic-access__panel"><Link className="clinic-access__brand" href="/" aria-label="Sparki home"><SparkiLogo /></Link>
     {loading ? <p role="status">Loading your invitation…</p> : inactive ? <><h1>{inactive[0]}</h1><p>{inactive[1]}</p><Link href="/login" className="button-primary">Sign in</Link></> : invite ? <>
       <p className="eyebrow">{invite.isOwnerFounding ? 'Your clinic is ready' : 'Join your clinic'}</p>
       <h1>{invite.isOwnerFounding ? 'Welcome to Sparki' : `You’ve been invited to ${invite.clinicName}`}</h1>

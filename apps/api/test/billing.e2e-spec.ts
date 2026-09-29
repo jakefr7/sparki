@@ -28,6 +28,7 @@ describe('Billing webhooks (e2e)', () => {
   beforeAll(async () => {
     const fakeEmail = {
       isConfigured: false,
+      assertReady: vi.fn().mockResolvedValue(undefined),
       send: vi.fn(async (message: { to: string; subject: string; text: string }) => {
         sentEmails.push(message);
       }),
@@ -84,7 +85,7 @@ describe('Billing webhooks (e2e)', () => {
       .send(body);
   }
 
-  function checkoutCompletedEvent(params: { eventId: string; customerId: string; subscriptionId: string; email: string; created?: number }) {
+  function checkoutCompletedEvent(params: { eventId: string; customerId: string; subscriptionId: string; email: string; checkoutEmail?: string; created?: number; metadata?: Record<string, string> }) {
     return {
       id: params.eventId,
       type: 'checkout.session.completed',
@@ -94,9 +95,9 @@ describe('Billing webhooks (e2e)', () => {
           id: `cs_test_${params.eventId}`,
           customer: params.customerId,
           subscription: params.subscriptionId,
-          customer_details: { email: params.email },
+          customer_details: { email: params.checkoutEmail ?? params.email },
           customer_email: null,
-          metadata: { ownerEmail: params.email },
+          metadata: { ownerEmail: params.email, ...params.metadata },
         },
       },
     };
@@ -146,13 +147,17 @@ describe('Billing webhooks (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/billing/checkout-sessions')
-        .send({ email: 'owner@example.test', plan: 'STANDARD' });
+        .send({ email: 'owner@example.test', plan: 'STANDARD', ownerFirstName: 'Alex', ownerLastName: 'Owner', businessName: 'Maple Veterinary' });
 
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ checkoutUrl: 'https://checkout.stripe.test/session_fixture' });
       expect(createSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           line_items: [{ price: approvedPriceId, quantity: 1 }],
+          metadata: expect.objectContaining({ ownerEmail: 'owner@example.test', ownerFirstName: 'Alex', ownerLastName: 'Owner', businessName: 'Maple Veterinary' }),
+          custom_text: {
+            submit: { message: 'After checkout, we’ll email you a secure link to set up your clinic.' },
+          },
         }),
       );
     });
@@ -166,7 +171,7 @@ describe('Billing webhooks (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .post('/billing/checkout-sessions')
-        .send({ email: 'owner@example.test', plan: 'STANDARD', priceId: 'price_attacker_supplied', stripePriceId: 'price_attacker_supplied' });
+        .send({ email: 'owner@example.test', plan: 'STANDARD', ownerFirstName: 'Alex', ownerLastName: 'Owner', businessName: 'Maple Veterinary', priceId: 'price_attacker_supplied', stripePriceId: 'price_attacker_supplied' });
 
       expect(response.status).toBe(201);
       expect(createSpy).toHaveBeenCalledWith(
@@ -206,7 +211,9 @@ describe('Billing webhooks (e2e)', () => {
     const customerId = `cus_test_${Date.now()}_provision`;
     const subscriptionId = `sub_test_${Date.now()}_provision`;
     const email = `owner-${Date.now()}@example.test`;
-    const event = checkoutCompletedEvent({ eventId: `evt_${Date.now()}_provision`, customerId, subscriptionId, email });
+    const event = checkoutCompletedEvent({ eventId: `evt_${Date.now()}_provision`, customerId, subscriptionId, email, checkoutEmail: 'payer@example.test', metadata: {
+      ownerFirstName: 'Alex', ownerLastName: 'Owner', businessName: 'Maple Veterinary', businessPhone: '555-0100', businessEmail: 'hello@maplevet.test', teamSize: '6-10', addressLine1: '12 Maple Street', city: 'Madison', state: 'WI', postalCode: '53703',
+    } });
     const { body, signature } = signedPayload(event);
 
     const response = await postWebhook(body, signature);
@@ -217,6 +224,7 @@ describe('Billing webhooks (e2e)', () => {
 
     expect(organization.subscriptionStatus).toBe('ACTIVE');
     expect(organization.stripeSubscriptionId).toBe(subscriptionId);
+    expect(organization).toMatchObject({ name: 'Maple Veterinary', phone: '555-0100', email: 'hello@maplevet.test', teamSize: '6-10', addressLine1: '12 Maple Street', city: 'Madison', state: 'WI', postalCode: '53703' });
 
     const location = await prisma.location.findFirstOrThrow({ where: { organizationId: organization.id } });
     expect(location.name).toBe('Main Location');
@@ -225,6 +233,9 @@ describe('Billing webhooks (e2e)', () => {
     expect(invitation.role).toBe('OWNER');
     expect(invitation.email).toBe(email);
     expect(invitation.invitedByUserId).toBeNull();
+    expect(invitation.suggestedFirstName).toBe('Alex');
+    expect(invitation.suggestedLastName).toBe('Owner');
+    expect(invitation.emailSentAt).not.toBeNull();
 
     const provisionedEvent = await prisma.organizationEvent.findFirstOrThrow({
       where: { organizationId: organization.id, type: 'CLINIC_PROVISIONED' },
@@ -234,6 +245,24 @@ describe('Billing webhooks (e2e)', () => {
     expect(sentEmails).toHaveLength(1);
     expect(sentEmails[0]?.to).toBe(email);
     expect(sentEmails[0]?.text).not.toContain(invitation.tokenHash);
+
+    // An older local signup can have a clinic but no delivered activation
+    // email. The checkout holder can recover without creating another tenant.
+    await prisma.clinicInvitation.update({ where: { id: invitation.id }, data: { emailSentAt: null } });
+    vi.spyOn(stripe.checkout.sessions, 'retrieve').mockResolvedValue({
+      status: 'complete', customer: customerId, metadata: { ownerEmail: email },
+    } as unknown as Stripe.Checkout.Session);
+    const sessionId = `cs_test_${event.id}`;
+    const beforeResend = await request(app.getHttpServer()).get(`/billing/checkout-sessions/${sessionId}/status`);
+    expect(beforeResend.body.status).toBe('activation_required');
+    const resent = await request(app.getHttpServer()).post(`/billing/checkout-sessions/${sessionId}/resend-activation`);
+    expect(resent.status).toBe(201);
+    expect(sentEmails).toHaveLength(2);
+    expect(sentEmails[1]?.to).toBe(email);
+    expect((await prisma.clinicInvitation.findUniqueOrThrow({ where: { id: invitation.id } })).emailSentAt).not.toBeNull();
+    const afterResend = await request(app.getHttpServer()).get(`/billing/checkout-sessions/${sessionId}/status`);
+    expect(afterResend.body.status).toBe('provisioned');
+    expect((await request(app.getHttpServer()).post(`/billing/checkout-sessions/${sessionId}/resend-activation`)).status).toBe(429);
   });
 
   it('does not create a duplicate clinic when the same webhook event is delivered twice', async () => {

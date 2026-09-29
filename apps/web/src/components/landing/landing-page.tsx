@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import s from './landing.module.css';
 import { SparkiCanvas, type SparkiJourney } from './sparki-surfaces';
+import { SparkiLogo } from '../sparki-logo';
 
 const STEPS: ReadonlyArray<Omit<SparkiJourney, 'step'> & { name: string }> = [
   { name: 'Appointment', label: 'Scheduled', action: 'Appointment scheduled', detail: 'Wellness exam · 9:30 AM', tone: 'accent', note: 'Patient history stays connected to the appointment.', owner: 'Receptionist' },
@@ -42,7 +43,7 @@ export function LandingPage() {
   return <div className={s.landing} id="top" data-ready={ready ? 'true' : undefined}>
     <a className={s.skip} href="#main">Skip to content</a>
     <header className={`${s.header} ${scrolled ? s.headerScrolled : ''}`}>
-      <Link href="#top" className={s.brand} aria-label="Sparki home"><span className={s.brandMark}>S</span>sparki</Link>
+      <Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link>
       <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
       <div className={s.headerActions}><Link href="/login" className={s.signIn}>Sign In</Link><Link href="/pricing" className={s.buttonSmall}>Get Started <Arrow /></Link><button className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div>
     </header>
@@ -53,6 +54,6 @@ export function LandingPage() {
       <section className={s.solutions} id="solutions" aria-labelledby="solutions-heading"><div className={s.sectionIntro}><p className={s.eyebrow}>One connected workspace</p><h2 id="solutions-heading">One system.<br /><span>Every part of the clinic.</span></h2><p className={s.body}>Sparki keeps the clinic’s major workflows connected without asking your team to carry the gaps.</p></div><div className={s.areaGrid}>{AREAS.map(([name, copy, detail], index) => <div className={s.area} key={name}><span className={s.areaNumber}>0{index + 1}</span><h3>{name}</h3><p>{copy}</p><div className={s.areaDetail}>{detail}</div></div>)}</div></section>
       <section className={s.finalCta} id="demo"><p className={s.eyebrow}>See Sparki in your clinic</p><h2>Give your clinic<br /><span>a better operating system.</span></h2><p>See how Sparki keeps your patients, people, and daily work connected.</p><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link></section>
     </main>
-    <footer className={s.footer}><Link href="#top" className={s.brand}><span className={s.brandMark}>S</span>sparki</Link><span>Built for the people who care.</span><div><Link href="#product">Product</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
+    <footer className={s.footer}><Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link><span>Built for the people who care.</span><div><Link href="#product">Product</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
   </div>;
 }

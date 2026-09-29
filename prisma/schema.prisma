@@ -59,6 +59,7 @@ model Organization {
   legalName String?
   phone     String?
   email     String?
+  teamSize  String?
 
   // Structured clinic address, same shape as Client's (see Client model
   // below) — discrete columns rather than one string so city/state/zip stay
@@ -411,11 +412,14 @@ model ClinicInvitation {
   organizationId String
   email          String
   role           UserRole
+  suggestedFirstName String?
+  suggestedLastName  String?
 
   // SHA-256 hex digest of the raw activation/invite token. The raw token is
   // only ever embedded in the emailed link, never stored — see
   // InvitationsService.issueToken. Looked up directly by this hash.
   tokenHash String @unique
+  emailSentAt DateTime?
 
   status     InvitationStatus @default(PENDING)
   expiresAt  DateTime

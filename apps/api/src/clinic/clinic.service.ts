@@ -11,6 +11,7 @@ export interface ClinicProfile {
   legalName: string | null;
   phone: string | null;
   email: string | null;
+  teamSize: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
@@ -43,6 +44,7 @@ const CLINIC_SELECT = {
   legalName: true,
   phone: true,
   email: true,
+  teamSize: true,
   addressLine1: true,
   addressLine2: true,
   city: true,

@@ -33,6 +33,11 @@ export class BillingController {
     return this.billing.getCheckoutSessionStatus(id);
   }
 
+  @Post('checkout-sessions/:id/resend-activation')
+  resendActivation(@Param('id') id: string) {
+    return this.billing.resendActivation(id);
+  }
+
   /** main.ts registers a raw-body parser scoped to exactly this path,
    *  before the app-wide JSON body parser — request.body is the untouched
    *  raw Buffer here, which Stripe signature verification requires. */

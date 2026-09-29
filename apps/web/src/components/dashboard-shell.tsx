@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useState, type ComponentProps, typ
 import { useCurrentUser } from '../lib/use-current-user';
 import { useAuthBootstrap, type BootstrapProfile } from './auth-bootstrap';
 import { clinicRequest } from '../lib/clinic-api';
+import { SparkiLogo } from './sparki-logo';
 import type { BillingStatus } from '../lib/clinic-contracts';
 
 const PROFILE_CACHE_KEY = 'sparki:user-profile';
@@ -66,10 +67,8 @@ export function SidebarNav({
     <aside className="dashboard-sidebar">
       <div className="dashboard-sidebar__top">
         <Link href="/" className="dashboard-sidebar__brand" aria-label="Sparki dashboard">
-          <span className="dashboard-sidebar__mark" aria-hidden="true">
-            S
-          </span>
-          <span className="dashboard-sidebar__label">Sparki</span>
+          <SparkiLogo className="dashboard-sidebar__wordmark" />
+          <SparkiLogo kind="mark" className="dashboard-sidebar__paw" />
         </Link>
         <button
           type="button"

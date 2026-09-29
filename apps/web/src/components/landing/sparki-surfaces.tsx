@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode, Ref } from 'react';
 
 import s from './sparki-surfaces.module.css';
+import { SparkiLogo } from '../sparki-logo';
 
 /**
  * Marketing renditions of the real Sparki app surfaces — same navigation,
@@ -691,8 +692,8 @@ export function SparkiCanvas({
       <div className={s.shell}>
         <aside className={s.sidebar}>
           <div className={s.sidebarTop}>
-            <span className={s.brand}>
-              <span className={s.brandMark}>S</span> Sparki
+            <span className={s.brand} role="img" aria-label="Sparki">
+              <SparkiLogo />
             </span>
             <span className={s.collapse}>‹</span>
           </div>

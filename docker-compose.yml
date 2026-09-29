@@ -22,5 +22,12 @@ services:
       timeout: 5s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    # Activation links are credentials. Keep the local inbox on loopback.
+    ports:
+      - '127.0.0.1:8025:8025'
+
 volumes:
   sparki_postgres_data:

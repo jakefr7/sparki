@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LoginForm } from '../../components/login-form';
+import { SparkiLogo } from '../../components/sparki-logo';
 
 export const metadata: Metadata = {
   title: 'Sign in — Sparki',
@@ -11,8 +12,7 @@ export default function LoginPage() {
     <main className="login-page">
       <header className="login-header">
         <Link href="/" className="login-brand" aria-label="Sparki home">
-          <span className="login-brand__mark" aria-hidden="true">S</span>
-          <span className="login-brand__name">sparki</span>
+          <SparkiLogo />
         </Link>
         <Link href="/" className="login-back">← Back to Sparki</Link>
       </header>

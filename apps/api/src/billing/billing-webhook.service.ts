@@ -103,7 +103,11 @@ export class BillingWebhookService {
     const session = event.data.object as Stripe.Checkout.Session;
     const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
     const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
-    const ownerEmail = session.customer_details?.email ?? session.customer_email ?? session.metadata?.ownerEmail;
+    // The address entered for the owner's account is authoritative. Stripe's
+    // checkout contact can represent the payer and must not redirect the
+    // activation invitation to someone else.
+    const ownerEmail = session.metadata?.ownerEmail ?? session.customer_email ?? session.customer_details?.email;
+    const details = session.metadata;
 
     if (!customerId || !subscriptionId || !ownerEmail) {
       throw new Error(
@@ -113,7 +117,16 @@ export class BillingWebhookService {
 
     const existing = await prisma.organization.findUnique({ where: { stripeCustomerId: customerId } });
     if (existing) {
-      return existing.id; // Already provisioned — duplicate delivery or a second checkout by the same customer.
+      // A previous delivery can create the clinic before email transport
+      // fails. Stripe's retry must still be able to deliver activation.
+      const invitation = await prisma.clinicInvitation.findFirst({
+        where: { organizationId: existing.id, role: 'OWNER', invitedByUserId: null, status: 'PENDING' },
+        select: { email: true, emailSentAt: true },
+      });
+      if (invitation && !invitation.emailSentAt) {
+        await this.invitations.resendOwnerActivation(existing.id, invitation.email, existing.name);
+      }
+      return existing.id;
     }
 
     const stripe = this.requireStripe();
@@ -124,10 +137,16 @@ export class BillingWebhookService {
     const provisioned = await prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
         data: {
-          // Placeholder — the owner sets the real name in /setup Step 1
-          // (docs/adr/ADR-007 "Provisioning Flow"). Never blocks
-          // provisioning on billing/checkout collecting a clinic name.
-          name: 'New Clinic',
+          // Older Checkout Sessions had no business name; keep their
+          // provisioning path valid while new sessions start personalized.
+          name: details?.businessName?.trim() || 'New Clinic',
+          phone: details?.businessPhone?.trim() || null,
+          email: details?.businessEmail?.trim() || null,
+          teamSize: details?.teamSize?.trim() || null,
+          addressLine1: details?.addressLine1?.trim() || null,
+          city: details?.city?.trim() || null,
+          state: details?.state?.trim() || null,
+          postalCode: details?.postalCode?.trim() || null,
           subscriptionStatus: status,
           subscriptionStatusUpdatedAt: new Date(event.created * 1000),
           stripeCustomerId: customerId,
@@ -148,15 +167,18 @@ export class BillingWebhookService {
         metadata: { stripeCustomerId: customerId, stripeSubscriptionId: subscriptionId },
       });
 
-      const { rawToken } = await this.invitations.createOwnerInvitation(tx, organization.id, ownerEmail);
+      const { invitation, rawToken } = await this.invitations.createOwnerInvitation(tx, organization.id, ownerEmail, {
+        firstName: details?.ownerFirstName?.trim() || null,
+        lastName: details?.ownerLastName?.trim() || null,
+      });
 
-      return { organizationId: organization.id, rawToken };
+      return { organizationId: organization.id, invitation, rawToken };
     });
 
     await this.invitations.sendInvitationEmail({
-      invitation: { email: ownerEmail.trim().toLowerCase(), role: 'OWNER', invitedByUserId: null },
+      invitation: provisioned.invitation,
       rawToken: provisioned.rawToken,
-      clinicName: 'New Clinic',
+      clinicName: details?.businessName?.trim() || 'New Clinic',
     });
 
     return provisioned.organizationId;
@@ -246,4 +268,3 @@ export class BillingWebhookService {
     return this.stripe;
   }
 }
-

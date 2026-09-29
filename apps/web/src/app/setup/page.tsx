@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { SparkiLogo } from '../../components/sparki-logo';
 import { useEffect, useState, type FormEvent } from 'react';
 import { clinicRequest, friendlyClinicError } from '../../lib/clinic-api';
 import { ROLE_LABELS, TEAM_ROLES, type BatchInvitationResult, type ClinicProfile, type OnboardingState, type TeamRole } from '../../lib/clinic-contracts';
@@ -14,7 +15,7 @@ export default function SetupPage() {
   const { user } = useCurrentUser();
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null);
   const [clinic, setClinic] = useState<ClinicProfile | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', email: '', addressLine1: '', city: '', state: '', postalCode: '', timezone: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', teamSize: '', addressLine1: '', city: '', state: '', postalCode: '', timezone: '' });
   const [rows, setRows] = useState<InviteRow[]>([newRow()]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,7 @@ export default function SetupPage() {
         const profile = await clinicRequest<ClinicProfile>('/clinic');
         if (!active) return;
         setClinic(profile);
-        setForm({ name: profile.name, phone: profile.phone ?? '', email: profile.email ?? '', addressLine1: profile.addressLine1 ?? '', city: profile.city ?? '', state: profile.state ?? '', postalCode: profile.postalCode ?? '', timezone: profile.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? '' });
+        setForm({ name: profile.name, phone: profile.phone ?? '', email: profile.email ?? '', teamSize: profile.teamSize ?? '', addressLine1: profile.addressLine1 ?? '', city: profile.city ?? '', state: profile.state ?? '', postalCode: profile.postalCode ?? '', timezone: profile.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? '' });
       }
     }).catch((caught) => { if (active) setError(friendlyClinicError(caught)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -38,7 +39,7 @@ export default function SetupPage() {
     event.preventDefault(); setError(null); setSaving(true);
     try {
       if (!form.timezone) { setError('Choose your clinic’s timezone.'); return; }
-      await clinicRequest<ClinicProfile>('/clinic', { method: 'PATCH', body: JSON.stringify({ name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim() || null, addressLine1: form.addressLine1.trim() || null, city: form.city.trim() || null, state: form.state.trim() || null, postalCode: form.postalCode.trim() || null, timezone: form.timezone }) });
+      await clinicRequest<ClinicProfile>('/clinic', { method: 'PATCH', body: JSON.stringify({ name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim() || null, teamSize: form.teamSize || null, addressLine1: form.addressLine1.trim() || null, city: form.city.trim() || null, state: form.state.trim() || null, postalCode: form.postalCode.trim() || null, timezone: form.timezone }) });
       setOnboarding(await clinicRequest<OnboardingState>('/clinic/onboarding-state'));
     } catch (caught) { setError(friendlyClinicError(caught)); } finally { setSaving(false); }
   }
@@ -65,10 +66,11 @@ export default function SetupPage() {
   const update = (key: number, patch: Partial<InviteRow>) => setRows((current) => current.map((row) => row.key === key ? { ...row, ...patch, state: 'idle', error: undefined } : row));
   const allZones = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : COMMON_ZONES;
   const zoneOptions = Array.from(new Set([form.timezone, ...COMMON_ZONES, ...allZones].filter(Boolean)));
-  return <main className="clinic-access"><section className="clinic-access__panel clinic-access__panel--wide"><Link href="/" className="clinic-access__brand">Sparki</Link>
-    {loading ? <p role="status">Loading clinic setup…</p> : !onboarding ? <><h1>Clinic setup is unavailable</h1><p>{error ?? 'Try again in a moment.'}</p><button className="button-secondary" onClick={() => window.location.reload()}>Try again</button></> : finished || onboarding.step === 'COMPLETE' ? <><p className="eyebrow">Setup complete</p><h1>You’re ready to use Sparki</h1><p>Your clinic workspace is ready.</p><Link className="button-primary" href="/today">Enter Sparki</Link></> : onboarding.step === 'CLINIC_DETAILS' ? <><p className="eyebrow">Step 1 of 2</p><h1>Set up your clinic</h1><p>Just the essentials for your team’s first day.</p><form className="clinic-form" onSubmit={(event) => void saveDetails(event)}>
+  return <main className="clinic-access"><section className="clinic-access__panel clinic-access__panel--wide"><Link href="/" className="clinic-access__brand" aria-label="Sparki home"><SparkiLogo /></Link>
+    {loading ? <p role="status">Loading clinic setup…</p> : !onboarding ? <><h1>Clinic setup is unavailable</h1><p>{error ?? 'Try again in a moment.'}</p><button className="button-secondary" onClick={() => window.location.reload()}>Try again</button></> : finished || onboarding.step === 'COMPLETE' ? <><p className="eyebrow">Setup complete</p><h1>You’re ready to use Sparki</h1><p>Your clinic workspace is ready.</p><Link className="button-primary" href="/today">Enter Sparki</Link></> : onboarding.step === 'CLINIC_DETAILS' ? <><p className="eyebrow">Step 1 of 2</p><h1>Confirm your clinic details</h1><p>We’ve brought over what you shared. Confirm your time zone and make any updates.</p><form className="clinic-form" onSubmit={(event) => void saveDetails(event)}>
       <label>Clinic name<input required maxLength={200} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })}/></label>
       <div className="clinic-form__pair"><label>Phone<input required type="tel" maxLength={50} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })}/></label><label>Email <small>Optional</small><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })}/></label></div>
+      <label>Team size <small>Optional</small><select value={form.teamSize} onChange={(event) => setForm({ ...form, teamSize: event.target.value })}><option value="">Select team size</option><option value="1">Just me</option><option value="2-5">2–5 people</option><option value="6-10">6–10 people</option><option value="11-25">11–25 people</option><option value="26+">26+ people</option></select></label>
       <label>Address <small>Optional</small><input autoComplete="street-address" value={form.addressLine1} onChange={(event) => setForm({ ...form, addressLine1: event.target.value })}/></label>
       <div className="clinic-form__triple"><label>City<input value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })}/></label><label>State<input value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })}/></label><label>ZIP / postal code<input value={form.postalCode} onChange={(event) => setForm({ ...form, postalCode: event.target.value })}/></label></div>
       <label>Clinic timezone<select required value={form.timezone} onChange={(event) => setForm({ ...form, timezone: event.target.value })}><option value="">Choose a timezone</option>{zoneOptions.map((zone) => <option key={zone} value={zone}>{zone.replaceAll('_', ' ').replace('/', ' · ')}</option>)}</select><small>Appointment times use this timezone. Please check it before continuing.</small></label>

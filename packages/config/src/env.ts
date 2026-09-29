@@ -69,10 +69,10 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // resolves to a Stripe Price id.
   STRIPE_PRICE_STANDARD: optionalString,
 
-  // Transactional email (owner activation + staff invitations). Optional so
-  // staging/dev/test can run without a provider — EmailService logs the
-  // message and (test-only) callers inject a fake to capture it instead of
-  // sending. Required together, same shape as attachment storage.
+  // Transactional email (owner activation + staff invitations). Development
+  // uses local Mailpit when these are absent. Other environments can boot
+  // without a provider, but sending fails visibly rather than silently.
+  // Credentials are required together.
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
 }).superRefine((env, ctx) => {

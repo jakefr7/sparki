@@ -67,6 +67,7 @@ const child = spawn('next', ['dev', '--hostname', '127.0.0.1', '--port', selecte
   stdio: 'inherit',
   env: {
     ...process.env,
+    NODE_ENV: 'development',
     WEB_PORT: selectedPort,
   },
 });

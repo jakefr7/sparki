@@ -17,3 +17,5 @@
 @media(prefers-reduced-motion:reduce){.landing *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .landing .lede{margin-top:24px}.landing .body{margin-top:20px}.actions a{flex-shrink:0}.actions{gap:22px}
+
+.flowSticky{top:64px}@media(max-width:700px){.flowSticky{top:68px}}

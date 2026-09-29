@@ -66,6 +66,23 @@ pnpm db:generate   # generate the Prisma client
 pnpm db:migrate     # create/apply a dev migration
 ```
 
+### Signup email in development
+
+Start the local inbox with `docker compose up -d mailpit`, then open
+`http://127.0.0.1:8025`. When `RESEND_API_KEY` and `EMAIL_FROM` are unset,
+development activation and invitation emails are captured there, including
+their setup links. Mailpit does not deliver to Gmail. For real delivery, set
+both variables using a Resend API key and an address on a verified sending
+domain. If no mail transport accepts a message, Sparki keeps the checkout
+setup page in an activation-required state and offers a retry; it no longer
+claims an email was sent.
+
+To recover an earlier local checkout that showed “Check your email” before a
+mail transport existed, reopen its `/setup/pending?session_id=...` URL and
+select **Send setup link**. Open the captured message in Mailpit and follow
+its link to create the owner account. Do not start another checkout for the
+same clinic.
+
 `packages/db` exports both `prisma` (the generated client) and `pool` (a raw `pg` Pool, for the
 health check and any query that needs to bypass the ORM per the engineering plan).
 

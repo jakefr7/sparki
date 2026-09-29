@@ -652,6 +652,11 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   color: color-mix(in srgb, CanvasText 62%, transparent);
 }
 
+.app-brand__logo {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
 .command-home-header__actions {
   display: flex;
   align-items: center;
@@ -4998,6 +5003,18 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   background: linear-gradient(135deg, #1fa9a0, #55bfd1);
   color: white;
   box-shadow: 0 10px 22px rgba(31, 169, 160, 0.22);
+}
+
+.dashboard-sidebar__paw {
+  display: none;
+}
+
+.dashboard-shell--sidebar-collapsed .dashboard-sidebar__wordmark {
+  display: none;
+}
+
+.dashboard-shell--sidebar-collapsed .dashboard-sidebar__paw {
+  display: block;
 }
 
 .dashboard-sidebar__toggle {

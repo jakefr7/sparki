@@ -4,6 +4,9 @@ node_modules/
 
 # build output
 .next/
+.next-dev/
+.next-public-e2e/
+.next-product-e2e/
 dist/
 build/
 .turbo/

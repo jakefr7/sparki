@@ -6,14 +6,16 @@ import { DashboardShell } from '../../components/dashboard-shell';
 import { AdminSection } from '../../components/settings/admin-section';
 import { AppearanceSection } from '../../components/settings/appearance-section';
 import { ProfileSection } from '../../components/settings/profile-section';
+import { TeamSection } from '../../components/settings/team-section';
 import { useCurrentUser } from '../../lib/use-current-user';
 import { MANAGE_ADMIN_SETTINGS } from '../../lib/permissions';
 
-type TabId = 'profile' | 'appearance' | 'admin';
+type TabId = 'profile' | 'appearance' | 'admin' | 'team';
 
 export default function SettingsPage() {
-  const { user } = useCurrentUser();
+  const { user, loading } = useCurrentUser();
   const isAdmin = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
+  const canManageTeam = !loading && (user?.role === 'OWNER' || user?.role === 'PRACTICE_MANAGER');
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -65,6 +67,7 @@ export default function SettingsPage() {
                 Appearance
               </button>
             </li>
+            {canManageTeam ? <li><button type="button" className={activeTab === 'team' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>Team</button></li> : null}
             {isAdmin ? (
               <li>
                 <button
@@ -93,6 +96,7 @@ export default function SettingsPage() {
           {activeTab === 'profile' && <ProfileSection />}
           {activeTab === 'appearance' && <AppearanceSection />}
           {activeTab === 'admin' && isAdmin && <AdminSection />}
+          {activeTab === 'team' && canManageTeam && user && <TeamSection user={user} />}
         </div>
       </div>
       {confirmingSignOut ? createPortal(

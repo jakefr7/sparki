@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
 import { useAuthBootstrap, type BootstrapProfile } from './auth-bootstrap';
+import { clinicRequest } from '../lib/clinic-api';
+import type { BillingStatus } from '../lib/clinic-contracts';
 
 const PROFILE_CACHE_KEY = 'sparki:user-profile';
 
@@ -265,6 +267,9 @@ export function DashboardShell({
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const bootstrap = useAuthBootstrap();
+  const [billing, setBilling] = useState<BillingStatus | null>(bootstrap.billing);
+  const [billingError, setBillingError] = useState(false);
+  useEffect(() => { let active = true; void clinicRequest<BillingStatus>('/clinic/billing').then((status) => { if (!active) return; setBilling(status); setBillingError(false); if (status.isRestricted) window.location.assign('/billing-required'); }).catch(() => { if (active) setBillingError(true); }); return () => { active = false; }; }, []);
   const { user: currentUser } = useCurrentUser();
   const [profile, setProfile] = useState<HeaderProfile | null>(bootstrap.profile);
   useLayoutEffect(() => {
@@ -279,6 +284,8 @@ export function DashboardShell({
   const profileInitials = profile
     ? `${profile.firstName[0] ?? ''}${profile.lastName[0] ?? ''}`.toUpperCase()
     : undefined;
+
+  if (!billing || billing.isRestricted) return <div className="dashboard-shell__loading" role="status">{billingError && !billing ? <div><p>We couldn’t load your clinic.</p><button className="button-secondary" type="button" onClick={() => window.location.reload()}>Try again</button></div> : 'Loading your clinic…'}</div>;
 
   return (
     <div
@@ -305,6 +312,7 @@ export function DashboardShell({
           refreshing={refreshing}
           onRefresh={onRefresh}
         /> : null}
+        {billing?.subscriptionStatus === 'PAST_DUE' && <div className="billing-banner" role="status">There’s an issue with your Sparki subscription payment. Please contact Sparki support.</div>}
         {children}
       </main>
     </div>

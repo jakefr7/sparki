@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { ThemeProvider } from '../components/theme-provider';
 import { AuthBootstrapProvider, type BootstrapProfile, type BootstrapWeather } from '../components/auth-bootstrap';
 import type { CurrentUser } from '../lib/use-current-user';
+import type { BillingStatus } from '../lib/clinic-contracts';
 import { env } from '../lib/env';
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from '../lib/theme';
 import { SESSION_COOKIE_NAME } from '../lib/auth-cookie';
@@ -36,12 +37,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const cookieHeader = cookieStore.toString();
   const authRequest: RequestInit = cookieHeader ? { headers: { cookie: cookieHeader }, cache: 'no-store' } : { cache: 'no-store' };
   // Public visitors need no clinic bootstrap requests. Session-bearing requests retain the existing API verification.
-  const [meResponse, profileResponse] = cookieStore.has(SESSION_COOKIE_NAME) ? await Promise.all([
+  const [meResponse, profileResponse, billingResponse] = cookieStore.has(SESSION_COOKIE_NAME) ? await Promise.all([
     fetch(new URL('/auth/me', env.API_URL), authRequest).catch(() => null),
     fetch(new URL('/auth/profile', env.API_URL), authRequest).catch(() => null),
-  ]) : [null, null];
+    fetch(new URL('/clinic/billing', env.API_URL), authRequest).catch(() => null),
+  ]) : [null, null, null];
   const meBody = meResponse?.ok ? await meResponse.json() as { user?: CurrentUser } : null;
   const profile = profileResponse?.ok ? await profileResponse.json() as BootstrapProfile : null;
+  const billing = billingResponse?.ok ? await billingResponse.json() as BillingStatus : null;
   let weather: BootstrapWeather | null = null;
   try {
     const storedWeather = cookieStore.get('sparki_header_weather')?.value;
@@ -54,7 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script dangerouslySetInnerHTML={{ __html: setInitialThemeScript }} />
       </head>
       <body>
-        <AuthBootstrapProvider value={{ user: meBody?.user ?? null, profile, weather }}><ThemeProvider>{children}</ThemeProvider></AuthBootstrapProvider>
+        <AuthBootstrapProvider value={{ user: meBody?.user ?? null, profile, weather, billing }}><ThemeProvider>{children}</ThemeProvider></AuthBootstrapProvider>
       </body>
     </html>
   );

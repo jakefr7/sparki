@@ -40,7 +40,8 @@ test('public home, demo CTAs, and protected routes retain their boundaries', asy
     headers: { cookie: 'sparki_session=public-test-invalid-session' },
   });
   const signedHtml = await signedHome.text();
-  expect(signedHtml).toContain('aria-label="Sparki dashboard"');
+  expect(signedHtml).toContain('Loading your clinic');
+  expect(signedHtml).not.toContain('aria-label="Sparki dashboard"');
   expect(signedHtml).not.toContain('THE VETERINARY PRACTICE OPERATING SYSTEM');
 });
 

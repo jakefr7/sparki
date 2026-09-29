@@ -13,7 +13,7 @@ import { SESSION_COOKIE_NAME } from './lib/auth-cookie';
 export function middleware(request: NextRequest) {
   const hasSession = request.cookies.has(SESSION_COOKIE_NAME);
   const isLoginPage = request.nextUrl.pathname === '/login';
-  const isPublicPage = request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/demo';
+  const isPublicPage = request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/demo' || request.nextUrl.pathname === '/pricing' || request.nextUrl.pathname === '/setup/pending' || request.nextUrl.pathname.startsWith('/invite/');
 
   if (!hasSession && !isLoginPage && !isPublicPage) {
     const loginUrl = new URL('/login', request.url);

@@ -1,10 +1,21 @@
-import { codeBlock, emailButton, emailLayout, escapeHtml } from './email-layout';
+import type { EmailAttachment } from './email.service';
+import { codeBlock, emailButton, emailLayout, escapeHtml, LOGO_CONTENT_ID } from './email-layout';
+import { SPARKI_WORDMARK_PNG_BASE64 } from './sparki-logo-base64';
 
 export interface RenderedEmail {
   subject: string;
   html: string;
   text: string;
+  attachments: EmailAttachment[];
 }
+
+/** Every email uses emailLayout(), which references this same cid — see
+ *  LOGO_CONTENT_ID's own comment for why this isn't a URL or data: URI. */
+const LOGO_ATTACHMENT: EmailAttachment = {
+  filename: 'sparki-wordmark.png',
+  content: SPARKI_WORDMARK_PNG_BASE64,
+  contentId: LOGO_CONTENT_ID,
+};
 
 function formatRole(role: string): string {
   return role
@@ -32,6 +43,7 @@ export function ownerActivationEmail(opts: { clinicName: string; link: string; e
       footerNote: `This link expires in ${opts.expiresInDays} days.`,
     }),
     text: `Your Sparki subscription is confirmed. Follow the link below to create your account and finish setting up ${opts.clinicName}.\n\n${opts.link}\n\nThis link expires in ${opts.expiresInDays} days.`,
+    attachments: [LOGO_ATTACHMENT],
   };
 }
 
@@ -60,6 +72,7 @@ export function staffInvitationEmail(opts: {
       footerNote: `This link expires in ${opts.expiresInDays} days.`,
     }),
     text: `${opts.invitedByName ?? 'A teammate'} invited you to join ${opts.clinicName} on Sparki as a ${roleLabel}.\n\n${opts.link}\n\nThis link expires in ${opts.expiresInDays} days.`,
+    attachments: [LOGO_ATTACHMENT],
   };
 }
 
@@ -79,5 +92,6 @@ export function signInCodeEmail(opts: { code: string; expiresInMinutes: number }
       footerNote: `This code expires in ${opts.expiresInMinutes} minutes. If you didn't request this, you can ignore this email.`,
     }),
     text: `Your Sparki sign-in code is: ${opts.code}\n\nThis code expires in ${opts.expiresInMinutes} minutes. If you didn't request this, you can ignore this email.`,
+    attachments: [LOGO_ATTACHMENT],
   };
 }

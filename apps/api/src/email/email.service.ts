@@ -1,11 +1,29 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service';
 
+export interface EmailAttachment {
+  filename: string;
+  /** Base64-encoded file content. */
+  content: string;
+  /**
+   * When set, the attachment is embedded inline rather than shown as a
+   * download — reference it in the HTML as `<img src="cid:VALUE">`. Both
+   * Resend and Mailpit's HTTP send API support this; a `data:` URI does
+   * not work as a substitute — Gmail's web/mobile client specifically
+   * blocks inline base64 images in received mail (unlike Apple Mail,
+   * Outlook, etc.), so an image that renders in every other client and in
+   * Mailpit's local preview can still show broken in the one client this
+   * app is tested against most.
+   */
+  contentId?: string;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
   text: string;
+  attachments?: EmailAttachment[];
 }
 
 /**
@@ -70,6 +88,15 @@ export class EmailService {
             Subject: message.subject,
             HTML: message.html,
             Text: message.text,
+            ...(message.attachments
+              ? {
+                  Attachments: message.attachments.map((attachment) => ({
+                    Content: attachment.content,
+                    Filename: attachment.filename,
+                    ...(attachment.contentId ? { ContentID: attachment.contentId } : {}),
+                  })),
+                }
+              : {}),
           }),
           signal: AbortSignal.timeout(5000),
         });
@@ -95,6 +122,15 @@ export class EmailService {
         subject: message.subject,
         html: message.html,
         text: message.text,
+        ...(message.attachments
+          ? {
+              attachments: message.attachments.map((attachment) => ({
+                content: attachment.content,
+                filename: attachment.filename,
+                ...(attachment.contentId ? { content_id: attachment.contentId } : {}),
+              })),
+            }
+          : {}),
       }),
     });
 

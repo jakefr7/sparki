@@ -1,13 +1,16 @@
 /**
- * Sparki wordmark, inlined as base64 rather than referenced by URL.
+ * Sparki wordmark's raw bytes, sent as a cid: inline attachment (see
+ * templates.ts, EmailAttachment.contentId, and LOGO_CONTENT_ID in
+ * email-layout.ts) rather than a URL or a data: URI.
  *
- * Email clients (Gmail in particular) fetch images through their own
- * infrastructure, not the recipient's browser — so a src pointing at a local
- * dev server (http://127.0.0.1:3000/...) can never resolve; Gmail's servers
- * have no route to a developer's laptop. Inlining sidesteps environment
- * reachability entirely (works identically in dev, staging, and prod) and
- * removes a runtime dependency on the web app being up when the email is
- * opened.
+ * A URL doesn't work in local dev: email clients fetch images through
+ * their own infrastructure, not the recipient's browser, and Gmail's
+ * servers have no route to http://127.0.0.1:3000 on a developer's
+ * laptop. A data: URI doesn't work at all: Gmail's web/mobile client
+ * specifically blocks inline base64 images in received mail, so it
+ * showed the same broken-image result for an entirely different reason.
+ * A cid: attachment is the one approach every mainstream client
+ * (Gmail included) actually supports, in every environment.
  *
  * Downscaled from apps/web/public/brand/sparki-wordmark.png (870×341, 62KB)
  * to 174×68 — 2x the 87×34 display size used in email-layout.ts, matching

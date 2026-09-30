@@ -9,7 +9,13 @@
  * this is what survives Outlook/Gmail/Apple Mail's inconsistent CSS support.
  */
 
-import { SPARKI_WORDMARK_PNG_BASE64 } from './sparki-logo-base64';
+/**
+ * Referenced as `cid:LOGO_CONTENT_ID` below; templates.ts attaches the
+ * actual image (see sparki-logo-base64.ts) under this same id via
+ * EmailService's attachments — see EmailAttachment.contentId for why a
+ * plain data: URI doesn't work here.
+ */
+export const LOGO_CONTENT_ID = 'sparki-wordmark';
 
 const COLOR = {
   text: '#172633',
@@ -91,13 +97,16 @@ ${preheader}
     <td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
 
-        <!-- Wordmark — inlined base64 (see sparki-logo-base64.ts for why:
-             a URL pointing at a local dev server is unreachable from
-             Gmail's own image-fetching infrastructure). Same proportions
-             as sparki-logo.tsx's "wordmark" kind (34px tall, here at 2x). -->
+        <!-- Wordmark — sent as a cid: inline attachment (see
+             LOGO_CONTENT_ID above and EmailAttachment.contentId), not a
+             URL or a data: URI: a URL to a local dev server is
+             unreachable from Gmail's infrastructure, and Gmail's web/
+             mobile client separately blocks inline base64 images
+             outright. Same proportions as sparki-logo.tsx's "wordmark"
+             kind (34px tall, here at 2x). -->
         <tr>
           <td style="padding-bottom:24px;text-align:center;">
-            <img src="data:image/png;base64,${SPARKI_WORDMARK_PNG_BASE64}" width="87" height="34" alt="Sparki" style="display:inline-block;border:0;outline:none;text-decoration:none;" />
+            <img src="cid:${LOGO_CONTENT_ID}" width="87" height="34" alt="Sparki" style="display:inline-block;border:0;outline:none;text-decoration:none;" />
           </td>
         </tr>
 

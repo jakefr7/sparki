@@ -131,7 +131,7 @@ export class InvitationsService {
     const link = `${this.config.webOrigin}/invite/${params.rawToken}`;
     const isOwnerFounding = params.invitation.invitedByUserId === null;
 
-    const { subject, html, text } = isOwnerFounding
+    const { subject, html, text, attachments } = isOwnerFounding
       ? ownerActivationEmail({ clinicName: params.clinicName, link, expiresInDays: INVITATION_TTL_DAYS })
       : staffInvitationEmail({
           clinicName: params.clinicName,
@@ -141,7 +141,7 @@ export class InvitationsService {
           expiresInDays: INVITATION_TTL_DAYS,
         });
 
-    await this.email.send({ to: params.invitation.email, subject, text, html });
+    await this.email.send({ to: params.invitation.email, subject, text, html, attachments });
     await prisma.clinicInvitation.update({ where: { id: params.invitation.id }, data: { emailSentAt: new Date() } });
   }
 

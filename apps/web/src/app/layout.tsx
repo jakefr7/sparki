@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import sparkiMark from '../../public/brand/sparki-mark.png';
 import { cookies } from 'next/headers';
 import { ThemeProvider } from '../components/theme-provider';
@@ -22,6 +22,19 @@ export const metadata: Metadata = {
     shortcut: [sparkiMark.src],
     apple: [sparkiMark.src],
   },
+};
+
+// Mobile Safari colors its status-bar/toolbar blend areas from this, not
+// from the page content underneath — without it, those areas fall back to
+// inferring from data-theme, which the script below defaults to "dark" for
+// every first-time visitor (a deliberate choice for the app's own default
+// look, see lib/theme.ts). That left the always-light marketing/login pages
+// with black bars above and below content that's actually #f7fbfb. This is
+// a static light value on purpose: Sparki's in-app theme is a user choice
+// stored in localStorage, not the OS-level scheme a `media` query here
+// would track, and marketing/login are light regardless of either.
+export const viewport: Viewport = {
+  themeColor: '#f7fbfb',
 };
 
 // Runs before paint so the stored theme applies immediately on load instead

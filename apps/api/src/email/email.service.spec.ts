@@ -40,4 +40,28 @@ describe('transactional email', () => {
     fetchMock.mockRejectedValueOnce(new Error('connection refused'));
     await expect(service.assertReady()).rejects.toThrow('Account setup email is unavailable.');
   });
+
+  it('sends a cid inline attachment to the local inbox using Mailpit\'s PascalCase attachment shape', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new EmailService({ nodeEnv: 'development', webOrigin: 'http://127.0.0.1:3000', email: { resendApiKey: undefined, from: undefined } } as AppConfigService);
+
+    await service.send({ ...message, attachments: [{ filename: 'logo.png', content: 'BASE64DATA', contentId: 'sparki-wordmark' }] });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const body = JSON.parse((init as { body: string }).body);
+    expect(body.Attachments).toEqual([{ Content: 'BASE64DATA', Filename: 'logo.png', ContentID: 'sparki-wordmark' }]);
+  });
+
+  it('sends a cid inline attachment to Resend using its snake_case attachment shape', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const service = new EmailService({ nodeEnv: 'production', email: { resendApiKey: 'test_key', from: 'Sparki <hello@sparki.vet>' } } as AppConfigService);
+
+    await service.send({ ...message, attachments: [{ filename: 'logo.png', content: 'BASE64DATA', contentId: 'sparki-wordmark' }] });
+
+    const [, init] = fetchMock.mock.calls[0]!;
+    const body = JSON.parse((init as { body: string }).body);
+    expect(body.attachments).toEqual([{ content: 'BASE64DATA', filename: 'logo.png', content_id: 'sparki-wordmark' }]);
+  });
 });

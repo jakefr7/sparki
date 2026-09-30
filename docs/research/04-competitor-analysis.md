@@ -46,4 +46,8 @@ Track the competitive landscape without letting competitor feature matrices defi
 
 ## Notes
 
+Evidence-backed assessments:
+
+- [Anna's Pack Leader workflow examples and Sparki gap assessment (2026-09-30)](packleader-anna-workflow-gap-assessment-2026-09-30.md): supplied screenshots compared with current source; proposed document, prescription, dispensing, billing and referral work.
+
 Named competitors may include PackLeader, Cornerstone, Avimark, ezyVet, and similar systems. Add evidence before making claims about specific products.

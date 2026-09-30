@@ -5,6 +5,8 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -28,6 +30,7 @@ import {
 } from '../lib/patient-types';
 
 type SchedulerView = 'day' | 'week';
+type SchedulerZoom = 'overview' | 'detail' | 'close';
 
 export type SchedulerAppointment = DashboardAppointmentSummary;
 
@@ -191,12 +194,6 @@ function formatDateTime(date: Date): string {
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function formatHour(hour: number): string {
-  const date = new Date();
-  date.setHours(hour, 0, 0, 0);
-  return date.toLocaleTimeString([], { hour: 'numeric' });
 }
 
 function timeRange(appointment: SchedulerAppointment): string {
@@ -439,11 +436,62 @@ export function SchedulerPage() {
   const today = useMemo(() => startOfDay(new Date()), []);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [view, setView] = useState<SchedulerView>('week');
+  const [zoomScale, setZoomScale] = useState(1);
+  const zoom: SchedulerZoom = zoomScale >= 1.5 ? 'close' : zoomScale > 1 ? 'detail' : 'overview';
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const zoomControlRef = useRef<HTMLDivElement>(null);
+  const zoomValue = useRef(1);
+  const zoomAnchor = useRef<{ grid: HTMLElement; fraction: number; y: number } | null>(null);
+  const changeZoom = useCallback((delta: number, pointerY?: number) => {
+    const next = Math.max(1, Math.min(2.5, Math.round((zoomValue.current + delta) * 100) / 100));
+    if (next === zoomValue.current) return;
+    const grid = calendarRef.current?.querySelector<HTMLElement>('.scheduler-week__body');
+    if (grid) {
+      const bounds = grid.getBoundingClientRect();
+      const y = Math.max(bounds.top, Math.min(bounds.bottom, pointerY ?? Math.max(bounds.top, 180)));
+      zoomAnchor.current = { grid, fraction: (y - bounds.top) / bounds.height, y };
+    }
+    zoomValue.current = next;
+    setZoomScale(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current;
+    if (!anchor) return;
+    zoomAnchor.current = null;
+    const bounds = anchor.grid.getBoundingClientRect();
+    const offset = bounds.top + bounds.height * anchor.fraction - anchor.y;
+    let parent = anchor.grid.parentElement;
+    while (parent && !/(auto|scroll)/.test(getComputedStyle(parent).overflowY)) parent = parent.parentElement;
+    if (parent) parent.scrollTop += offset;
+    else window.scrollBy(0, offset);
+  }, [zoomScale]);
+
+  useEffect(() => {
+    const calendar = calendarRef.current;
+    const control = zoomControlRef.current;
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      // Pinch generates ctrl+wheel. Plain scrolling on the calendar moves through time.
+      if (!event.ctrlKey && !event.metaKey && !target?.closest('.scheduler-zoom')) return;
+      if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 240 : 1);
+      changeZoom(-Math.max(-120, Math.min(120, pixels)) * (event.ctrlKey ? 0.01 : 0.003), event.clientY);
+    };
+    calendar?.addEventListener('wheel', onWheel, { passive: false });
+    control?.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      calendar?.removeEventListener('wheel', onWheel);
+      control?.removeEventListener('wheel', onWheel);
+    };
+  }, [changeZoom]);
   const [anchorDate, setAnchorDate] = useState(today);
   const [appointments, setAppointments] = useState<SchedulerAppointment[]>([]);
   const [providers, setProviders] = useState<StaffMember[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const scheduleRequest = useRef(0);
   const [schedulerConfig, setSchedulerConfig] =
     useState<SchedulerConfig>(FALLBACK_SCHEDULER_CONFIG);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -459,9 +507,9 @@ export function SchedulerPage() {
   const [editingAppointment, setEditingAppointment] = useState<NewAppointmentCreatedSummary | null>(null);
 
   const loadSchedulerData = useCallback(
-    async (rangeStart: Date, rangeEnd: Date, signal?: AbortSignal) => {
-      setLoading(true);
-      setLoadError(null);
+    async (rangeStart: Date, rangeEnd: Date, signal?: AbortSignal, background = false) => {
+      const requestId = ++scheduleRequest.current;
+      if (!background) setLoading(true);
       try {
         const requestInit: RequestInit = signal
           ? { cache: 'no-store', signal }
@@ -470,38 +518,47 @@ export function SchedulerPage() {
           startDate: rangeStart.toISOString(),
           endDate: rangeEnd.toISOString(),
         });
-        const [appointmentsResponse, staffResponse, configResponse] = await Promise.all([
-          fetch(`/api/appointments/schedule?${rangeQuery.toString()}`, requestInit),
-          fetch('/api/staff?canReceiveAppointments=true', requestInit),
-          fetch('/api/scheduler-config', requestInit),
-        ]);
+        const appointmentsResponse = await fetch(`/api/appointments/schedule?${rangeQuery.toString()}`, requestInit);
 
         if (!appointmentsResponse.ok) {
           throw new Error(`Schedule failed to load (${appointmentsResponse.status})`);
         }
         const scheduleAppointments =
           (await appointmentsResponse.json()) as DashboardAppointmentSummary[];
-        const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
-        const config = configResponse.ok
-          ? ((await configResponse.json()) as SchedulerConfig)
-          : FALLBACK_SCHEDULER_CONFIG;
 
         const loadedAppointments = uniqueAppointments(
           scheduleAppointments.map(toSchedulerAppointment),
         );
 
+        if (!background) {
+          const [staffResponse, configResponse] = await Promise.all([
+            fetch('/api/staff?canReceiveAppointments=true', requestInit),
+            fetch('/api/scheduler-config', requestInit),
+          ]);
+          const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
+          const config = configResponse.ok
+            ? ((await configResponse.json()) as SchedulerConfig)
+            : FALLBACK_SCHEDULER_CONFIG;
+          if (requestId !== scheduleRequest.current || signal?.aborted) return;
+          setProviders(staff);
+          setSchedulerConfig(config);
+        }
+
+        if (requestId !== scheduleRequest.current || signal?.aborted) return;
         setAppointments(loadedAppointments);
         setGeneratedAt(new Date().toISOString());
-        setProviders(staff);
-        setSchedulerConfig(config);
+        setLoadError(null);
       } catch (caught) {
+        if (requestId !== scheduleRequest.current || signal?.aborted) return;
         if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
-          setAppointments([]);
-          setGeneratedAt(null);
-          setLoadError(caught instanceof Error ? caught.message : 'Schedule failed to load.');
+          if (!background) {
+            setAppointments([]);
+            setGeneratedAt(null);
+          }
+          setLoadError(caught instanceof Error ? caught.message : 'Schedule could not be updated.');
         }
       } finally {
-        setLoading(false);
+        if (!background && requestId === scheduleRequest.current && !signal?.aborted) setLoading(false);
       }
     },
     [],
@@ -527,6 +584,32 @@ export function SchedulerPage() {
     void loadSchedulerData(rangeStart, rangeEnd, controller.signal);
     return () => controller.abort();
   }, [days, loadSchedulerData]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const rangeStart = startOfDay(days[0]!);
+    const rangeEnd = addDays(startOfDay(days[days.length - 1]!), 1);
+    const update = () => {
+      if (!loading && document.visibilityState === 'visible') {
+        void loadSchedulerData(rangeStart, rangeEnd, controller.signal, true);
+      }
+    };
+    const interval = window.setInterval(update, 15_000);
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('focus', update);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('focus', update);
+      controller.abort();
+    };
+  }, [days, loadSchedulerData, loading]);
+
+  const visibleSlotMinutes = zoom === 'close'
+    ? Math.min(schedulerConfig.settings.slotIntervalMinutes, 15)
+    : zoom === 'detail'
+      ? Math.min(schedulerConfig.settings.slotIntervalMinutes, 30)
+      : schedulerConfig.settings.slotIntervalMinutes;
 
   const filteredAppointments = useMemo(
     () =>
@@ -754,11 +837,6 @@ export function SchedulerPage() {
           view={view}
           onViewChange={setView}
           rangeLabel={formatRange(anchorDate, view)}
-          isCurrentRange={view === 'day'
-            ? isSameDay(anchorDate, today)
-            : isSameDay(startOfWeek(anchorDate), startOfWeek(today))}
-          generatedAt={generatedAt}
-          loading={loading}
           providers={providers}
           statuses={statusOptions}
           providerFilter={providerFilter}
@@ -768,12 +846,23 @@ export function SchedulerPage() {
           onToday={() => setAnchorDate(today)}
           onPrevious={() => move(-1)}
           onNext={() => move(1)}
+          anchorDate={anchorDate}
+          onDateChange={setAnchorDate}
+          zoomScale={zoomScale}
+          onZoomChange={changeZoom}
+          zoomControlRef={zoomControlRef}
         />
+        {!loading && !loadError ? <div className="scheduler-results" role="status">
+          <span>{filteredAppointments.length} of {appointments.length} appointments in this {view}</span>
+          {providerFilter !== 'all' || statusFilter !== 'all' ? <button type="button" className="button-secondary" onClick={() => { setProviderFilter('all'); setStatusFilter('all'); }}>Clear filters</button> : null}
+          <span className="scheduler-live-status">{generatedAt ? `Auto-updating · Updated ${formatTime(new Date(generatedAt))}` : 'Connecting…'}</span>
+        </div> : null}
         {loadError ? (
           <p className="scheduler-inline-error" role="alert">
-            {loadError} No placeholder appointments were shown.
+            {loadError} {generatedAt ? 'Showing the last updated schedule; another sync will be attempted automatically.' : 'No appointments could be loaded.'}
           </p>
         ) : null}
+        <div ref={calendarRef} className={`scheduler-calendar-zoom scheduler-calendar-zoom--${zoom}`} style={{ '--scheduler-grid-height': `${54 * zoomScale}rem` } as CSSProperties}>
         {view === 'week' ? (
         <WeekSchedulerGrid
             days={days}
@@ -781,7 +870,7 @@ export function SchedulerPage() {
             today={today}
             currentTime={currentTime}
             appointmentTypes={schedulerConfig.appointmentTypes}
-            slotIntervalMinutes={schedulerConfig.settings.slotIntervalMinutes}
+            slotIntervalMinutes={visibleSlotMinutes}
             slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
@@ -798,7 +887,7 @@ export function SchedulerPage() {
             today={today}
             currentTime={currentTime}
             appointmentTypes={schedulerConfig.appointmentTypes}
-            slotIntervalMinutes={schedulerConfig.settings.slotIntervalMinutes}
+            slotIntervalMinutes={visibleSlotMinutes}
             slotTemplates={schedulerConfig.slotTemplates}
             onSlotClick={setSelectedSlot}
             onAppointmentClick={setSelectedAppointment}
@@ -809,6 +898,7 @@ export function SchedulerPage() {
             getMoveRestriction={moveRestriction}
           />
         )}
+        </div>
         {bookingNote ? (
           <p className="scheduler-inline-note" role="status">
             {bookingNote}
@@ -968,9 +1058,6 @@ function SchedulerToolbar({
   view,
   onViewChange,
   rangeLabel,
-  isCurrentRange,
-  generatedAt,
-  loading,
   providers,
   statuses,
   providerFilter,
@@ -980,13 +1067,15 @@ function SchedulerToolbar({
   onToday,
   onPrevious,
   onNext,
+  anchorDate,
+  onDateChange,
+  zoomScale,
+  onZoomChange,
+  zoomControlRef,
 }: {
   view: SchedulerView;
   onViewChange: (view: SchedulerView) => void;
   rangeLabel: string;
-  isCurrentRange: boolean;
-  generatedAt: string | null;
-  loading: boolean;
   providers: StaffMember[];
   statuses: string[];
   providerFilter: string;
@@ -996,6 +1085,11 @@ function SchedulerToolbar({
   onToday: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  anchorDate: Date;
+  onDateChange: (date: Date) => void;
+  zoomScale: number;
+  onZoomChange: (delta: number) => void;
+  zoomControlRef: React.RefObject<HTMLDivElement>;
 }) {
   return (
     <section className="scheduler-toolbar" aria-label="Scheduler controls">
@@ -1009,19 +1103,20 @@ function SchedulerToolbar({
             <span aria-hidden="true">›</span>
           </button>
         </div>
-        {!isCurrentRange ? (
-          <button type="button" className="scheduler-toolbar__current" onClick={onToday}>
-            {view === 'day' ? 'Back to today' : 'Current week'}
-          </button>
-        ) : null}
+        <label className="scheduler-date-jump">
+          <span className="sr-only">Go to date</span>
+          <input type="date" value={`${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}-${String(anchorDate.getDate()).padStart(2, '0')}`} onChange={(event) => {
+            if (!event.target.value) return;
+            const [year, month, day] = event.target.value.split('-').map(Number);
+            const date = new Date(year!, month! - 1, day!);
+            if (!Number.isNaN(date.getTime())) onDateChange(date);
+          }} />
+        </label>
+        <button type="button" className="scheduler-toolbar__current" onClick={onToday}>
+          Today
+        </button>
       </div>
       <div className="scheduler-toolbar__meta">
-        <span className="scheduler-live-status">
-          Live ·{' '}
-          {loading
-            ? 'Updating'
-            : `Updated ${generatedAt ? formatTime(new Date(generatedAt)) : 'now'}`}
-        </span>
         <div className="scheduler-toolbar__filters" aria-label="Schedule filters">
           <label>
             <span>Provider</span>
@@ -1042,8 +1137,13 @@ function SchedulerToolbar({
             </select>
           </label>
         </div>
-        <SchedulerViewToggle view={view} onViewChange={onViewChange} />
+        <div ref={zoomControlRef} className="scheduler-zoom" role="group" aria-label="Calendar zoom" title="Scroll here to zoom. Pinch or Ctrl + scroll anywhere on the calendar.">
+          <button type="button" aria-label="Zoom out" disabled={zoomScale <= 1} onClick={() => onZoomChange(-0.25)}>−</button>
+          <output aria-label="Calendar zoom level">{Math.round(zoomScale * 100)}%</output>
+          <button type="button" aria-label="Zoom in" disabled={zoomScale >= 2.5} onClick={() => onZoomChange(0.25)}>+</button>
+        </div>
       </div>
+      <SchedulerViewToggle view={view} onViewChange={onViewChange} />
     </section>
   );
 }
@@ -1256,7 +1356,7 @@ function CurrentTimeIndicator({
 
   return (
     <div
-      className="scheduler-now-indicator"
+      className={`scheduler-now-indicator${currentTime.getMinutes() < 15 ? ' scheduler-now-indicator--near-hour' : ''}`}
       style={
         {
           top: `${top}%`,
@@ -1276,11 +1376,16 @@ function CurrentTimeIndicator({
 }
 
 function TimeColumn() {
+  const subdivisions = 4;
+  const markerCount = (CLINIC_END_HOUR - CLINIC_START_HOUR) * subdivisions;
   return (
-    <div className="scheduler-time-column" aria-hidden="true">
-      {Array.from({ length: CLINIC_END_HOUR - CLINIC_START_HOUR }, (_, index) => (
-        <span key={index}>{formatHour(CLINIC_START_HOUR + index)}</span>
-      ))}
+    <div className="scheduler-time-column" style={{ gridTemplateRows: `repeat(${markerCount}, 1fr)` }} aria-hidden="true">
+      {Array.from({ length: markerCount }, (_, index) => {
+        const time = new Date();
+        time.setHours(CLINIC_START_HOUR, index * 15, 0, 0);
+        const minute = time.getMinutes();
+        return <span key={index} className={minute === 0 ? 'scheduler-time-column__hour' : minute === 30 ? 'scheduler-time-column__half' : 'scheduler-time-column__quarter'}>{minute === 0 ? formatTime(time) : `:${String(minute).padStart(2, '0')}`}</span>;
+      })}
     </div>
   );
 }
@@ -1394,7 +1499,7 @@ function SchedulerDayColumn({
                 }
               }}
             >
-              <span>+ Add appointment</span>
+              <span>+ {formatTime(slot.startsAt)}</span>
             </button>
           );
         })}

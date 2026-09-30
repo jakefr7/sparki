@@ -372,6 +372,7 @@ export function InventoryWorkspace() {
     attention: Array<{ itemId: string; itemName: string; message: string }>;
   } | null>(null);
   const [search, setSearch] = useState('');
+  const [itemView, setItemView] = useState('All Items');
   const [sectionSearch, setSectionSearch] = useState('');
   const [itemReviewNotice, setItemReviewNotice] = useState('');
   const [purchasingView, setPurchasingView] = useState<'Orders' | 'Vendors'>('Orders');
@@ -392,11 +393,9 @@ export function InventoryWorkspace() {
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
-    const q = new URLSearchParams();
-    if (search) q.set('search', search);
     const [i, o, l, a, v, p, c, co, cp, cl, cd, cr, cc, cx, cw, ca, um, ue, ur, ux] =
       await Promise.all([
-        fetch(`/api/inventory/items?${q}`),
+        fetch('/api/inventory/items'),
         fetch('/api/inventory/overview'),
         fetch('/api/inventory/locations'),
         fetch('/api/inventory/activity'),
@@ -443,9 +442,9 @@ export function InventoryWorkspace() {
     if (ue.ok) setUsageEvents(await ue.json());
     if (ur.ok) setUsageReservations(await ur.json());
     if (ux.ok) setUsageMetrics(await ux.json());
-  }, [search]);
+  }, []);
   useEffect(() => {
-    const timer = setTimeout(() => void load(), 180);
+    const timer = setTimeout(() => void load().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'Inventory could not be loaded.')), 180);
     return () => clearTimeout(timer);
   }, [load]);
   const metrics = overview?.metrics;
@@ -642,7 +641,18 @@ export function InventoryWorkspace() {
               </button>
             </div>
           )}
-          <ItemsTable items={items} onSelect={setSelected} />
+          <ItemsTable
+            items={items}
+            search={search}
+            view={itemView}
+            onViewChange={setItemView}
+            onClear={() => {
+              setSearch('');
+              setItemView('All Items');
+              setItemReviewNotice('');
+            }}
+            onSelect={setSelected}
+          />
         </>
       )}
       {tab === 'Usage' && (
@@ -655,6 +665,7 @@ export function InventoryWorkspace() {
           onSaved={load}
           onReviewInventory={(itemId) => {
             const item = items.find((candidate) => candidate.id === itemId);
+            setItemView('All Items');
             setSearch(item?.name ?? '');
             setItemReviewNotice(
               item
@@ -853,8 +864,14 @@ function Metric({ label, value }: { label: string; value: number | undefined }) 
     </div>
   );
 }
-function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) => void }) {
-  const [view, setView] = useState('All Items');
+function ItemsTable({ items, search, view, onViewChange, onClear, onSelect }: {
+  items: Item[];
+  search: string;
+  view: string;
+  onViewChange: (view: string) => void;
+  onClear: () => void;
+  onSelect: (item: Item) => void;
+}) {
   const views = [
     'All Items',
     'Low Stock',
@@ -871,7 +888,9 @@ function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) =>
     () =>
       items.filter(
         (i) =>
-          view === 'All Items' ||
+          [i.name, i.sku, ...i.barcodes.map((barcode) => barcode.value)].some((value) =>
+            value?.toLowerCase().includes(search.trim().toLowerCase()),
+          ) && (view === 'All Items' ||
           (view === 'Low Stock' && i.attention.some((a) => a.includes('reorder'))) ||
           (view === 'Out of Stock' && i.attention.includes('Out of stock')) ||
           (view === 'Expiring' && i.attention.some((a) => /Expire/i.test(a))) ||
@@ -880,18 +899,22 @@ function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) =>
           (view === 'Retail' && i.primaryType === 'RETAIL') ||
           (view === 'Supplies' && i.primaryType === 'SUPPLY') ||
           (view === 'Inactive' && i.status !== 'ACTIVE') ||
-          (view === 'Needs Setup' && i.attention.some((a) => a.includes('setup'))),
+          (view === 'Needs Setup' && i.attention.some((a) => a.includes('setup')))),
       ),
-    [items, view],
+    [items, view, search],
   );
   return (
     <section className="inventory__panel">
       <div className="inventory__views">
         {views.map((v) => (
-          <button className={v === view ? 'is-active' : ''} key={v} onClick={() => setView(v)}>
+          <button className={v === view ? 'is-active' : ''} key={v} aria-pressed={v === view} onClick={() => onViewChange(v)}>
             {v}
           </button>
         ))}
+      </div>
+      <div className="inventory-context" role="status">
+        <span>{shown.length} of {items.length} items{view !== 'All Items' ? ` · ${view}` : ''}{search.trim() ? ` · “${search.trim()}”` : ''}</span>
+        {search || view !== 'All Items' ? <button type="button" onClick={onClear}>Clear filters</button> : null}
       </div>
       <div className="inventory__table-wrap">
         <table>
@@ -915,7 +938,10 @@ function ItemsTable({ items, onSelect }: { items: Item[]; onSelect: (i: Item) =>
                 tabIndex={0}
                 onClick={() => onSelect(i)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') onSelect(i);
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect(i);
+                  }
                 }}
               >
                 <td>

@@ -1,6 +1,6 @@
 # Current Work
 
-Last updated: 2026-09-16
+Last updated: 2026-09-30
 
 Sparki no longer uses active development phases. Work is driven by the user's current request, the Product Constitution, and the live product state.
 
@@ -17,12 +17,13 @@ Full-repository and browser suites are release-readiness tools, not a mandatory 
 
 ## Active product work
 
+- Prioritize scheduler and inventory design/use per the 2026-09-30 user request. Start with navigation, search speed and preserved context; see [today's work plan](../docs/research/scheduler-inventory-work-plan-2026-09-30.md).
 - Stabilize and review the patient-profile medication, invoice, exam-closeout, Hospital Services, and new-patient intake changes from the Anna workflow discussion.
 - Continue with print outputs, RDVM intake, visitless phone-refill billing, and FAS capture only after the open product inputs below are resolved.
 
 ## Open inputs
 
-- Example discharge/medical-record PDF and Packleader medication/invoice screenshots.
+- Pack Leader medication/invoice and discharge screenshots received and assessed on 2026-09-30; an actual clinical PDF remains useful (the supplied PDF was a domain invoice). See the [gap assessment](../docs/research/packleader-anna-workflow-gap-assessment-2026-09-30.md).
 - Whether a phone refill without an active visit creates a standalone encounter/invoice.
 - Whether markup is informational or calculates selling price.
 - RDVM directory source and licensing.

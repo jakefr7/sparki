@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
@@ -20,6 +21,7 @@ import {
   updatePatientMedicationSchema,
   type UpdatePatientMedicationInput,
 } from './dto/patient-medication.schema';
+import { uploadPatientPhotoSchema, type UploadPatientPhotoInput } from './dto/patient-photo.schema';
 import { searchPatientsQuerySchema, type SearchPatientsQuery } from './dto/search-patients.schema';
 import { updatePatientSchema, type UpdatePatientInput } from './dto/update-patient.schema';
 import { PatientsService } from './patients.service';
@@ -135,6 +137,23 @@ export class PatientsController {
     @Body(new ZodValidationPipe(updatePatientSchema)) body: UpdatePatientInput,
   ) {
     return this.patients.update(id, user.organizationId, body);
+  }
+
+  @Post(':id/photo')
+  uploadPhoto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(uploadPatientPhotoSchema)) body: UploadPatientPhotoInput,
+  ) {
+    return this.patients.uploadPhoto(user.organizationId, id, body);
+  }
+
+  @Get(':id/photo/content')
+  async getPhoto(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Res() response: Response) {
+    const file = await this.patients.getPhoto(user.organizationId, id);
+    response.setHeader('Content-Type', file.contentType);
+    response.setHeader('Content-Length', String(file.body.length));
+    response.send(file.body);
   }
 
   private canManageMedications(user: AuthenticatedUser) {

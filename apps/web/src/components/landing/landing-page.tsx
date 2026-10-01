@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import s from './landing.module.css';
 import {
@@ -24,12 +25,42 @@ const STEPS: ReadonlyArray<Omit<SparkiJourney, 'step'> & { name: string }> = [
   { name: 'Checkout', label: 'Checkout', action: 'Ready for checkout', detail: 'Discharge instructions prepared', tone: 'checkout', note: 'Departure and record finalization stay distinct.', owner: 'Receptionist' },
   { name: 'Record', label: 'Record', action: 'Record review', detail: 'SOAP · Review and finalize', tone: 'completed', note: 'The veterinarian reviews and finalizes the record separately from departure.', owner: 'Veterinarian' },
 ];
-const AREAS = [
-  ['Scheduling', 'See the day ahead and keep every handoff moving.', 'Appointments · Providers · Rooms'],
-  ['Clients & Patients', 'Keep the context behind every visit close at hand.', 'Patient history · Client details · Visit records'],
-  ['Clinical Visits', 'Carry a patient from intake through care and record.', 'Exam · Care plan · Discharge'],
-  ['Inventory & Operations', 'Connect supplies, responsibilities, and daily work.', 'Stock · Usage · Team handoffs'],
-] as const;
+// One visit (Maple Reyes' 9:30 wellness exam) threaded through all four
+// cards as concrete proof, reusing the same patient/stage names as the
+// patient-journey section above rather than inventing separate examples.
+function StageTrack({ stages, current }: { stages: readonly string[]; current: number }) {
+  return (
+    <span className={s.areaTrack}>
+      {stages.map((stage, i) => (
+        <span key={stage} data-state={i < current ? 'done' : i === current ? 'current' : undefined}>
+          {stage}
+        </span>
+      ))}
+    </span>
+  );
+}
+const AREAS: ReadonlyArray<[string, string, ReactNode]> = [
+  [
+    'Scheduling',
+    'See the day ahead and keep every handoff moving.',
+    <div className={s.areaProof} key="scheduling-proof"><strong>Maple Reyes · 9:30 AM</strong><span>Wellness exam</span></div>,
+  ],
+  [
+    'Clients & Patients',
+    'Keep the context behind every visit close at hand.',
+    <div className={s.areaProof} key="patients-proof"><strong>Maple Reyes</strong><span>Golden Retriever · 4 yr · Visit today, 9:30</span></div>,
+  ],
+  [
+    'Clinical Visits',
+    'Carry a patient from intake through care and record.',
+    <div className={s.areaProof} key="visits-proof"><StageTrack stages={['Intake', 'Exam', 'Treatment']} current={1} /></div>,
+  ],
+  [
+    'Inventory & Operations',
+    'Connect supplies, responsibilities, and daily work.',
+    <div className={s.areaProof} key="inventory-proof"><strong>Cerenia 16 mg</strong><span>Usage recorded · 38 available</span></div>,
+  ],
+];
 function Arrow() { return <span aria-hidden="true">↗</span>; }
 function journey(step: number): SparkiJourney { const item = STEPS[step] ?? STEPS[0]!; return { ...item, step }; }
 // Several journey steps truthfully share one surface (Sparki carrying a
@@ -104,7 +135,7 @@ export function LandingPage() {
     <header className={`${s.header} ${scrolled ? s.headerScrolled : ''}`}>
       <div className={s.headerInner}>
         <Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
-        <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} id="landing-navigation" aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
+        <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} id="landing-navigation" aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
         <div className={s.headerActions}><Link href="/login" className={s.signIn}>Sign In</Link><Link href="/pricing" className={s.buttonSmall}>Get Started <Arrow /></Link><button className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="landing-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div>
       </div>
     </header>
@@ -112,9 +143,9 @@ export function LandingPage() {
       <section ref={heroRef} className={s.hero} aria-labelledby="hero-heading"><div className={s.heroCopy}><p className={s.eyebrow}>The veterinary practice operating system</p><h1 id="hero-heading">Your clinic.<br /><span>Finally in sync.</span></h1><p className={s.lede}>From the first appointment to the final record. Bring your patients, people, and daily work together in one calm, connected workspace.</p><div className={s.actions}><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link><a href="#product" className={s.textLink}>Explore Sparki <span>↓</span></a></div></div><div className={s.heroProduct} aria-label="Sparki product preview"><div className={s.previewLabel}><span><span className={s.contextDot} /> THE CONNECTED CLINIC</span><span>One workspace. A clearer day.</span></div><div ref={previewRef} className={s.preview}><SparkiCanvas scene="dashboard" role="veterinarian" journey={journey(0)} className={s.canvas} /></div><div className={s.productContext}><span className={s.contextDot} />Today at a glance <strong>Appointments · Patients · Clinic flow</strong><small>Illustrative product preview</small></div></div></section>
       <div className={s.continuity}><p>Less chasing. More caring.</p><span>Patient context, always close</span><span>Clear ownership at each handoff</span><span>One connected clinic day</span></div>
       <section className={s.flow} id="product" aria-labelledby="flow-heading"><div ref={railRef} className={railActive ? `${s.flowRail} ${s.flowRailActive}` : s.flowRail}><div className={s.flowSticky}><div className={s.flowCopy}><p className={s.eyebrow}>The patient journey</p><h2 id="flow-heading">Every patient.<br /><span>A clear next step.</span></h2><p className={s.body}>One connected visit from appointment to the final record. The right person sees what needs to happen next.</p><p className={s.flowHint}>Explore a visit, step by step ↓</p><div className={s.stepList} aria-label="Patient flow">{STEPS.map((item, index) => <button key={item.name} type="button" aria-pressed={index === step} onClick={() => goToStep(index)}><span>{String(index + 1).padStart(2, '0')}</span>{item.name}</button>)}</div></div><div className={s.flowProduct}><div className={s.preview}><SparkiCanvas scene={sceneForStep(step)} role="veterinarian" journey={current} className={s.canvas} /></div><div className={s.flowCaption} aria-live="polite"><span>{current.label}</span><strong>{current.action}</strong><small>{current.detail}</small><p>{current.note}</p><small>Next with: {current.owner}</small></div></div></div></div></section>
-      <section className={s.solutions} id="solutions" aria-labelledby="solutions-heading"><div className={s.sectionIntro}><p className={s.eyebrow}>One connected workspace</p><h2 id="solutions-heading">One system.<br /><span>Every part of the clinic.</span></h2><p className={s.body}>Sparki keeps the clinic’s major workflows connected without asking your team to carry the gaps.</p></div><div ref={areaGridRef} className={s.areaGrid}>{AREAS.map(([name, copy, detail], index) => <div className={s.area} key={name} style={{ ['--i' as string]: index }}><span className={s.areaNumber}>0{index + 1}</span><h3>{name}</h3><p>{copy}</p><div className={s.areaDetail}>{detail}</div></div>)}</div></section>
+      <section className={s.solutions} id="solutions" aria-labelledby="solutions-heading"><div className={s.sectionIntro}><p className={s.eyebrow}>One connected workspace</p><h2 id="solutions-heading">One system.<br /><span>Every part of the clinic.</span></h2><p className={s.body}>Sparki keeps the clinic’s major workflows connected without asking your team to carry the gaps.</p></div><div ref={areaGridRef} className={s.areaGrid}><span className={s.areaThread} aria-hidden="true"><i className={s.areaThreadSeg} data-seg="top" /><i className={s.areaThreadSeg} data-seg="bottom" /><i className={s.areaThreadNode} /></span>{AREAS.map(([name, copy, proof], index) => <div className={s.area} key={name} style={{ ['--i' as string]: index }}><span className={s.areaNumber}>0{index + 1}</span><h3>{name}</h3><p>{copy}</p>{proof}</div>)}</div></section>
       <section ref={finalCtaRef} className={s.finalCta} id="demo"><p className={s.eyebrow}>See Sparki in your clinic</p><h2>Give your clinic<br /><span>a better operating system.</span></h2><p>See how Sparki keeps your patients, people, and daily work connected.</p><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link></section>
     </main>
-    <footer className={s.footer}><Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link><span>Built for the people who care.</span><div><Link href="#product">Product</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
+    <footer className={s.footer}><Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link><span>Built for the people who care.</span><div><Link href="#product">How it works</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
   </div>;
 }

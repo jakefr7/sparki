@@ -6,6 +6,8 @@ Risk classification: **HIGH RISK** because Sparki handles clinical records, medi
 
 The original verified audit is preserved in [BASELINE_SITREP.md](./BASELINE_SITREP.md). Historical phase closeouts remain evidence only; they are not the current operating model.
 
+For user-authorized staging testing, Codex and Claude should read [shared staging testing memory](./STAGING_TESTING.md) for the existing five-person test clinic and local credential location.
+
 ## Current product state
 
 - TypeScript monorepo with Next.js, NestJS, Prisma/PostgreSQL, Vitest, and Playwright.

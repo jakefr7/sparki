@@ -14,6 +14,8 @@ import {
 import { AppointmentsService } from '../appointments/appointments.service';
 import type { AuthenticatedUser } from '../auth/types';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
+import { AppConfigService } from '../config/app-config.service';
+import { AttachmentStorageService } from '../messaging/attachment-storage.service';
 import { TERMINAL_VISIT_STATES } from '../visits/visit-states';
 import type { CreatePatientInput } from './dto/create-patient.schema';
 import type { CreatePatientAlertInput, UpdatePatientAlertInput } from './dto/patient-alert.schema';
@@ -21,7 +23,17 @@ import type {
   CreatePatientMedicationInput,
   UpdatePatientMedicationInput,
 } from './dto/patient-medication.schema';
+import type { UploadPatientPhotoInput } from './dto/patient-photo.schema';
 import type { UpdatePatientInput } from './dto/update-patient.schema';
+
+export const MAX_PATIENT_PHOTO_BYTES = 8 * 1024 * 1024;
+
+function matchesDeclaredImageType(body: Buffer, mimeType: string): boolean {
+  if (mimeType === 'image/jpeg') return body.length >= 3 && body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+  if (mimeType === 'image/png') return body.length >= 8 && body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mimeType === 'image/gif') return body.length >= 6 && ['GIF87a', 'GIF89a'].includes(body.subarray(0, 6).toString('ascii'));
+  return body.length >= 12 && body.subarray(0, 4).toString('ascii') === 'RIFF' && body.subarray(8, 12).toString('ascii') === 'WEBP';
+}
 
 const patientWithClients = Prisma.validator<Prisma.PatientDefaultArgs>()({
   include: { clients: { include: { client: true } } },
@@ -87,7 +99,11 @@ export interface PatientSearchResult {
 
 @Injectable()
 export class PatientsService {
-  constructor(private readonly appointments: AppointmentsService) {}
+  constructor(
+    private readonly appointments: AppointmentsService,
+    private readonly attachments: AttachmentStorageService,
+    private readonly config: AppConfigService,
+  ) {}
 
   async create(organizationId: string, input: CreatePatientInput) {
     await this.assertClientsBelongToOrganization(organizationId, input.clients);
@@ -146,11 +162,51 @@ export class PatientsService {
   async update(id: string, organizationId: string, input: UpdatePatientInput) {
     await this.findById(id, organizationId);
 
+    const data: Record<string, unknown> = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    // imageUrl edited directly (cleared, or replaced with an external URL) no
+    // longer points at anything this service uploaded — drop the stale key
+    // so the content endpoint stops serving the old object. uploadPhoto()
+    // below is the only path that sets a non-null imageStorageKey.
+    if ('imageUrl' in data) data.imageStorageKey = null;
+
     return prisma.patient.update({
       where: { id },
-      data: Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
+      data,
       ...patientWithClients,
     });
+  }
+
+  async uploadPhoto(organizationId: string, id: string, input: UploadPatientPhotoInput) {
+    await this.findById(id, organizationId);
+
+    const body = Buffer.from(input.contentBase64, 'base64');
+    if (!body.length || body.toString('base64').replace(/=+$/, '') !== input.contentBase64.replace(/=+$/, '')) {
+      throw new BadRequestException('Photo content is not valid base64.');
+    }
+    if (body.length > MAX_PATIENT_PHOTO_BYTES) {
+      throw new BadRequestException('Image is too large. Max size is 8MB.');
+    }
+    if (!matchesDeclaredImageType(body, input.mimeType)) {
+      throw new BadRequestException('Image content does not match its declared type.');
+    }
+
+    const key = this.attachments.patientPhotoKey(organizationId, id);
+    await this.attachments.put(key, body, input.mimeType, input.fileName);
+    const imageUrl = `${this.config.webOrigin}/api/patients/${id}/photo/content`;
+
+    return prisma.patient.update({
+      where: { id },
+      data: { imageUrl, imageStorageKey: key },
+      ...patientWithClients,
+    });
+  }
+
+  async getPhoto(organizationId: string, id: string) {
+    const patient = await prisma.patient.findFirst({ where: { id, organizationId }, select: { imageStorageKey: true } });
+    if (!patient?.imageStorageKey || !this.attachments.patientPhotoBelongsTo(patient.imageStorageKey, organizationId, id)) {
+      throw new NotFoundException('Patient photo not found.');
+    }
+    return this.attachments.get(patient.imageStorageKey);
   }
 
   /**

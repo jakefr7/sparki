@@ -595,6 +595,10 @@ model Patient {
   weight         Float?
   color          String?
   imageUrl       String?
+  // Object-storage key for an imageUrl produced by our own upload endpoint
+  // (see PatientsService.uploadPhoto/getPhoto). Null when imageUrl is absent
+  // or was set directly to an external URL instead of uploaded.
+  imageStorageKey String?
   status         PatientStatus @default(Active)
   // Free-text clinical caution (allergies, handling notes, care cautions),
   // entered from the profile's Alerts tab — surfaced as a small badge next

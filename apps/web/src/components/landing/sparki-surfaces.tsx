@@ -892,7 +892,10 @@ export function SparkiCanvas({
             <PatientScene journey={journey} active={scene === 'patient'} />
             <BillingScene journey={journey} active={scene === 'billing'} />
             <InventoryScene active={scene === 'inventory'} />
-            <MessagesScene active={scene === 'messages'} />
+            {/* Team Messages isn't part of the marketed product story yet — only
+                mount it if a caller actually asks for the scene, so its copy
+                never sits (invisible but present) in the public landing-page DOM. */}
+            {scene === 'messages' ? <MessagesScene active /> : null}
           </div>
         </div>
       </div>

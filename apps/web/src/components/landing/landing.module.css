@@ -9,11 +9,11 @@
 .productContext{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:18px 3px 0;color:var(--muted);font-size:11px}.productContext strong{font-weight:500;color:var(--teal)}.productContext small{width:100%;padding-left:14px;color:var(--muted);font-size:10px}.contextDot{width:6px;height:6px;border-radius:50%;background:#1fa9a0}
 .continuity{max-width:1296px;margin:0 auto;padding:25px 0;display:flex;align-items:center;justify-content:space-between;gap:20px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}.continuity p{font-weight:650;color:var(--ink)}.continuity span::before{content:'✓';color:var(--teal);margin-right:8px}
 .flow,.solutions{scroll-margin-top:64px}.flow{background:radial-gradient(ellipse at 90% 30%,#214b51,transparent 65%),var(--deep)}.flowSticky{grid-template-columns:.8fr 1.2fr;gap:5vw}.flow .body{color:#b0c4c7}.flow h2,.solutions h2{font-size:clamp(2.6rem,4vw,4.2rem)}.flow .eyebrow,.solutions .eyebrow{margin-bottom:20px}.flowHint{font-size:12px;color:#89bdbb;margin-top:24px!important}.stepList{margin-top:12px}.stepList button{padding:10px 12px;transition:background .2s}.stepList button:hover{background:#ffffff08}.stepList button[aria-pressed=true]{background:#ffffff0e;box-shadow:inset 3px 0 #70d5c9}.flowCaption{flex-wrap:wrap;gap:8px 15px;padding:20px;margin:18px 0 0;border:1px solid #ffffff25;border-radius:12px;background:#ffffff05}.flowCaption p{flex-basis:100%;font-size:15px;color:#d2e3e4}.flowCaption small:last-child{color:#80c9c2}.flowCaption strong{font-size:17px}
-.areaGrid{border-radius:14px;overflow:hidden}.area{min-height:235px;background:#fff;padding:26px}.area h3{font-size:21px}.areaDetail{padding-top:18px;margin-top:20px;border-top:1px solid var(--line);font-size:11px;color:var(--teal);line-height:1.8}.sectionIntro{align-self:center}.finalCta{border-top:1px solid #d3e8e4;background:radial-gradient(ellipse at 50% 100%,#c7e8e080,transparent 70%),var(--mint)}.finalCta h2{font-size:clamp(2.7rem,4.6vw,4.6rem)}.finalCta h2 span{color:var(--teal)}
+.areaGrid{border-radius:14px;overflow:hidden}.area{min-height:235px;background:#fff;padding:26px}.area h3{font-size:21px}.solutions h2 span{color:var(--muted)}.sectionIntro{align-self:center}.finalCta{border-top:1px solid #d3e8e4;background:radial-gradient(ellipse at 50% 100%,#c7e8e080,transparent 70%),var(--mint)}.finalCta h2{font-size:clamp(2.7rem,4.6vw,4.6rem)}.finalCta h2 span{color:var(--teal)}
 @media(min-width:1440px){.hero{padding-top:170px;padding-bottom:90px}}
 @media(max-width:1350px){.continuity{margin-inline:5%}}
 @media(max-width:1000px){.nav,.headerActions{gap:18px}.hero{gap:35px;grid-template-columns:1fr;padding-top:125px}.heroCopy{max-width:650px}.hero h1{font-size:clamp(3.4rem,8vw,5.5rem)}.hero .lede{max-width:38rem}.heroProduct{max-width:850px;width:100%}.continuity{flex-wrap:wrap;justify-content:flex-start;gap:12px 26px}.continuity p{width:100%}.flowSticky{grid-template-columns:1fr;gap:35px}.flowCopy .body{max-width:38rem}.stepList{grid-template-columns:1fr 1fr;column-gap:20px}.solutions{grid-template-columns:1fr;gap:32px}.sectionIntro .body{max-width:38rem}.footer{flex-wrap:wrap}.footer>span{order:3;width:100%}}
-@media(max-width:700px){.header{height:68px}.nav{display:none}.navOpen{position:absolute;top:68px;left:0;right:0;display:grid;gap:0;padding:12px 5%;background:var(--bg);box-shadow:0 10px 20px #12323a12}.navOpen a{padding:12px 0}.headerActions .buttonSmall,.headerActions .signIn{display:none}.menuToggle{display:block}.hero{padding:110px 20px 40px;gap:32px}.hero h1{font-size:clamp(3.1rem,11vw,4.5rem)}.hero .eyebrow{font-size:9px}.lede{margin-top:20px}.actions{gap:20px;margin-top:25px}.button{padding:14px 18px}.productContext strong{font-size:10px}.continuity{margin-inline:20px;display:grid;gap:10px;padding:22px 0}.flowSticky,.solutions{padding:52px 20px}.flowCaption{padding:16px}.flowCaption>small{flex-basis:100%}.stepList{column-gap:12px}.stepList button{gap:8px;font-size:12px;padding:12px 8px}.stepList button span{width:18px;flex-shrink:0}.areaGrid{grid-template-columns:1fr}.area{min-height:0;padding:24px}.area h3{margin-top:14px}.areaDetail{margin-top:16px;padding-top:14px}.finalCta{padding:56px 20px}.finalCta>p:not(.eyebrow){font-size:16px}.footer{padding:28px 20px}.footer>div{width:100%;flex-wrap:wrap;gap:18px}.footer>span{font-size:12px}}
+@media(max-width:700px){.header{height:68px}.nav{display:none}.navOpen{position:absolute;top:68px;left:0;right:0;display:grid;gap:0;padding:12px 5%;background:var(--bg);box-shadow:0 10px 20px #12323a12}.navOpen a{padding:12px 0}.headerActions .buttonSmall,.headerActions .signIn{display:none}.menuToggle{display:block}.hero{padding:110px 20px 40px;gap:32px}.hero h1{font-size:clamp(3.1rem,11vw,4.5rem)}.hero .eyebrow{font-size:9px}.lede{margin-top:20px}.actions{gap:20px;margin-top:25px}.button{padding:14px 18px}.productContext strong{font-size:10px}.continuity{margin-inline:20px;display:grid;gap:10px;padding:22px 0}.flowSticky,.solutions{padding:52px 20px}.flowCaption{padding:16px}.flowCaption>small{flex-basis:100%}.stepList{column-gap:12px}.stepList button{gap:8px;font-size:12px;padding:12px 8px}.stepList button span{width:18px;flex-shrink:0}.areaGrid{grid-template-columns:1fr}.area{min-height:0;padding:24px}.area h3{margin-top:14px}.areaProof{margin-top:16px;padding-top:14px}.areaThread{display:none}.finalCta{padding:56px 20px}.finalCta>p:not(.eyebrow){font-size:16px}.footer{padding:28px 20px}.footer>div{width:100%;flex-wrap:wrap;gap:18px}.footer>span{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.landing *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .landing .lede{margin-top:24px}.landing .body{margin-top:20px}.actions a{flex-shrink:0}.actions{gap:22px}
@@ -89,9 +89,11 @@
   100% { transform: translateX(230%); opacity: 0; }
 }
 .area {
+  position: relative;
+  z-index: 1;
   opacity: 1;
   transform: none;
-  transition: opacity 0.6s cubic-bezier(0.19, 1, 0.22, 1), transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), background 0.2s ease, border-color 0.2s ease;
+  transition: opacity 0.6s cubic-bezier(0.19, 1, 0.22, 1), transform 0.6s cubic-bezier(0.19, 1, 0.22, 1), background 0.2s ease, border-color 0.2s ease, box-shadow 0.3s ease;
   transition-delay: calc(var(--i, 0) * 70ms);
 }
 .areaGrid[data-revealed='true'] .area { opacity: 1; transform: none; }
@@ -107,7 +109,49 @@
   opacity: 0;
 }
 .area:hover .areaNumber::after { animation: sparkiPulseSweepLanding 0.9s cubic-bezier(0.33, 1, 0.68, 1) 1; }
-.area:hover .areaDetail { border-top-color: var(--teal); }
+.area:hover .areaProof { border-top-color: var(--teal); }
+
+/* ---- one patient's visit, threaded through all four cards as quiet proof
+   rather than a screenshot: a two-line record (01/02/04) or a compact stage
+   track (03), in the same footer slot the old category tags used to fill. ---- */
+.areaProof { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; transition: border-color 0.2s ease; }
+.areaProof strong { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.areaProof span { font-size: 12px; color: var(--muted); }
+.areaTrack { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 650; letter-spacing: 0.02em; color: var(--muted); }
+.areaTrack span { display: inline-flex; align-items: center; gap: 6px; }
+.areaTrack span::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.areaTrack span:not(:last-child)::after { content: ''; width: 12px; height: 1px; background: var(--line); margin-left: 1px; }
+.areaTrack span[data-state='done'] { color: var(--teal); }
+.areaTrack span[data-state='current'] { color: var(--ink); }
+.areaTrack span[data-state='current']::before { background: var(--teal); box-shadow: 0 0 0 3px rgba(23, 111, 105, 0.16); }
+
+/* ---- the thread: a hairline that almost disappears at rest, sitting in the
+   grid's own gutter (never over card content) with a single hub where the
+   diagonal 02->03 handoff is implied rather than drawn. Desktop/tablet only —
+   the mobile single column reads top-to-bottom on its own. ---- */
+.areaThread { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.areaThreadSeg { position: absolute; left: 50%; width: 1px; background: var(--line); opacity: 0.6; transform: translateX(-50%); }
+.areaThreadSeg[data-seg='top'] { top: 0; height: calc(50% - 7px); }
+.areaThreadSeg[data-seg='bottom'] { top: calc(50% + 7px); height: calc(50% - 7px); }
+.areaThreadNode { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--line); opacity: 0.8; }
+
+/* ---- a single quick, one-time handoff on reveal: each card picks up a
+   faint teal-tinted glow in turn (01->02->03->04) as the adjoining thread
+   segment lights ahead of it, then everything settles back to its quiet
+   resting state. No fill-mode persistence, so :hover keeps working
+   immediately afterward. ---- */
+@keyframes areaCardActivate {
+  0%, 100% { box-shadow: 0 1px 2px rgba(18, 50, 58, 0.04), 0 6px 18px -10px rgba(18, 50, 58, 0.1); }
+  40% { box-shadow: 0 1px 2px rgba(18, 50, 58, 0.04), 0 14px 32px -10px rgba(23, 111, 105, 0.22), 0 0 0 1px rgba(23, 111, 105, 0.16) inset; }
+}
+.areaGrid[data-revealed='true'] .area { animation: areaCardActivate 620ms cubic-bezier(0.19, 1, 0.22, 1); animation-delay: calc(var(--i, 0) * 260ms + 80ms); }
+@keyframes areaThreadLight {
+  0%, 100% { background: var(--line); opacity: 0.6; }
+  45% { background: var(--teal); opacity: 1; box-shadow: 0 0 8px 1px rgba(23, 111, 105, 0.35); }
+}
+.areaGrid[data-revealed='true'] .areaThreadSeg[data-seg='top'] { animation: areaThreadLight 650ms ease; animation-delay: 160ms; }
+.areaGrid[data-revealed='true'] .areaThreadNode { animation: areaThreadLight 650ms ease; animation-delay: 420ms; }
+.areaGrid[data-revealed='true'] .areaThreadSeg[data-seg='bottom'] { animation: areaThreadLight 650ms ease; animation-delay: 680ms; }
 
 /* ---- closing CTA: a quiet one-time reveal, nothing more ---- */
 .finalCta {
@@ -149,9 +193,9 @@
 .stepList button { border-radius: 6px; }
 .flowCaption { background: #ffffff08; border-color: #ffffff1a; }
 .solutions { padding-block: 112px; }
-.areaGrid { gap: 12px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
-.area { border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 3px 12px #12323a03; }
-.area:hover { border-color: #a9ccc6; }
+.areaGrid { position: relative; gap: 12px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
+.area { border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(18, 50, 58, 0.04), 0 6px 18px -10px rgba(18, 50, 58, 0.1); }
+.area:hover { border-color: #a9ccc6; box-shadow: 0 2px 4px rgba(18, 50, 58, 0.05), 0 14px 30px -12px rgba(18, 50, 58, 0.14); }
 .areaGrid[data-revealed='false'] .area, .finalCta[data-revealed='false'] { opacity: 0; transform: translateY(14px); }
 .finalCta { margin: 0 24px; border: 1px solid #d3e8e4; border-radius: 24px; padding-block: 88px; }
 @media (max-width: 1000px) {

@@ -1,5 +1,7 @@
 # Terminology
 
+- **Patient:** use “Patient” instead of “Pet” throughout user-facing product language, including labels, search placeholders, hints, and validation messages (founder direction, 2026-10-01). Outstanding occurrences are recorded in the patient-creation review; this direction does not require renaming internal identifiers during a copy change.
+
 - **Current work:** the live, user-directed work list in `CURRENT_WORK.md`.
 - **Build → test → fix:** implement the smallest cohesive change, run the most relevant checks, repair failures, and broaden verification according to risk.
 - **Focused test:** the smallest test set that directly exercises the changed behavior.

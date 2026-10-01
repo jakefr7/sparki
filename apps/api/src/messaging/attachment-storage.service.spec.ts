@@ -36,6 +36,15 @@ describe('AttachmentStorageService development storage', () => {
     expect(storage.clinicalBelongsTo(storage.key('org-a', 'location-a'), 'org-a', 'location-a')).toBe(false);
   });
 
+  it('issues organization/patient-scoped photo keys and enforces tenant ownership', () => {
+    const key = storage.patientPhotoKey('org-a', 'patient-a');
+    expect(key).toMatch(/^organizations\/org-a\/patients\/patient-a\/photo\/[0-9a-f-]{36}$/);
+    expect(storage.patientPhotoBelongsTo(key, 'org-a', 'patient-a')).toBe(true);
+    expect(storage.patientPhotoBelongsTo(key, 'org-b', 'patient-a')).toBe(false);
+    expect(storage.patientPhotoBelongsTo(key, 'org-a', 'patient-b')).toBe(false);
+    expect(storage.patientPhotoBelongsTo(`${key}/../escape`, 'org-a', 'patient-a')).toBe(false);
+  });
+
   it('keeps bytes and server-side metadata private until removed', async () => {
     const key = storage.key('org-a', 'location-a');
     await storage.put(key, Buffer.from('patient result'), 'text/plain', 'result.txt');

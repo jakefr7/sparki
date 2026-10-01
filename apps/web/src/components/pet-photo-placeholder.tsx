@@ -3,7 +3,12 @@ type PetKind = 'cat' | 'dog' | 'pet';
 function portableImageUrl(imageUrl: string): string {
   try {
     const parsed = new URL(imageUrl);
-    return parsed.pathname.startsWith('/uploads/') ? `${parsed.pathname}${parsed.search}` : imageUrl;
+    // Our own upload/serving routes are always reachable at these paths on
+    // whatever origin is currently serving the page — stripping the stored
+    // origin keeps a photo working if that origin ever doesn't match the
+    // viewer's (e.g. a value saved under a different host/environment).
+    const isOwnRoute = parsed.pathname.startsWith('/uploads/') || parsed.pathname.startsWith('/api/patients/');
+    return isOwnRoute ? `${parsed.pathname}${parsed.search}` : imageUrl;
   } catch {
     return imageUrl;
   }

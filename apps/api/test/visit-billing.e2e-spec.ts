@@ -135,6 +135,19 @@ describe('Visit checkout billing (e2e)', () => {
   });
 
   describe('Invoice creation and totals', () => {
+    it('returns the same invoice for concurrent first reads without rewriting it', async () => {
+      const { visitId } = await createVisitReadyForCheckout('Concurrent invoice reads');
+      const reads = await Promise.all(Array.from({ length: 8 }, () =>
+        request(app.getHttpServer()).get(`/visits/${visitId}/invoice`),
+      ));
+      for (const response of reads) {
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ status: 'DRAFT', totalCents: 0, lines: [] });
+        expect(response.body.id).toBe(reads[0]!.body.id);
+        expect(response.body.version).toBe(reads[0]!.body.version);
+      }
+    });
+
     it('creates an empty DRAFT invoice on first request and updates totals as lines are added', async () => {
       const { visitId } = await createVisitReadyForCheckout('Invoice totals');
       const created = await request(app.getHttpServer()).get(`/visits/${visitId}/invoice`);

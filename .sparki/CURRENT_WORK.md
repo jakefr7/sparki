@@ -1,6 +1,6 @@
 # Current Work
 
-Last updated: 2026-09-30
+Last updated: 2026-10-01
 
 Sparki no longer uses active development phases. Work is driven by the user's current request, the Product Constitution, and the live product state.
 
@@ -17,6 +17,8 @@ Full-repository and browser suites are release-readiness tools, not a mandatory 
 
 ## Active product work
 
+- Patient profile UI refinement requested 2026-10-01: local changes remove the walk-in form, simplify all five tabs, retain drafts across tab switches, and improve keyboard/mobile navigation. Appointment creation is outside this pass; no staging deployment requested.
+- Follow-up pressure test: use staging for testing and implement locally only; no push or deployment. Fixes cover editor focus/draft retention and partial-save messages, preserved address metadata, alert validation, prescription recovery/save controls, photo failure handling, medication autocomplete, mobile tab visibility, catalog failures, and concurrent first-invoice creation. Staging fixtures are recorded in STAGING_TESTING.md.
 - Prioritize scheduler and inventory design/use per the 2026-09-30 user request. Start with navigation, search speed and preserved context; see [today's work plan](../docs/research/scheduler-inventory-work-plan-2026-09-30.md).
 - Stabilize and review the patient-profile medication, invoice, exam-closeout, Hospital Services, and new-patient intake changes from the Anna workflow discussion.
 - Implement Anna workflow gaps per the founder request: inventory usability, current-information PDFs, authorized prescriptions, medication-only refill encounters, dispensing/labels, and referral handoff. Follow a small build/test/fix loop. FAS, pricing calculations, label hardware, specialty fields, and migration remain dependent on clinic input.

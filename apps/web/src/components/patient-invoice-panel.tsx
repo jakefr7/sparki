@@ -55,6 +55,8 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
   const [history, setHistory] = useState<Invoice[]>([]);
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,14 +83,21 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    if (!invoice?.editable || !query.trim()) { setCatalog([]); return; }
+    setCatalog([]); setCatalogError(null);
+    if (!invoice?.editable || !query.trim()) { setCatalogLoading(false); return; }
+    const controller = new AbortController();
+    setCatalogLoading(true);
     const timer = window.setTimeout(() => {
-      fetch(`/api/inventory/items?search=${encodeURIComponent(query)}`, { cache: 'no-store' })
-        .then(async (response) => response.ok ? await response.json() as CatalogItem[] : [])
+      fetch(`/api/inventory/items?search=${encodeURIComponent(query)}`, { cache: 'no-store', signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error('Could not search the hospital catalog. Try searching again.');
+          return await response.json() as CatalogItem[];
+        })
         .then((items) => setCatalog(items.filter((item) => item.billable && item.status === 'ACTIVE' && item.retailPrice != null).slice(0, 8)))
-        .catch(() => setCatalog([]));
+        .catch(() => { if (!controller.signal.aborted) setCatalogError('Could not search the hospital catalog. Try searching again.'); })
+        .finally(() => { if (!controller.signal.aborted) setCatalogLoading(false); });
     }, 180);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [invoice?.editable, query]);
 
   const visibleCatalog = useMemo(() => catalog.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase())), [catalog, query]);
@@ -124,11 +133,13 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
     finally { setSaving(false); }
   }
 
-  if (loading) return <section className="profile-card profile-card--wide"><p role="status">Loading invoices…</p></section>;
+  if (loading) return <section className="profile-card profile-card--wide"><div className="profile-card__header"><h2>Invoices</h2></div><p role="status">Loading invoices…</p></section>;
+  if (error && !invoice && !history.length) return <section className="profile-card profile-card--wide"><div className="profile-card__header"><h2>Invoices</h2></div><p className="form-error" role="alert">{error}</p><button type="button" className="button-secondary" onClick={() => void load()}>Try again</button></section>;
+  if (!activeVisitId && !history.length) return <section className="profile-card profile-card--wide" aria-labelledby="patient-invoices-heading"><div className="profile-card__header"><p className="eyebrow">Billing history</p><h2 id="patient-invoices-heading">Invoices</h2></div><div className="profile-compact-empty profile-compact-empty--roomy"><strong>No invoices yet</strong><span>Visit charges and past invoices will appear here.</span></div></section>;
 
   return (
     <div className="patient-invoice-workspace">
-      <section className="profile-card profile-card--wide" aria-labelledby="patient-current-invoice-heading">
+      {activeVisitId ? <section className="profile-card profile-card--wide" aria-labelledby="patient-current-invoice-heading">
         <div className="profile-card__header profile-card__header--with-action">
           <div><p className="eyebrow">Current balance</p><h2 id="patient-current-invoice-heading">Active Invoice</h2></div>
           {activeVisitId ? <Link className="button-secondary" href={`/visits/${activeVisitId}?view=checkout`}>Open checkout</Link> : null}
@@ -139,16 +150,16 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
           <div className="patient-invoice-receipt">
             <div className="checkout-invoice-heading"><div><h3>Current visit charges</h3><p>{invoice.editable ? 'Changes save immediately and remain editable until checkout.' : 'This invoice has been finalized.'}</p></div><strong>{dollars(invoice.totalCents)}</strong></div>
             {invoice.lines.length ? <ul className="checkout-lines">{invoice.lines.map((line) => <li key={line.id}><span>{line.description}{Number(line.quantity) !== 1 ? <small> × {line.quantity}</small> : null}</span><span>{dollars(line.totalAmountCents)}{invoice.editable ? <button type="button" disabled={saving} onClick={() => void removeLine(line.id)} aria-label={`Remove ${line.description}`}>Remove</button> : null}</span></li>)}</ul> : <p className="checkout-empty">No charges have been added.</p>}
-            {invoice.editable ? <div className="checkout-add-charge"><label><span>Add a service, medication, diagnostic, or item</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search hospital catalog" /></label>{query.trim() ? <div className="checkout-catalog-results">{visibleCatalog.length ? visibleCatalog.map((item) => <button type="button" key={item.id} disabled={saving} onClick={() => void addLine(item)}><span>{item.name}<small>{item.primaryType.toLowerCase()}</small></span><strong>{dollars(Math.round(Number(item.retailPrice) * 100))}</strong></button>) : <p>No billable catalog items found.</p>}</div> : null}</div> : null}
+            {invoice.editable ? <div className="checkout-add-charge"><label><span>Add a service, medication, diagnostic, or item</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search hospital catalog" /></label>{query.trim() ? <div className="checkout-catalog-results">{catalogLoading ? <p role="status">Searching hospital catalog…</p> : catalogError ? <p className="form-error" role="alert">{catalogError}</p> : visibleCatalog.length ? visibleCatalog.map((item) => <button type="button" key={item.id} disabled={saving} onClick={() => void addLine(item)}><span>{item.name}<small>{item.primaryType.toLowerCase()}</small></span><strong>{dollars(Math.round(Number(item.retailPrice) * 100))}</strong></button>) : <p>No billable catalog items found.</p>}</div> : null}</div> : null}
             <div className="checkout-total"><span>{invoice.remainingBalanceCents === invoice.totalCents ? 'Invoice total' : `Remaining after ${dollars(invoice.amountPaidCents)} recorded`}</span><strong>{dollars(invoice.remainingBalanceCents)}</strong></div>
           </div>
         )}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-      </section>
+      </section> : null}
 
       <section className="profile-card profile-card--wide" aria-labelledby="past-invoices-heading">
         <div className="profile-card__header"><p className="eyebrow">Billing history</p><h2 id="past-invoices-heading">Past Invoices</h2></div>
-        {pastInvoices.length ? <div className="patient-invoice-history">{pastInvoices.map((item) => <article key={item.id}><div><strong>{item.visit?.reason ?? 'Patient visit'}</strong><span>{invoiceDate(item)} · {item.status.replaceAll('_', ' ')}</span></div><div><strong>{dollars(item.totalCents)}</strong><span>{item.remainingBalanceCents ? `${dollars(item.remainingBalanceCents)} remaining` : 'Paid / settled'}</span></div><Link href={`/visits/${item.visitId}?view=checkout`}>View</Link></article>)}</div> : <p className="empty-state">No past invoices.</p>}
+        {pastInvoices.length ? <div className="patient-invoice-history">{pastInvoices.map((item) => <article key={item.id}><div><strong>{item.visit?.reason ?? 'Patient visit'}</strong><span>{invoiceDate(item)} · {item.status.replaceAll('_', ' ')}</span></div><div><strong>{dollars(item.totalCents)}</strong><span>{item.remainingBalanceCents ? `${dollars(item.remainingBalanceCents)} remaining` : 'No remaining balance'}</span></div><Link href={`/visits/${item.visitId}?view=checkout`}>View</Link></article>)}</div> : <div className="profile-compact-empty profile-compact-empty--roomy"><strong>No past invoices</strong><span>Completed visit invoices will appear here.</span></div>}
       </section>
     </div>
   );

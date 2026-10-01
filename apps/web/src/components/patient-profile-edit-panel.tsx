@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { SEX_OPTIONS, SPECIES_OPTIONS } from '../lib/patient-types';
@@ -65,7 +65,10 @@ interface FormState {
   clientCountry: string;
 }
 
-function initialFormState(patient: EditablePatient, client: EditablePrimaryClient | null): FormState {
+function initialFormState(
+  patient: EditablePatient,
+  client: EditablePrimaryClient | null,
+): FormState {
   return {
     name: patient.name,
     species: patient.species,
@@ -102,14 +105,44 @@ export function PatientProfileEditPanel({
   const [addressAutofill, setAddressAutofill] = useState<AddressAutofillResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+
+  useEffect(() => {
+    if (editing) dialogRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    else if (wasEditing.current) triggerRef.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
+
+  function closeEditor(discard = false) {
+    if (saving) return;
+    if (discard) setHasDraft(false);
+    setEditing(false);
+  }
 
   function updateField<K extends keyof FormState>(field: K, value: FormState[K]) {
+    setHasDraft(true);
+    if (
+      [
+        'clientAddressLine1',
+        'clientCity',
+        'clientState',
+        'clientPostalCode',
+        'clientCountry',
+      ].includes(field)
+    ) {
+      setAddressAutofill(null);
+    }
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   function openEditor() {
-    setForm(initialFormState(patient, primaryClient));
-    setAddressAutofill(null);
+    if (!hasDraft) {
+      setForm(initialFormState(patient, primaryClient));
+      setAddressAutofill(null);
+    }
     setError(null);
     setEditing(true);
   }
@@ -125,7 +158,7 @@ export function PatientProfileEditPanel({
     const clientEmail = form.clientEmail.trim();
 
     if (!name) {
-      setError('Pet first name is required.');
+      setError('Patient name is required.');
       return;
     }
     if (!species) {
@@ -142,6 +175,7 @@ export function PatientProfileEditPanel({
     }
 
     setSaving(true);
+    let patientSaved = false;
     try {
       const patientResponse = await fetch(`/api/patients/${patient.id}`, {
         method: 'PATCH',
@@ -159,8 +193,20 @@ export function PatientProfileEditPanel({
       if (!patientResponse.ok) {
         throw new Error('patient update failed');
       }
+      patientSaved = true;
 
       if (primaryClient) {
+        const initial = initialFormState(patient, primaryClient);
+        const addressChanged = (
+          [
+            'clientAddressLine1',
+            'clientAddressLine2',
+            'clientCity',
+            'clientState',
+            'clientPostalCode',
+            'clientCountry',
+          ] as const
+        ).some((field) => form[field].trim() !== initial[field].trim());
         const clientResponse = await fetch(`/api/clients/${primaryClient.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -176,10 +222,14 @@ export function PatientProfileEditPanel({
             state: form.clientState.trim() || null,
             postalCode: form.clientPostalCode.trim() || null,
             country: form.clientCountry.trim() || null,
-            formattedAddress: addressAutofill?.formattedAddress || null,
-            addressPlaceId: addressAutofill?.placeId || null,
-            addressLatitude: addressAutofill?.latitude ?? null,
-            addressLongitude: addressAutofill?.longitude ?? null,
+            ...(addressChanged || addressAutofill
+              ? {
+                  formattedAddress: addressAutofill?.formattedAddress || null,
+                  addressPlaceId: addressAutofill?.placeId || null,
+                  addressLatitude: addressAutofill?.latitude ?? null,
+                  addressLongitude: addressAutofill?.longitude ?? null,
+                }
+              : {}),
           }),
         });
         if (!clientResponse.ok) {
@@ -187,10 +237,16 @@ export function PatientProfileEditPanel({
         }
       }
 
+      setHasDraft(false);
       setEditing(false);
       router.refresh();
     } catch {
-      setError('Something went wrong saving these changes. Please try again.');
+      setError(
+        patientSaved
+          ? 'Patient details saved, but owner details could not be saved. Your edits are still here; try again.'
+          : 'Could not save patient details. Your edits are still here; try again.',
+      );
+      if (patientSaved) router.refresh();
     } finally {
       setSaving(false);
     }
@@ -198,26 +254,54 @@ export function PatientProfileEditPanel({
 
   if (!editing) {
     return (
-      <button type="button" className="button-secondary" onClick={openEditor}>
+      <button ref={triggerRef} type="button" className="button-secondary" onClick={openEditor}>
         Edit Profile
       </button>
     );
   }
 
   return (
-    <div className="patient-profile-modal-overlay" role="presentation" onClick={() => setEditing(false)}>
+    <div
+      className="patient-profile-modal-overlay"
+      role="presentation"
+      onClick={() => closeEditor()}
+    >
       <div
+        ref={dialogRef}
         className="patient-profile-modal patient-profile-edit-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="patient-profile-edit-heading"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeEditor();
+          }
+          if (event.key === 'Tab') {
+            const controls = Array.from(
+              dialogRef.current?.querySelectorAll<HTMLElement>(
+                'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]',
+              ) ?? [],
+            ).filter((element) => element.getClientRects().length > 0);
+            const first = controls[0];
+            const last = controls[controls.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
       >
         <div className="patient-profile-modal-header patient-profile-edit-modal__header">
           <button
             type="button"
             className="patient-profile-modal-close"
-            onClick={() => setEditing(false)}
+            onClick={() => closeEditor()}
+            disabled={saving}
             aria-label="Close edit form"
           >
             <span aria-hidden="true">×</span>
@@ -225,12 +309,15 @@ export function PatientProfileEditPanel({
           <h2 id="patient-profile-edit-heading">Edit Profile</h2>
         </div>
         <div className="patient-profile-modal-body patient-profile-edit-modal__body">
+          <p className="patient-section-description">
+            Closing keeps your edits while this profile stays open. Cancel discards them.
+          </p>
           <form className="front-desk-form patient-profile-modal-edit-form" onSubmit={handleSubmit}>
-            <fieldset className="front-desk-section">
-              <legend>Pet</legend>
+            <fieldset className="front-desk-section" disabled={saving}>
+              <legend>Patient</legend>
               <div className="front-desk-grid">
                 <label>
-                  Pet first name
+                  Patient name
                   <input
                     value={form.name}
                     onChange={(event) => updateField('name', event.target.value)}
@@ -255,11 +342,17 @@ export function PatientProfileEditPanel({
                 </label>
                 <label>
                   Breed
-                  <input value={form.breed} onChange={(event) => updateField('breed', event.target.value)} />
+                  <input
+                    value={form.breed}
+                    onChange={(event) => updateField('breed', event.target.value)}
+                  />
                 </label>
                 <label>
                   Sex
-                  <select value={form.sex} onChange={(event) => updateField('sex', event.target.value)}>
+                  <select
+                    value={form.sex}
+                    onChange={(event) => updateField('sex', event.target.value)}
+                  >
                     <option value="">Unspecified</option>
                     {SEX_OPTIONS.map((option) => (
                       <option key={option} value={option}>
@@ -270,7 +363,10 @@ export function PatientProfileEditPanel({
                 </label>
                 <label>
                   Coat color
-                  <input value={form.color} onChange={(event) => updateField('color', event.target.value)} />
+                  <input
+                    value={form.color}
+                    onChange={(event) => updateField('color', event.target.value)}
+                  />
                 </label>
                 <label>
                   Date of birth
@@ -292,7 +388,7 @@ export function PatientProfileEditPanel({
               </div>
             </fieldset>
 
-            <fieldset className="front-desk-section">
+            <fieldset className="front-desk-section" disabled={saving}>
               <legend>Owner</legend>
               <div className="front-desk-grid front-desk-grid--spaced">
                 <label>
@@ -403,10 +499,19 @@ export function PatientProfileEditPanel({
               )}
             </fieldset>
 
-            {error && <p className="form-error">{error}</p>}
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
 
             <div className="front-desk-actions">
-              <button type="button" className="button-secondary" onClick={() => setEditing(false)} disabled={saving}>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => closeEditor(true)}
+                disabled={saving}
+              >
                 Cancel
               </button>
               <button type="submit" className="button-primary" disabled={saving}>

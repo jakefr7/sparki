@@ -1,11 +1,9 @@
 import { PatientPrescriptionsPanel } from '../../../components/patient-prescriptions-panel';
 import Link from 'next/link';
+import './patient-profile.css';
+import { PatientMedicalHistory } from '../../../components/patient-medical-history';
 import { notFound } from 'next/navigation';
-import {
-  StartWalkInVisitForm,
-} from '../../../components/start-visit-actions';
 import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
-import { BackButton } from '../../../components/back-button';
 import { PatientAlertsPanel } from '../../../components/patient-alerts-panel';
 import { PatientMedicationsPanel } from '../../../components/patient-medications-panel';
 import { PatientNewAppointmentButton } from '../../../components/patient-new-appointment-button';
@@ -76,6 +74,15 @@ function patientDobLine(dateOfBirth: string | null, estimatedAge: string | null)
   return age ?? 'Age not captured';
 }
 
+function formatPhone(value: string | null): string | null {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, '');
+  const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  return local.length === 10
+    ? `${digits.length === 11 ? '+1 ' : ''}(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`
+    : value;
+}
+
 function displayValue(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -92,13 +99,16 @@ export default async function PatientWorkspacePage({
     notFound();
   }
 
-  const { patient, clients, upcomingAppointments, patientAttachments, recentVisits, sections } = workspace;
+  const { patient, clients, upcomingAppointments, patientAttachments, recentVisits, sections } =
+    workspace;
   const primaryClient = clients.find((client) => client.isPrimary);
-  const currentVisit = sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
+  const currentVisit =
+    sections.currentVisit.status === 'available' ? sections.currentVisit.visit : null;
   const medications = sections.medications.status === 'available' ? sections.medications : null;
   const nextAppointment = upcomingAppointments[0] ?? null;
   const headerAlert = patient.patientAlerts[0]?.message ?? patient.alerts;
-  const alertCount = patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
+  const alertCount =
+    patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
   const ageLine = patientDobLine(patient.dateOfBirth, patient.estimatedAge);
   const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
   const patientDetails = [
@@ -111,8 +121,8 @@ export default async function PatientWorkspacePage({
   const ownerContactDetails = primaryClient
     ? [
         { label: 'Owner name', value: clientDisplayName(primaryClient) },
-        { label: 'Cell phone', value: primaryClient.phone },
-        { label: 'Home/work phone', value: primaryClient.alternatePhone },
+        { label: 'Cell phone', value: formatPhone(primaryClient.phone) },
+        { label: 'Home/work phone', value: formatPhone(primaryClient.alternatePhone) },
         { label: 'Email', value: primaryClient.email },
         { label: 'Address', value: ownerAddress },
         { label: 'Preference', value: primaryClient.preferredContactMethod },
@@ -121,7 +131,9 @@ export default async function PatientWorkspacePage({
 
   return (
     <main className="page page--wide patient-profile-hub">
-      <BackButton fallbackHref="/patients" label="Back to previous page" />
+      <Link href="/patients" className="patient-profile-back">
+        ← Patients / Clients
+      </Link>
 
       <header className="patient-profile-hero">
         <PatientPhotoActions
@@ -133,7 +145,9 @@ export default async function PatientWorkspacePage({
         <div className="patient-profile-hero__identity">
           <p className="eyebrow">Patient Profile</p>
           <h1>{patient.name}</h1>
-          {primaryClient && <p className="patient-profile-hero__owner">Owner: {clientDisplayName(primaryClient)}</p>}
+          {primaryClient && (
+            <p className="patient-profile-hero__owner">Owner: {clientDisplayName(primaryClient)}</p>
+          )}
           <dl className="patient-profile-hero__details">
             {patientDetails.map((item) => (
               <div key={item.label}>
@@ -142,11 +156,6 @@ export default async function PatientWorkspacePage({
               </div>
             ))}
           </dl>
-          <div className="patient-profile-hero__badges">
-            <span className={`patient-status patient-status--${patient.status.toLowerCase()}${patient.status === 'ACTIVE' ? ' patient-status--subtle' : ''}`}>
-              {patient.status}
-            </span>
-          </div>
           {headerAlert ? (
             <div className="patient-profile-hero__alert" role="note">
               <strong>Alert:</strong>
@@ -205,6 +214,7 @@ export default async function PatientWorkspacePage({
       </header>
 
       <PatientProfileTabs
+        key={patient.id}
         tabs={[
           {
             id: 'overview',
@@ -212,23 +222,48 @@ export default async function PatientWorkspacePage({
             panel: (
               <div className="patient-profile-overview">
                 <div className="patient-profile-overview__main">
-                  {currentVisit ? <section className="profile-card profile-card--accent profile-card--care-flow" aria-labelledby="active-visit-heading">
-                    <div className="profile-card__header">
-                      <p className="eyebrow">Now</p>
-                      <h2 id="active-visit-heading">Current Visit</h2>
-                    </div>
-                    <div className="profile-care-flow__item profile-care-flow__item--active">
-                      <div><strong>{visitStateLabel(currentVisit.state)}</strong><p>{currentVisit.reason}</p><small>{currentVisit.visitType}{currentVisit.primaryVeterinarian ? ` · Dr. ${currentVisit.primaryVeterinarian.firstName} ${currentVisit.primaryVeterinarian.lastName}` : currentVisit.assignedTechnician ? ` · ${currentVisit.assignedTechnician.firstName} ${currentVisit.assignedTechnician.lastName}` : ''}</small></div>
-                      <ActiveVisitDetailsButton visit={currentVisit} label="View Visit" />
-                    </div>
-                  </section> : null}
+                  {currentVisit ? (
+                    <section
+                      className="profile-card profile-card--accent profile-card--care-flow"
+                      aria-labelledby="active-visit-heading"
+                    >
+                      <div className="profile-card__header">
+                        <p className="eyebrow">Now</p>
+                        <h2 id="active-visit-heading">Current Visit</h2>
+                      </div>
+                      <div className="profile-care-flow__item profile-care-flow__item--active">
+                        <div>
+                          <strong>{visitStateLabel(currentVisit.state)}</strong>
+                          <p>{currentVisit.reason}</p>
+                          <small>
+                            {currentVisit.visitType}
+                            {currentVisit.primaryVeterinarian
+                              ? ` · Dr. ${currentVisit.primaryVeterinarian.firstName} ${currentVisit.primaryVeterinarian.lastName}`
+                              : currentVisit.assignedTechnician
+                                ? ` · ${currentVisit.assignedTechnician.firstName} ${currentVisit.assignedTechnician.lastName}`
+                                : ''}
+                          </small>
+                        </div>
+                        <ActiveVisitDetailsButton visit={currentVisit} label="View Visit" />
+                      </div>
+                    </section>
+                  ) : null}
 
-                  {nextAppointment ? <section className="profile-card" aria-labelledby="next-appointment-heading">
-                    <div className="profile-card__header"><p className="eyebrow">Scheduled next</p><h2 id="next-appointment-heading">Next Appointment</h2></div>
-                    <div className="profile-care-flow__item"><div><strong>{appointmentTypeLabel(nextAppointment.type)}</strong><p>{nextAppointment.reason}</p><small>{appointmentTime(nextAppointment.scheduledAt)}</small></div></div>
-                  </section> : null}
-
-                  {!currentVisit ? <div className="profile-empty-action"><StartWalkInVisitForm patientId={patient.id} compact submitLabel="Start Walk-In" /></div> : null}
+                  {nextAppointment ? (
+                    <section className="profile-card" aria-labelledby="next-appointment-heading">
+                      <div className="profile-card__header">
+                        <p className="eyebrow">Scheduled next</p>
+                        <h2 id="next-appointment-heading">Next Appointment</h2>
+                      </div>
+                      <div className="profile-care-flow__item">
+                        <div>
+                          <strong>{appointmentTypeLabel(nextAppointment.type)}</strong>
+                          <p>{nextAppointment.reason}</p>
+                          <small>{appointmentTime(nextAppointment.scheduledAt)}</small>
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
 
                   <section className="profile-card" aria-labelledby="recent-visits-preview-heading">
                     <div className="profile-card__header">
@@ -239,8 +274,13 @@ export default async function PatientWorkspacePage({
                       <ul className="profile-visit-history profile-visit-history--preview">
                         {recentVisits.slice(0, 3).map((visit) => (
                           <li key={visit.id}>
-                            <Link href={`/visits/${visit.id}`} className="profile-visit-history__row">
-                              <span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span>
+                            <Link
+                              href={`/visits/${visit.id}`}
+                              className="profile-visit-history__row"
+                            >
+                              <span className="profile-visit-history__date">
+                                {visitDate(visit.createdAt)}
+                              </span>
                               <span className="profile-visit-history__reason">
                                 <strong>{visit.reason}</strong>
                                 <small>{visit.visitType}</small>
@@ -248,29 +288,47 @@ export default async function PatientWorkspacePage({
                               <span className="status-badge status-badge--scheduled">
                                 {visitStateLabel(visit.state)}
                               </span>
-                              <span className="profile-visit-history__doctor">{doctorLabel(visit)}</span>
+                              <span className="profile-visit-history__doctor">
+                                {doctorLabel(visit)}
+                              </span>
                             </Link>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="empty-state">No visits yet.</p>
+                      <div className="profile-compact-empty profile-compact-empty--roomy">
+                        <strong>No visits yet</strong>
+                        <span>Visit summaries will appear here as care is recorded.</span>
+                      </div>
                     )}
                   </section>
                 </div>
 
                 <aside className="patient-profile-overview__sidebar">
-                  <section className="profile-card profile-card--compact" aria-labelledby="owner-summary-heading">
+                  <section
+                    className="profile-card profile-card--compact"
+                    aria-labelledby="owner-summary-heading"
+                  >
                     <div className="profile-card__header">
                       <p className="eyebrow">Owner</p>
                       <h2 id="owner-summary-heading">Contact Summary</h2>
                     </div>
                     {primaryClient ? (
                       <dl className="profile-info-list profile-info-list--summary">
-                        {ownerContactDetails.slice(0, 4).map((item) => (
+                        {ownerContactDetails.map((item) => (
                           <div key={item.label}>
                             <dt>{item.label}</dt>
-                            <dd>{item.value}</dd>
+                            <dd>
+                              {item.label === 'Email' ? (
+                                <a href={`mailto:${item.value}`}>{item.value}</a>
+                              ) : item.label.includes('phone') ? (
+                                <a href={`tel:${item.value?.replace(/[^+\d]/g, '')}`}>
+                                  {item.value}
+                                </a>
+                              ) : (
+                                item.value
+                              )}
+                            </dd>
                           </div>
                         ))}
                       </dl>
@@ -278,7 +336,6 @@ export default async function PatientWorkspacePage({
                       <p className="empty-state">No owner is linked to this patient.</p>
                     )}
                   </section>
-
                 </aside>
               </div>
             ),
@@ -286,33 +343,47 @@ export default async function PatientWorkspacePage({
           {
             id: 'records',
             label: 'Medical History',
-            panel: (
-              <div className="patient-tab-grid patient-tab-grid--records">
-                <section className="profile-card profile-card--wide" aria-labelledby="medical-record-summary-heading">
-                  <div className="profile-card__header">
-                    <p className="eyebrow">Chronology</p>
-                    <h2 id="medical-record-summary-heading">Medical History</h2>
-                  </div>
-                  {patientAttachments.length ? <div><strong>Patient attachments</strong><ul>{patientAttachments.map((attachment) => <li key={attachment.id}>{attachment.href ? <a href={`/api${attachment.href}`}>{attachment.label || attachment.fileName}</a> : <span>{attachment.label || attachment.fileName}</span>} {attachment.removedAt ? <small>· Removed from active clinical history</small> : <small>· authenticated clinical file</small>}{attachment.auditEvents?.filter((event) => event.action === 'REMOVED_FROM_FINALIZED_HISTORY' || event.action === 'SUPERSEDED').map((event) => <small key={`${event.action}-${event.createdAt}`} className="clinical-attachment-audit"> · {event.action === 'SUPERSEDED' ? 'Corrected/replaced' : 'Audited removal'} by {event.actor?.displayName || [event.actor?.firstName, event.actor?.lastName].filter(Boolean).join(' ') || 'authorized user'} on {new Date(event.createdAt).toLocaleString()}: {event.reason}</small>)}</li>)}</ul></div> : null}
-                  {recentVisits.length ? <ol className="profile-visit-history">{recentVisits.map((visit) => <li key={visit.id}><article className="profile-visit-history__row"><span className="profile-visit-history__date">{visitDate(visit.createdAt)}</span><div className="profile-visit-history__reason"><h3><Link href={`/visits/${visit.id}`}>{visit.reason}</Link></h3><p>{visit.intake?.chiefComplaint || visit.intake?.historyNotes}</p>{visit.examFindings?.assessment ? <p><strong>Assessment:</strong> {visit.examFindings.assessment}</p> : null}{visit.careItems?.length ? <ul>{visit.careItems.map((item) => <li key={item.id}>{item.type}: {item.title} — {item.status}</li>)}</ul> : null}{visit.discharge ? <p><strong>Discharge:</strong> {visit.discharge.instructions}</p> : null}{visit.soapNote ? <p><strong>SOAP v{visit.soapNote.version}:</strong> {visit.soapNote.status}{visit.soapNote.amendmentReason ? ` · Amended: ${visit.soapNote.amendmentReason}` : ''}</p> : null}{visit.attachments?.length ? <div><strong>Attachments</strong><ul>{visit.attachments.map((attachment) => <li key={attachment.id}>{attachment.href ? <a href={`/api${attachment.href}`}>{attachment.label || attachment.fileName}</a> : <span>{attachment.label || attachment.fileName}</span>} {attachment.removedAt ? <small>· Removed from active clinical history</small> : <small>· authenticated clinical file</small>}{attachment.auditEvents?.filter((event) => event.action === 'REMOVED_FROM_FINALIZED_HISTORY' || event.action === 'SUPERSEDED').map((event) => <small key={`${event.action}-${event.createdAt}`} className="clinical-attachment-audit"> · {event.action === 'SUPERSEDED' ? 'Corrected/replaced' : 'Audited removal'} by {event.actor?.displayName || [event.actor?.firstName, event.actor?.lastName].filter(Boolean).join(' ') || 'authorized user'} on {new Date(event.createdAt).toLocaleString()}: {event.reason}</small>)}</li>)}</ul></div> : null}<small>{doctorLabel(visit)} · provenance: visit documentation</small></div></article></li>)}</ol> : <p>No clinical history has been recorded.</p>}
-                </section>
-              </div>
-            ),
+            panel: <PatientMedicalHistory visits={recentVisits} attachments={patientAttachments} />,
           },
           {
             id: 'medications',
             label: 'Medications',
-            panel: medications ? <><PatientMedicationsPanel patientId={patient.id} medications={medications} />{medications.permissions.canManage ? <PatientPrescriptionsPanel patientId={patient.id} /> : null}</> : null,
+            panel: medications ? (
+              <div className="patient-profile-section-stack">
+                <PatientMedicationsPanel patientId={patient.id} medications={medications} />
+                {medications.permissions.canManage ? (
+                  <PatientPrescriptionsPanel patientId={patient.id} />
+                ) : null}
+              </div>
+            ) : (
+              <section className="profile-card">
+                <h2>Medications</h2>
+                <p className="profile-permission-note">
+                  Medication information is unavailable for this account.
+                </p>
+              </section>
+            ),
           },
           {
             id: 'alerts',
             label: 'Alerts',
-            panel: <PatientAlertsPanel patientId={patient.id} alerts={patient.patientAlerts} legacyAlert={patient.alerts} />,
+            panel: (
+              <PatientAlertsPanel
+                patientId={patient.id}
+                alerts={patient.patientAlerts}
+                legacyAlert={patient.alerts}
+              />
+            ),
           },
           {
             id: 'invoices',
             label: 'Invoices',
-            panel: <PatientInvoicePanel patientId={patient.id} activeVisitId={currentVisit?.id ?? null} />,
+            panel: (
+              <PatientInvoicePanel
+                patientId={patient.id}
+                activeVisitId={currentVisit?.id ?? null}
+              />
+            ),
           },
         ]}
       />

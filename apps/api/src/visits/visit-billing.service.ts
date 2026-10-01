@@ -380,9 +380,13 @@ async function getOrCreateInvoice(tx: Prisma.TransactionClient, visitId: string,
   if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
   const existing = await tx.invoice.findUnique({ where: { visitId } });
   if (existing) return existing;
-  return tx.invoice.create({
-    data: { organizationId, locationId, visitId, patientId: visit.patientId, clientId: visit.clientId, createdById: actorId },
+  // Concurrent profile/checkout reads can both see no invoice. Insert once
+  // without rewriting the existing invoice or its original authorship.
+  await tx.invoice.createMany({
+    data: [{ organizationId, locationId, visitId, patientId: visit.patientId, clientId: visit.clientId, createdById: actorId }],
+    skipDuplicates: true,
   });
+  return tx.invoice.findUniqueOrThrow({ where: { visitId } });
 }
 
 async function requireInvoiceForVisit(tx: Prisma.TransactionClient | typeof prisma, visitId: string, organizationId: string, locationId: string) {

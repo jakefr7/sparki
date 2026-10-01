@@ -465,7 +465,7 @@ function NewPatientPatientSection({
       <div className="new-patient-form-grid new-patient-form-grid--two new-patient-form-grid--prominent">
         <label htmlFor="new-patient-name">
           <span>
-            Pet first name <span className="front-desk-required">*</span>
+            Patient name <span className="front-desk-required">*</span>
           </span>
           <input
             ref={patientNameRef}
@@ -613,7 +613,7 @@ function NewPatientPatientSection({
       </label>
 
       {patientDuplicateHint && (
-        <p className="form-hint">Possible existing pet for this owner: {patientDuplicateHint}</p>
+        <p className="form-hint">Possible existing patient for this owner: {patientDuplicateHint}</p>
       )}
     </fieldset>
   );
@@ -892,7 +892,7 @@ export function NewPatientModal({
     const trimmedEmail = newEmail.trim();
 
     if (!trimmedPatientName) {
-      setError('Pet first name is required.');
+      setError('Patient name is required.');
       return;
     }
     if (!trimmedClientFirstName || !trimmedClientLastName) {
@@ -1041,7 +1041,7 @@ export function NewPatientModal({
           )}
           <h2 id="new-patient-modal-heading">New Patient</h2>
           <p className="patient-profile-modal-header__details">
-            Create an owner and pet profile.
+            Create an owner and patient profile.
           </p>
         </div>
 

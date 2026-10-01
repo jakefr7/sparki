@@ -12,7 +12,11 @@ function categoryLabel(category: string) {
 }
 
 function dateLine(value: string) {
-  return new Date(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(value).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 export function PatientAlertsPanel({
@@ -51,6 +55,10 @@ export function PatientAlertsPanel({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingId) return;
+    if (!message.trim()) {
+      setError('Enter alert text.');
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -95,14 +103,22 @@ export function PatientAlertsPanel({
   }
 
   return (
-    <section className="profile-card profile-card--wide patient-alerts-panel" aria-labelledby="patient-alerts-heading">
+    <section
+      className="profile-card profile-card--wide patient-alerts-panel"
+      aria-labelledby="patient-alerts-heading"
+    >
       <div className="profile-card__header profile-card__header--with-action">
         <div>
           <p className="eyebrow">Care flags</p>
           <h2 id="patient-alerts-heading">Care Alerts</h2>
         </div>
         {!editingId ? (
-          <button type="button" className="button-primary" onClick={() => beginCreate()}>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => beginCreate()}
+            disabled={saving}
+          >
             Add Alert
           </button>
         ) : null}
@@ -144,9 +160,18 @@ export function PatientAlertsPanel({
               </select>
             </label>
           </div>
-          {error && <p className="form-error">{error}</p>}
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
           <div className="front-desk-actions">
-            <button type="button" className="button-secondary" onClick={() => setEditingId(null)} disabled={saving}>
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={() => setEditingId(null)}
+              disabled={saving}
+            >
               Cancel
             </button>
             <button type="submit" className="button-primary" disabled={saving}>
@@ -156,13 +181,20 @@ export function PatientAlertsPanel({
         </form>
       ) : null}
 
-      {error && !editingId ? <p className="form-error">{error}</p> : null}
+      {error && !editingId ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {!editingId ? (
         alerts.length > 0 ? (
           <div className="patient-alert-card-list">
             {alerts.map((alert) => (
-              <article key={alert.id} className={`patient-alert-card patient-alert-card--${alert.severity.toLowerCase()}`}>
+              <article
+                key={alert.id}
+                className={`patient-alert-card patient-alert-card--${alert.severity.toLowerCase()}`}
+              >
                 <div className="patient-alert-card__body">
                   <div className="patient-alert-card__chips">
                     <span>{alert.severity}</span>
@@ -171,14 +203,26 @@ export function PatientAlertsPanel({
                   <p>{alert.message}</p>
                   <small>
                     Updated {dateLine(alert.updatedAt)}
-                    {alert.createdAt !== alert.updatedAt ? ` - Created ${dateLine(alert.createdAt)}` : ''}
+                    {alert.createdAt !== alert.updatedAt
+                      ? ` - Created ${dateLine(alert.createdAt)}`
+                      : ''}
                   </small>
                 </div>
                 <div className="patient-alert-card__actions">
-                  <button type="button" className="button-secondary" onClick={() => beginEdit(alert)}>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => beginEdit(alert)}
+                    disabled={saving}
+                  >
                     Edit
                   </button>
-                  <button type="button" className="button-secondary" onClick={() => archiveAlert(alert.id)} disabled={saving}>
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => archiveAlert(alert.id)}
+                    disabled={saving}
+                  >
                     Archive
                   </button>
                 </div>
@@ -195,7 +239,11 @@ export function PatientAlertsPanel({
                 </div>
                 <p>{legacyAlert}</p>
               </div>
-              <button type="button" className="button-secondary" onClick={() => beginCreate(legacyAlert)}>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => beginCreate(legacyAlert)}
+              >
                 Convert to alert
               </button>
             </article>
@@ -203,7 +251,9 @@ export function PatientAlertsPanel({
         ) : (
           <div className="profile-compact-empty profile-compact-empty--roomy">
             <strong>No active alerts</strong>
-            <span>Add an alert for handling notes, allergies, behavior warnings, or care precautions.</span>
+            <span>
+              Add an alert for handling notes, allergies, behavior warnings, or care precautions.
+            </span>
           </div>
         )
       ) : null}

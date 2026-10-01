@@ -31,7 +31,7 @@ test('creating a patient, then choosing New Appointment, opens the shared popup 
   await newPatientDialog.getByLabel('First name', { exact: true }).fill(CLIENT_FIRST_NAME);
   await newPatientDialog.getByLabel('Last name', { exact: true }).fill(CLIENT_LAST_NAME);
   await newPatientDialog.getByLabel('Cell phone').fill(CLIENT_PHONE);
-  await newPatientDialog.getByLabel('Pet first name').fill(PATIENT_NAME);
+  await newPatientDialog.getByLabel('Patient name').fill(PATIENT_NAME);
   await newPatientDialog.getByLabel('Species').selectOption('Dog');
 
   const [clientResponse, patientResponse] = await Promise.all([

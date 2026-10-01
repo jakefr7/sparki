@@ -28,8 +28,11 @@ export function PatientPhotoActions({
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+  const busy = uploading || saving;
 
   const previewUrl = localPreviewUrl ?? imageUrl;
+  useEffect(() => setImageFailed(false), [previewUrl]);
 
   function updateMenuPosition() {
     const button = avatarButtonRef.current;
@@ -100,6 +103,10 @@ export function PatientPhotoActions({
 
   async function handleLocalFile(file: File | undefined) {
     if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) {
+      setMessage('Choose a JPEG, PNG, WebP, or GIF image.');
+      return;
+    }
     if (file.size > MAX_FILE_BYTES) {
       setMessage('Image is too large. Max size is 8MB.');
       return;
@@ -137,11 +144,19 @@ export function PatientPhotoActions({
         type="button"
         className="patient-photo-control__avatar-button"
         onClick={() => setOpen((current) => !current)}
+        disabled={busy}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         aria-label={imageUrl ? 'Change patient photo' : 'Add patient photo'}
       >
-        {previewUrl ? (
+        {previewUrl && !imageFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={previewUrl} alt={name} className="pet-photo-placeholder patient-profile-photo" />
+          <img
+            src={previewUrl}
+            alt={name}
+            className="pet-photo-placeholder patient-profile-photo"
+            onError={() => setImageFailed(true)}
+          />
         ) : (
           <PetPhotoPlaceholder
             name={name}
@@ -170,7 +185,7 @@ export function PatientPhotoActions({
               </button>
             </div>
             <div className="patient-photo-menu__actions">
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
                 {uploading ? 'Uploading...' : 'Upload image'}
               </button>
               <input
@@ -183,16 +198,13 @@ export function PatientPhotoActions({
                 }}
                 hidden
               />
-              <button type="button" disabled>
-                Use webcam <span>Coming soon</span>
-              </button>
               {imageUrl && (
-                <button type="button" onClick={() => saveImageUrl(null)} disabled={saving}>
+                <button type="button" onClick={() => saveImageUrl(null)} disabled={busy}>
                   Remove photo
                 </button>
               )}
             </div>
-            {message && <p>{message}</p>}
+            {message && <p role="alert">{message}</p>}
           </div>,
           document.body,
         )}

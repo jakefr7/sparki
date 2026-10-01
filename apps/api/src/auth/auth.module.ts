@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { DevelopmentAuthGuard } from './development-auth.guard';
 import { DevelopmentUserService } from './development-user.service';
 import { SubscriptionGuard } from './subscription.guard';
+import { TenantContextGuard } from './tenant-context.guard';
 
 /**
  * Global: every route is behind a guard by default. Use @Public() to opt a
@@ -17,13 +18,18 @@ import { SubscriptionGuard } from './subscription.guard';
  * DevelopmentAuthGuard is selected only through the explicit fixed-identity
  * mode. Missing WorkOS configuration never grants an identity implicitly.
  *
- * SubscriptionGuard runs second — NestJS applies multiple APP_GUARD
- * providers in registration order — so it always sees a resolved
- * request.user from whichever identity guard ran first. See
- * docs/adr/ADR-007 for why this is a second guard rather than folded into
- * the identity guard: authentication and billing-gating are different
- * questions with different failure modes (401 vs 402) and different
- * @Public()/@AllowInactiveClinic() opt-outs.
+ * SubscriptionGuard and TenantContextGuard run after the identity guard —
+ * NestJS applies multiple APP_GUARD providers in registration order — so
+ * they always see a resolved request.user from whichever identity guard ran
+ * first. See docs/adr/ADR-007 for why SubscriptionGuard is a second guard
+ * rather than folded into the identity guard: authentication and
+ * billing-gating are different questions with different failure modes (401
+ * vs 402) and different @Public()/@AllowInactiveClinic() opt-outs.
+ *
+ * TenantContextGuard runs third, for the same reason: it only needs a
+ * resolved request.user, and binds it to the TenantContext that
+ * @sparki/db's tenant-scoping Prisma extension reads (see
+ * packages/db/src/tenant-scoping.ts).
  */
 @Global()
 @Module({
@@ -48,6 +54,10 @@ import { SubscriptionGuard } from './subscription.guard';
     {
       provide: APP_GUARD,
       useClass: SubscriptionGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TenantContextGuard,
     },
   ],
   exports: [AuthService],

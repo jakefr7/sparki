@@ -38,17 +38,40 @@ Use these defaults for local web/e2e work unless the user explicitly says otherw
 
 ## Deploying to Staging
 
-Staging (`staging.sparki.vet`) is a self-hosted DigitalOcean VPS (`/opt/sparki`, `sparki-api` and `sparki-web` as systemd services, Caddy as reverse proxy) with no auto-deploy on push — pushing to `main` only updates GitHub. The one sanctioned way for an agent to update it is the `Deploy Staging` GitHub Actions workflow (`.github/workflows/deploy-staging.yml`, manual `workflow_dispatch` only). It SSHes in, fetches and hard-resets `/opt/sparki` to `origin/main`, runs `pnpm install --frozen-lockfile`, applies pending Prisma migrations against the staging (Neon) database, runs `pnpm build`, restarts both systemd units, verifies they're active, and runs HTTP health checks (`/health/ready` for the API, `/` for web) before reporting the deployed commit SHA. It never touches staging's `.env`.
+Staging (`staging.sparki.vet`) is a self-hosted DigitalOcean VPS at `root@68.183.123.15`, repo at `/opt/sparki`, `sparki-api`/`sparki-web` as systemd services, Caddy as reverse proxy. No auto-deploy on push — pushing to `main` only updates GitHub. A dedicated key already exists at `~/.ssh/sparki_staging` for this.
 
-**When the user says "update staging," "deploy this to staging," "commit, push, and update staging," or similar** — this is what they mean. Do not SSH into the VPS by hand and do not improvise another deploy path; use the workflow.
+**When the user says "update staging," "deploy this to staging," "commit, push, and update staging," or similar** — this is what they mean:
 
 1. If there are uncommitted changes the user wants deployed: commit them, then `git push origin main`.
-2. If the target commit is already on `main`: skip straight to the next step.
-3. Trigger the deploy: `gh workflow run deploy-staging.yml`.
-4. Optionally watch it to completion: `gh run watch "$(gh run list --workflow=deploy-staging.yml --limit=1 --json databaseId -q '.[0].databaseId')"` (or `gh run list --workflow=deploy-staging.yml --limit=1` to just check status without blocking).
-5. Report back clearly: whether the deploy succeeded or failed, and which commit SHA is now live (the workflow log's final line, or re-derive it with `git rev-parse origin/main` if the run succeeded).
+2. SSH in and run the deploy directly (this exact sequence — see the note below on why each piece is there):
 
-This workflow is deliberately **not** wired to run automatically on push — every run is either a human clicking "Run workflow" or an agent invoking it because it was explicitly asked to. It connects on port 22 with strict host-key checking (no TOFU, no `StrictHostKeyChecking=no`) and runs with `permissions: contents: read`. Required repo secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`) hold the SSH credential and the server's trusted host key only; no application secret lives in the workflow or in GitHub — staging's `.env` stays on the VPS.
+```bash
+ssh -i ~/.ssh/sparki_staging -o BatchMode=yes root@68.183.123.15 'bash -s' <<'REMOTE'
+set -euo pipefail
+cd /opt/sparki
+git fetch origin
+git checkout main
+git reset --hard origin/main
+pnpm install --frozen-lockfile
+pnpm --filter @sparki/db run migrate:deploy
+NODE_OPTIONS="--max-old-space-size=1536" pnpm exec turbo run build --concurrency=1
+systemctl restart sparki-api sparki-web
+for unit in sparki-api sparki-web; do
+  systemctl is-active --quiet "$unit" || { systemctl status "$unit" --no-pager; journalctl -u "$unit" -n 80 --no-pager; exit 1; }
+done
+API_PORT_VAL="$(grep -E '^API_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '"')"; API_PORT_VAL="${API_PORT_VAL:-4000}"
+WEB_PORT_VAL="$(grep -E '^WEB_PORT=' .env | tail -n1 | cut -d= -f2- | tr -d '"')"; WEB_PORT_VAL="${WEB_PORT_VAL:-3000}"
+curl -fsS --max-time 5 "http://127.0.0.1:${API_PORT_VAL}/health/ready" >/dev/null && echo "API healthy"
+curl -fsS --max-time 5 "http://127.0.0.1:${WEB_PORT_VAL}/" >/dev/null && echo "Web healthy"
+echo "Deployed commit: $(git rev-parse HEAD)"
+REMOTE
+```
+
+3. Report back clearly: whether it succeeded, and the deployed commit SHA (the final line of output).
+
+The VPS has only ~1GB RAM. `pnpm build` (plain Turbo, default concurrency, default Node heap) reliably OOMs there — confirmed live on 2026-10-01: `nest build` and `next build` running together exhausted it, and even `next build` alone still OOM'd at V8's auto-detected heap cap. `--concurrency=1` plus `NODE_OPTIONS="--max-old-space-size=1536"` (there's 2GB swap to back it) is what actually gets a build through — don't drop either one, and don't "fix" a future OOM by disabling type-checking/lint in the build instead of giving it more heap.
+
+Never touch staging's `.env`. Never run this automatically — only when explicitly asked.
 
 ## Handoff Expectations
 

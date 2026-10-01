@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canManageSchedulerSettings, MANAGE_SCHEDULER_SETTINGS } from '../../auth/permissions';
 import { ROLE_PERMISSIONS } from '../../auth/role-permissions';
 import {
+  createDateExceptionSchema,
   updateSchedulerSettingsSchema,
   upsertAppointmentTypeSettingSchema,
   upsertSlotTemplateSchema,
@@ -78,5 +79,18 @@ describe('scheduler settings permissions', () => {
     expect(ROLE_PERMISSIONS.PRACTICE_MANAGER).toContain(MANAGE_SCHEDULER_SETTINGS);
     expect(ROLE_PERMISSIONS.RECEPTIONIST).toContain(MANAGE_SCHEDULER_SETTINGS);
     expect(Object.keys(ROLE_PERMISSIONS)).not.toContain('ADMIN');
+  });
+});
+
+describe('date exceptions', () => {
+  it('accepts real leap dates and full-day clinic closures', () => {
+    expect(createDateExceptionSchema.parse({ date: '2028-02-29', reason: 'Holiday' })).toMatchObject({ startTime: null, endTime: null, providerId: null });
+  });
+  it.each(['2027-02-29', '2026-02-30', '2026-13-01'])('rejects impossible date %s', (date) => {
+    expect(createDateExceptionSchema.safeParse({ date, reason: 'Closed' }).success).toBe(false);
+  });
+  it('rejects partial, overnight and zero-length intervals', () => {
+    for (const times of [{ startTime: '09:00' }, { startTime: '17:00', endTime: '09:00' }, { startTime: '09:00', endTime: '09:00' }])
+      expect(createDateExceptionSchema.safeParse({ date: '2026-10-02', reason: 'Closed', ...times }).success).toBe(false);
   });
 });

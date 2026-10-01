@@ -628,7 +628,7 @@ export function SchedulerSettingsSection() {
           <div className="scheduler-settings-card__header">
             <div>
               <h2 id="schedule-blocks-heading">Schedule Blocks</h2>
-              <p>Mark reserved time, surgery windows, or room availability on the calendar.</p>
+              <p>Set recurring weekly availability for appointment booking. These blocks enable booking; they do not reserve or block off time.</p>
             </div>
             <div className="schedule-blocks-header__actions">
               {blockFeedback ? (
@@ -692,7 +692,7 @@ export function SchedulerSettingsSection() {
                             .map((id) => config?.appointmentTypes.find((type) => type.id === id)?.name)
                             .filter(Boolean)
                             .join(', ')
-                        : 'All unassigned appointment styles'}
+                        : 'All unassigned appointment types'}
                     </span>
                   </div>
 
@@ -766,7 +766,7 @@ export function SchedulerSettingsSection() {
                 <h2 id="schedule-block-modal-heading">
                   {isEditingBlock ? 'Edit schedule block' : 'Add schedule block'}
                 </h2>
-                <p>Define when specific appointment styles can be booked.</p>
+                <p>Define weekly booking hours in the clinic time zone. This block repeats every week on the selected day.</p>
               </div>
               <span className="schedule-block-modal__preview" style={{ '--schedule-block-preview': draftTemplate.color } as CSSProperties}>
                 <strong>{draftTemplate.label || 'Block preview'}</strong>
@@ -856,8 +856,8 @@ export function SchedulerSettingsSection() {
                 </label>
               </div>
               <fieldset className="schedule-block-style-picker">
-                <legend>Appointment styles allowed in this block</legend>
-                <p>Select one or more styles to make them bookable only inside their assigned blocks. Leave empty for general availability.</p>
+                <legend>Appointment types allowed in this block</legend>
+                <p>Select appointment types that may be booked in this block. Leave empty to allow types with no specifically assigned blocks.</p>
                 <div className="schedule-block-style-picker__grid">
                 {sortedAppointmentTypes.filter((type) => type.isActive).map((type) => {
                   const selected = draftTemplate.appointmentTypeIds.includes(type.id);

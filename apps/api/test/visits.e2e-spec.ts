@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { prisma } from '@sparki/db';
+import { prisma, prismaUnscoped } from '@sparki/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -49,33 +49,33 @@ describe('Visits (e2e)', () => {
     });
     secondaryClientId = secondaryClient.id;
 
-    const otherOrgClient = await prisma.client.create({
+    const otherOrgClient = await prismaUnscoped.client.create({
       data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Owner', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     otherOrgClientId = otherOrgClient.id;
 
-    const otherOrgPatient = await prisma.patient.create({
+    const otherOrgPatient = await prismaUnscoped.patient.create({
       data: { organizationId: otherOrganizationId, name: 'Other Org Patient', species: 'Feline', sourceSystem: TEST_SOURCE_SYSTEM },
     });
     otherOrgPatientId = otherOrgPatient.id;
   });
 
   afterAll(async () => {
-    const testVisitIds = (await prisma.visit.findMany({
+    const testVisitIds = (await prismaUnscoped.visit.findMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
         patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
       select: { id: true },
     })).map((visit) => visit.id);
-    await prisma.soapNote.deleteMany({ where: { visitId: { in: testVisitIds } } });
-    await prisma.visit.deleteMany({
+    await prismaUnscoped.soapNote.deleteMany({ where: { visitId: { in: testVisitIds } } });
+    await prismaUnscoped.visit.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
         patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
     });
-    await prisma.medicalRecord.deleteMany({
+    await prismaUnscoped.medicalRecord.deleteMany({
       where: {
         patient: {
           organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
@@ -83,7 +83,7 @@ describe('Visits (e2e)', () => {
         },
       },
     });
-    await prisma.appointment.deleteMany({
+    await prismaUnscoped.appointment.deleteMany({
       where: {
         OR: [
           { sourceSystem: TEST_SOURCE_SYSTEM },
@@ -91,26 +91,26 @@ describe('Visits (e2e)', () => {
         ],
       },
     });
-    await prisma.patientClient.deleteMany({
+    await prismaUnscoped.patientClient.deleteMany({
       where: {
         client: { organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] } },
         patient: { sourceSystem: TEST_SOURCE_SYSTEM },
       },
     });
-    await prisma.patient.deleteMany({
+    await prismaUnscoped.patient.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
         sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
-    await prisma.client.deleteMany({
+    await prismaUnscoped.client.deleteMany({
       where: {
         organizationId: { in: [DEV_ORGANIZATION_ID, otherOrganizationId] },
         sourceSystem: TEST_SOURCE_SYSTEM,
       },
     });
-    await prisma.location.deleteMany({ where: { organizationId: otherOrganizationId } });
-    await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
+    await prismaUnscoped.location.deleteMany({ where: { organizationId: otherOrganizationId } });
+    await prismaUnscoped.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();
   });
 
@@ -1370,4 +1370,25 @@ describe('Visits (e2e)', () => {
       expect(completedFollowUp.status).toBe(200);
     });
   });
+  it('ignores legacy custom workflow shortcuts and protected phase overrides', async () => {
+    const config = await request(app.getHttpServer()).get('/dashboard-status-colors');
+    const step = config.body.colors.find((entry: { status: string }) => entry.status === 'CheckIn');
+    const original = await prisma.dashboardStatusColorSetting.findUniqueOrThrow({ where: { id: step.id } });
+    await prisma.dashboardStatusColorSetting.update({ where: { id: step.id }, data: { allowedTransitionKeys: ['Checkout'], lifecyclePhase: 'RecordClosure' } });
+    try {
+      const patientId = await createPatient('Fixed workflow legacy settings');
+      const visit = await request(app.getHttpServer()).post('/visits').send({ patientId, reason: 'Fixed workflow test' });
+      expect(visit.status).toBe(201);
+      const shortcut = await request(app.getHttpServer()).post(`/visits/${visit.body.id}/dashboard-status`).send({ statusKey: 'Checkout' });
+      expect(shortcut.status).toBe(409);
+      const adjacent = await request(app.getHttpServer()).post(`/visits/${visit.body.id}/dashboard-status`).send({ statusKey: 'BeginIntake' });
+      expect(adjacent.status).toBe(201);
+      expect(adjacent.body.phase).toBe('Intake');
+      const normalized = await request(app.getHttpServer()).get('/dashboard-status-colors');
+      expect(normalized.body.colors.find((entry: { status: string }) => entry.status === 'CheckIn').lifecyclePhase).toBe('Arrived');
+    } finally {
+      await prisma.dashboardStatusColorSetting.update({ where: { id: step.id }, data: { allowedTransitionKeys: original.allowedTransitionKeys, lifecyclePhase: original.lifecyclePhase } });
+    }
+  });
+
 });

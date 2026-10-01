@@ -121,6 +121,7 @@ model Organization {
   appointmentTypeSettings      AppointmentTypeSetting[]
   appointmentTypeProviders     AppointmentTypeProvider[]
   schedulerSettings            SchedulerSettings[]
+  schedulerDateExceptions      SchedulerDateException[]
   schedulerSlotTemplates       SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
   notes                        Note[]
@@ -166,6 +167,7 @@ model Location {
   visits                       Visit[]
   appointmentTypeSettings      AppointmentTypeSetting[]
   schedulerSettings            SchedulerSettings?
+  schedulerDateExceptions      SchedulerDateException[]
   schedulerSlotTemplates       SchedulerSlotTemplate[]
   dashboardStatusColorSettings DashboardStatusColorSetting[]
   tasks                        Task[]
@@ -1293,6 +1295,23 @@ model SchedulerSettings {
   location     Location     @relation(fields: [locationId], references: [id])
 
   @@index([organizationId])
+}
+
+model SchedulerDateException {
+  id String @id @default(cuid())
+  organizationId String
+  locationId String
+  date String
+  startTime String?
+  endTime String?
+  providerId String?
+  reason String
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  @@index([organizationId, locationId, date])
 }
 
 model SchedulerSlotTemplate {

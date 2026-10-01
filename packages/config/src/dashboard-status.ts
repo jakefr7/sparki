@@ -61,10 +61,7 @@ export function enabledStatuses(statuses: ConfiguredDashboardStatus[]) {
 
 export function allowedConfiguredTransitions(statuses: ConfiguredDashboardStatus[], current: ConfiguredDashboardStatus) {
   const byKey = new Map(statuses.map((status) => [status.status, status]));
-  const transitionKeys = [...new Set([
-    ...current.allowedTransitionKeys,
-    ...defaultAllowedTransitionKeys(current.status),
-  ])];
+  const transitionKeys = defaultAllowedTransitionKeys(current.status);
   return transitionKeys.map((key) => byKey.get(key)).filter((status): status is ConfiguredDashboardStatus => Boolean(status?.isEnabled));
 }
 
@@ -74,3 +71,8 @@ export function appointmentsWithoutActiveVisits<T extends { id: string }>(
   const represented = new Set(visits.map((visit) => visit.appointment?.id).filter((id): id is string => Boolean(id)));
   return appointments.filter((appointment) => !represented.has(appointment.id));
 }
+
+export const SPARKI_WORKFLOW_PHASES = {
+  Appointment: 'Arrived', CheckIn: 'Arrived', BeginIntake: 'Intake', ReadyForVeterinarian: 'Exam',
+  Exam: 'PlanAndApproval', Treatment: 'CareInProgress', Discharge: 'Discharge', Checkout: 'RecordClosure',
+} as const;

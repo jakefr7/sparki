@@ -1,5 +1,7 @@
 # Known Gaps
 
+- New Appointment staging pressure test (2026-10-01), Finley profile entry: no configured appointment types prevents booking, but the dropdown gives no setup explanation/action. Closing and reopening silently discards the scheduling note. Selected patient card shows a placeholder although the profile photo renders. Appointment submission/conflict/confirmation tests remain pending staging appointment-type and availability configuration approval; no booking created in this pass.
+
 - Patient profile pressure test (2026-10-01): Medical History uses the workspace's five most recent visits and has no older-history pagination. The local UI now states the limit; a complete history browser remains unfinished. This staging pass used the owner role and did not exercise signed/attachment-heavy records or dispensing.
 
 - Patient-creation review (2026-10-01): Escape discarded a populated New Patient draft without warning; not reverified after the latest staging update. Usability follow-ups: shorten the modal header/optional address area, make unknown age explicit, and format displayed phone numbers. User-facing “Pet” → “Patient” direction is in TERMINOLOGY.md. Photo upload/storage defects from that review passed the staging retest and are no longer open findings for the tested path.

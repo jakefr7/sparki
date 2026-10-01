@@ -25,12 +25,13 @@ describe('configured dashboard status resolver', () => {
     expect(enabledStatuses([later, disabled, first])).toEqual([first, later]);
   });
 
-  it('allows only configured enabled forward and backward transitions', () => {
+  it('uses fixed adjacent transitions and ignores stored custom shortcuts', () => {
     const intake = status({ status: 'BeginIntake', name: 'Triage', allowedTransitionKeys: ['CheckIn', 'Exam', 'Disabled'] });
     const back = status({ status: 'CheckIn', name: 'Welcomed' });
-    const forward = status({ status: 'Exam', name: 'Consult' });
+    const forward = status({ status: 'ReadyForVeterinarian', name: 'Ready' });
+    const shortcut = status({ status: 'Exam', name: 'Consult' });
     const disabled = status({ status: 'Disabled', name: 'Hidden', isEnabled: false });
-    expect(allowedConfiguredTransitions([intake, back, forward, disabled], intake)).toEqual([back, forward]);
+    expect(allowedConfiguredTransitions([intake, back, forward, shortcut, disabled], intake)).toEqual([back, forward]);
   });
 
   it('removes an appointment when its active visit represents the same patient flow', () => {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@sparki/db';
+import { workflowStatusKey } from '@sparki/config';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { VisitsService } from '../visits/visits.service';
 import { ARRIVED_OR_WAITING_STATES } from '../visits/visit-states';
@@ -160,7 +161,7 @@ function toDashboardVisit(visit: VisitWithContext, now: Date): DashboardVisitSum
     assignedTechnician: toPersonSummary(visit.assignedTechnician),
     currentOwner: toPersonSummary(visit.currentOwner),
     intakeSummaryAvailable: Boolean(visit.intake?.completedAt),
-    workflowStatusKey: visit.workflowStep?.status ?? null,
+    workflowStatusKey: workflowStatusKey('visit', visit.state) ?? null,
     nextAction: visit.nextAction,
     dischargeReadyAt: visit.dischargeReadyAt,
     departedAt: visit.departedAt,

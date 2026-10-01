@@ -17,6 +17,10 @@ Full-repository and browser suites are release-readiness tools, not a mandatory 
 
 ## Active product work
 
+- Founder follow-up: fixed workflow appearance-only settings and dated clinic/provider booking closures implemented locally; pending release migration. Existing appointments remain scheduled; removed exceptions restore weekly availability. No push/deployment.
+
+- Admin settings audit/polish requested 2026-10-01: local booking setup loading/error/empty guidance and contextual Admin copy; audit findings and proposed grouping in `docs/research/admin-settings-audit-2026-10-01.md`. Network-safe settings mutations and fuller persistence/accessibility tests remain outstanding; policy decisions are explicitly separated. No push/deployment.
+
 - Patient profile UI refinement requested 2026-10-01: local changes remove the walk-in form, simplify all five tabs, retain drafts across tab switches, and improve keyboard/mobile navigation. Appointment creation is outside this pass; no staging deployment requested.
 - Follow-up pressure test: use staging for testing and implement locally only; no push or deployment. Fixes cover editor focus/draft retention and partial-save messages, preserved address metadata, alert validation, prescription recovery/save controls, photo failure handling, medication autocomplete, mobile tab visibility, catalog failures, and concurrent first-invoice creation. Staging fixtures are recorded in STAGING_TESTING.md.
 - Prioritize scheduler and inventory design/use per the 2026-09-30 user request. Start with navigation, search speed and preserved context; see [today's work plan](../docs/research/scheduler-inventory-work-plan-2026-09-30.md).

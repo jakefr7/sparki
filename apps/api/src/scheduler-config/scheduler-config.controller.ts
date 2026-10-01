@@ -4,6 +4,8 @@ import { requireAdminSettingsManager, requireSchedulerSettingsManager } from '..
 import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
+  createDateExceptionSchema,
+  type CreateDateExceptionInput,
   setSlotTemplateVisibilitySchema,
   updateSchedulerSettingsSchema,
   upsertAppointmentTypeSettingSchema,
@@ -22,6 +24,26 @@ export class SchedulerConfigController {
   @Get()
   getConfig(@CurrentUser() user: AuthenticatedUser) {
     return this.schedulerConfig.getConfig(user);
+  }
+
+  @Get('date-exceptions')
+  listDateExceptions(@CurrentUser() user: AuthenticatedUser) {
+    return this.schedulerConfig.listDateExceptions(user);
+  }
+
+  @Post('date-exceptions')
+  createDateException(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createDateExceptionSchema)) body: CreateDateExceptionInput,
+  ) {
+    requireSchedulerSettingsManager(user);
+    return this.schedulerConfig.createDateException(user, body);
+  }
+
+  @Delete('date-exceptions/:id')
+  removeDateException(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    requireSchedulerSettingsManager(user);
+    return this.schedulerConfig.removeDateException(user, id);
   }
 
   @Patch('settings')

@@ -9,6 +9,7 @@ vi.mock('@sparki/db', async (importOriginal) => {
     prisma: {
       appointmentTypeSetting: { findFirst: vi.fn() },
       appointmentTypeSlotTemplate: { count: vi.fn() },
+      schedulerDateException: { findMany: vi.fn() },
       schedulerSettings: { findUnique: vi.fn() },
       location: { findFirst: vi.fn() },
       schedulerSlotTemplate: { findMany: vi.fn() },
@@ -24,6 +25,7 @@ const provider = { id: 'provider-1', displayName: 'Dr. Rivera', firstName: 'Ana'
 describe('AppointmentAvailabilityService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.schedulerDateException.findMany).mockResolvedValue([]);
     vi.mocked(prisma.schedulerSettings.findUnique).mockResolvedValue({ slotIntervalMinutes: 30 } as never);
     vi.mocked(prisma.location.findFirst).mockResolvedValue({ timeZone: 'America/Chicago' } as never);
     vi.mocked(prisma.user.findMany).mockResolvedValue([provider] as never);
@@ -162,4 +164,24 @@ describe('AppointmentAvailabilityService', () => {
 
     expect(result.slots.map((slot) => slot.start)).not.toContain(start.toISOString());
   });
+  it('applies provider/date scope, overlap boundaries and booking revalidation', async () => {
+    const day = new Date('2099-01-05T12:00:00Z');
+    vi.mocked(prisma.user.findMany).mockResolvedValue([provider, { ...provider, id: 'provider-2' }] as never);
+    vi.mocked(prisma.schedulerSlotTemplate.findMany).mockResolvedValue([
+      { id: 'block', dayOfWeek: 1, startTime: '09:00', endTime: '10:30', staffId: null, room: null },
+    ] as never);
+    vi.mocked(prisma.schedulerDateException.findMany).mockResolvedValue([
+      { date: '2099-01-05', startTime: '09:30', endTime: '10:00', providerId: provider.id },
+      { date: '2099-01-06', startTime: null, endTime: null, providerId: null },
+    ] as never);
+    const input = { appointmentTypeId: 'type-1', startDate: day, endDate: day };
+    const result = await service.find('org', 'location', input);
+    expect(result.slots.filter((slot) => slot.providerId === provider.id).map((slot) => slot.start)).toEqual(['2099-01-05T15:00:00.000Z', '2099-01-05T16:00:00.000Z']);
+    expect(result.slots.filter((slot) => slot.providerId === 'provider-2')).toHaveLength(3);
+    expect(await service.resolveBooking('org', 'location', 'type-1', new Date('2099-01-05T15:30:00Z'), provider.id)).toBeNull();
+    expect(prisma.schedulerDateException.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org', locationId: 'location', deletedAt: null }) }));
+    vi.mocked(prisma.schedulerDateException.findMany).mockResolvedValue([{ date: '2099-01-05', startTime: null, endTime: null, providerId: null }] as never);
+    expect((await service.find('org', 'location', input)).slots).toEqual([]);
+  });
+
 });

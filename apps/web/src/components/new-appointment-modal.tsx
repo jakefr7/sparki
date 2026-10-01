@@ -210,6 +210,8 @@ export function NewAppointmentModal({
   initialAppointmentTypeSettingId,
   providers,
   appointmentTypes,
+  setupStatus = 'ready',
+  onRetrySetup,
   onClose,
   onCreated,
   editingAppointmentId,
@@ -224,6 +226,8 @@ export function NewAppointmentModal({
   initialAppointmentTypeSettingId?: string | null;
   providers: StaffMember[];
   appointmentTypes?: AppointmentTypeSetting[];
+  setupStatus?: 'loading' | 'ready' | 'error';
+  onRetrySetup?: () => void;
   onClose: () => void;
   onCreated: (appointment: NewAppointmentCreatedSummary) => void;
   editingAppointmentId?: string | null;
@@ -871,11 +875,14 @@ export function NewAppointmentModal({
             ) : null}
             {!availabilityLoading && !availabilityError && configurationError === 'NO_ACTIVE_ASSIGNED_BLOCKS' ? (
               <div className="new-appointment-empty">
-                <strong>This appointment style has no active schedule blocks.</strong>
+                <strong>This appointment type has no active schedule blocks.</strong>
                 <span>Activate or assign a schedule block in Settings before booking.</span>
               </div>
             ) : null}
-            {!appointmentTypeSettingId ? (
+            {setupStatus === 'loading' ? <p role="status">Loading booking setup…</p> : null}
+            {setupStatus === 'error' ? <div className="new-appointment-empty" role="alert"><strong>Could not load booking setup.</strong><span>Try again before booking.</span>{onRetrySetup ? <button type="button" onClick={onRetrySetup}>Try again</button> : null}</div> : null}
+            {setupStatus === 'ready' && activeAppointmentTypes.length === 0 ? <div className="new-appointment-empty" role="status"><strong>No active appointment types are configured.</strong><span>A clinic administrator must add an active appointment type, assign eligible providers, and configure schedule blocks in Settings → Admin → Scheduler before booking.</span></div> : null}
+            {setupStatus === 'ready' && activeAppointmentTypes.length > 0 && !appointmentTypeSettingId ? (
               <div className="new-appointment-empty">
                 <strong>Select an appointment type to see available times.</strong>
                 <span>Duration and eligible doctors are set by the appointment type.</span>

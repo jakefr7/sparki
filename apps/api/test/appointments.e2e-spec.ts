@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { prisma } from '@sparki/db';
+import { prisma, prismaUnscoped } from '@sparki/db';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -142,7 +142,7 @@ describe('Appointments (e2e)', () => {
     });
     secondaryClientId = secondaryClient.id;
 
-    const otherOrgClient = await prisma.client.create({
+    const otherOrgClient = await prismaUnscoped.client.create({
       data: { organizationId: otherOrganizationId, firstName: 'Other', lastName: 'Org Owner' },
     });
     otherOrgClientId = otherOrgClient.id;
@@ -164,28 +164,28 @@ describe('Appointments (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.appointment.deleteMany({
+    await prismaUnscoped.appointment.deleteMany({
       where: {
         OR: [{ patientId }, { organizationId: otherOrganizationId }],
       },
     });
-    await prisma.schedulerSlotTemplate.deleteMany({ where: { id: { in: availabilityBlockIds } } });
-    await prisma.appointmentTypeProvider.deleteMany({
+    await prismaUnscoped.schedulerSlotTemplate.deleteMany({ where: { id: { in: availabilityBlockIds } } });
+    await prismaUnscoped.appointmentTypeProvider.deleteMany({
       where: {
         providerId: DEV_USER_ID,
         appointmentTypeId: { in: addedProviderAssignmentIds },
       },
     });
-    await prisma.appointmentTypeSetting.deleteMany({
+    await prismaUnscoped.appointmentTypeSetting.deleteMany({
       where: { id: { in: createdAppointmentTypeIds } },
     });
-    await prisma.patientClient.deleteMany({ where: { patientId } });
-    await prisma.patient.deleteMany({ where: { id: patientId } });
-    await prisma.client.deleteMany({
+    await prismaUnscoped.patientClient.deleteMany({ where: { patientId } });
+    await prismaUnscoped.patient.deleteMany({ where: { id: patientId } });
+    await prismaUnscoped.client.deleteMany({
       where: { id: { in: [primaryClientId, secondaryClientId, otherOrgClientId] } },
     });
-    await prisma.location.deleteMany({ where: { organizationId: otherOrganizationId } });
-    await prisma.organization.deleteMany({ where: { id: otherOrganizationId } });
+    await prismaUnscoped.location.deleteMany({ where: { organizationId: otherOrganizationId } });
+    await prismaUnscoped.organization.deleteMany({ where: { id: otherOrganizationId } });
     await app.close();
   });
 
@@ -343,7 +343,7 @@ describe('Appointments (e2e)', () => {
     });
 
     it('rejects an assignedProviderId from a different organization with 400', async () => {
-      const otherOrgUser = await prisma.user.create({
+      const otherOrgUser = await prismaUnscoped.user.create({
         data: {
           organizationId: otherOrganizationId,
           email: `other-org-user-${Date.now()}@example.com`,
@@ -363,7 +363,7 @@ describe('Appointments (e2e)', () => {
 
       expect(response.status).toBe(400);
 
-      await prisma.user.delete({ where: { id: otherOrgUser.id } });
+      await prismaUnscoped.user.delete({ where: { id: otherOrgUser.id } });
     });
 
     it('ignores client-supplied organizationId/locationId and uses the authenticated context', async () => {
@@ -495,7 +495,7 @@ describe('Appointments (e2e)', () => {
       // have already been created in the same transaction — this is what
       // proves the rollback (same pattern as the plain POST /appointments
       // "rejects an assignedProviderId from a different organization" test).
-      const otherOrgUser = await prisma.user.create({
+      const otherOrgUser = await prismaUnscoped.user.create({
         data: {
           organizationId: otherOrganizationId,
           email: `new-patient-rollback-${Date.now()}@example.com`,
@@ -530,7 +530,7 @@ describe('Appointments (e2e)', () => {
       });
       expect(afterPatient).toBeNull();
 
-      await prisma.user.delete({ where: { id: otherOrgUser.id } });
+      await prismaUnscoped.user.delete({ where: { id: otherOrgUser.id } });
     });
 
     it('does not hard-reject a duplicate client (advisory-only, no backend uniqueness constraint)', async () => {
@@ -959,4 +959,56 @@ describe('Appointments (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+  it('audits date closures, blocks stale booking, and restores weekly availability after removal', async () => {
+    const date = new Date(); date.setUTCDate(date.getUTCDate() + 40); date.setUTCHours(12, 0, 0, 0);
+    const end = new Date(date); end.setUTCHours(23, 0, 0, 0);
+    const input = { appointmentTypeId: wellnessAppointmentTypeId, startDate: date.toISOString(), endDate: end.toISOString(), providerId: DEV_USER_ID };
+    const before = await request(app.getHttpServer()).get('/appointments/availability/search').query(input);
+    expect(before.status).toBe(200);
+    expect(before.body.slots.length).toBeGreaterThan(0);
+    const slot = before.body.slots[0];
+    const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(slot.start));
+    const created = await request(app.getHttpServer()).post('/scheduler-config/date-exceptions').send({ date: localDate, reason: 'Integration closure', providerId: DEV_USER_ID });
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+    try {
+      const closed = await request(app.getHttpServer()).get('/appointments/availability/search').query(input);
+      expect(closed.status).toBe(200);
+      expect(closed.body.slots).toEqual([]);
+      const booking = await request(app.getHttpServer()).post('/appointments').send({
+        patientId, clientId: primaryClientId, appointmentType: 'WellnessPreventiveCare',
+        appointmentTypeId: wellnessAppointmentTypeId, startTime: slot.start, visitReason: 'Date closure test',
+        assignedProviderId: DEV_USER_ID, scheduleBlockId: slot.blockId,
+      });
+      expect(booking.status).toBe(409);
+      expect(booking.body.message).toBe('That appointment time is no longer available.');
+      expect(await prisma.appointment.count({ where: { patientId, scheduledAt: new Date(slot.start) } })).toBe(0);
+      const audit = await prisma.schedulerConfigChange.findFirst({ where: { entityId: id, action: 'Created' } });
+      expect(audit?.actorId).toBe(DEV_USER_ID);
+      const unknown = await request(app.getHttpServer()).delete('/scheduler-config/date-exceptions/unknown-exception');
+      expect(unknown.status).toBe(404);
+    } finally {
+      const removed = await request(app.getHttpServer()).delete(`/scheduler-config/date-exceptions/${id}`);
+      expect(removed.status).toBe(200);
+    }
+    const restored = await request(app.getHttpServer()).get('/appointments/availability/search').query(input);
+    expect(restored.body.slots.some((entry: { start: string }) => entry.start === slot.start)).toBe(true);
+    expect((await prisma.schedulerDateException.findUniqueOrThrow({ where: { id } })).deletedAt).not.toBeNull();
+  });
+
+  it('allows appearance edits but rejects workflow edits and deletion', async () => {
+    const config = await request(app.getHttpServer()).get('/dashboard-status-colors');
+    expect(config.status).toBe(200);
+    expect(config.body.colors).toHaveLength(8);
+    const step = config.body.colors.find((entry: { status: string }) => entry.status === 'CheckIn');
+    const saved = await request(app.getHttpServer()).post('/dashboard-status-colors').send({ id: step.id, name: 'Arrival', color: '#123456', description: 'Appearance test' });
+    expect(saved.status).toBe(201);
+    expect(saved.body.lifecyclePhase).toBe(step.lifecyclePhase);
+    const changed = await request(app.getHttpServer()).post('/dashboard-status-colors').send({ id: step.id, name: 'Skip intake', color: '#123456', allowedTransitionKeys: ['Checkout'] });
+    expect(changed.status).toBe(400);
+    const deleted = await request(app.getHttpServer()).delete(`/dashboard-status-colors/${step.id}`);
+    expect(deleted.status).toBe(400);
+    expect(await prisma.dashboardStatusColorSetting.count({ where: { id: step.id } })).toBe(1);
+  });
+
 });

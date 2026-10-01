@@ -293,20 +293,15 @@ export async function resolveWorkflowStepId(
   organizationId: string,
   locationId: string,
   state: VisitState,
-  phase: VisitPhase,
+  _phase: VisitPhase,
 ) {
   const canonicalStatus = workflowStatusKey('visit', state);
   const canonical = canonicalStatus ? await tx.dashboardStatusColorSetting.findFirst({
-    where: { organizationId, locationId, status: canonicalStatus, isEnabled: true },
+    where: { organizationId, locationId, status: canonicalStatus },
     select: { id: true },
   }) : null;
   if (canonical) return canonical.id;
-  const phaseDefault = await tx.dashboardStatusColorSetting.findFirst({
-    where: { organizationId, locationId, lifecyclePhase: phase, isEnabled: true },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    select: { id: true },
-  });
-  return phaseDefault?.id ?? null;
+  return null;
 }
 
 export function assertVisitTransitionRequirements(

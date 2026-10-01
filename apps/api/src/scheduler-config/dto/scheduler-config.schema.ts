@@ -26,7 +26,11 @@ export const upsertAppointmentTypeSettingSchema = z.object({
   appointmentType: z.nativeEnum(AppointmentType),
   name: z.string().min(1).max(80),
   description: z.string().max(500).optional().nullable(),
-  defaultDurationMinutes: z.coerce.number().int().min(5).max(24 * 60),
+  defaultDurationMinutes: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(24 * 60),
   color: colorSchema,
   isActive: z.boolean(),
   sortOrder: z.coerce.number().int().min(0).max(500),
@@ -60,3 +64,28 @@ export const setSlotTemplateVisibilitySchema = z.object({
 });
 
 export type SetSlotTemplateVisibilityInput = z.infer<typeof setSlotTemplateVisibilitySchema>;
+
+export const createDateExceptionSchema = z
+  .object({
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .refine((value) => {
+        const parsed = new Date(`${value}T12:00:00Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      }, 'Choose a valid date'),
+    startTime: timeSchema.nullable().default(null),
+    endTime: timeSchema.nullable().default(null),
+    providerId: z.string().min(1).nullable().default(null),
+    reason: z.string().trim().min(1).max(240),
+  })
+  .refine(
+    (value) =>
+      (!value.startTime && !value.endTime) ||
+      Boolean(value.startTime && value.endTime && value.startTime < value.endTime),
+    {
+      message: 'Provide both times, with end after start, or leave both blank for all day',
+      path: ['endTime'],
+    },
+  );
+export type CreateDateExceptionInput = z.infer<typeof createDateExceptionSchema>;

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { prisma, type AppointmentType, type UserRole, type VisitState, type VisitType } from '@sparki/db';
-import { defaultAllowedTransitionKeys, workflowStatusKey } from '@sparki/config';
+import { SPARKI_WORKFLOW_PHASES, defaultAllowedTransitionKeys, workflowStatusKey } from '@sparki/config';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
 import { PatientsService } from '../patients/patients.service';
@@ -168,7 +168,7 @@ export class VisitsService {
       }
 
       const initialWorkflowStep = await tx.dashboardStatusColorSetting.findFirst({
-        where: { organizationId, locationId, lifecyclePhase: 'Arrived', isEnabled: true },
+        where: { organizationId, locationId, status: 'CheckIn' },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
         select: { id: true },
       });
@@ -562,7 +562,7 @@ export class VisitsService {
       );
     }
 
-    const current = visit.workflowStep?.status ?? workflowStatusKey('visit', visit.state);
+    const current = workflowStatusKey('visit', visit.state);
     if (!current) {
       throw new ConflictException(`Visit ${id} has no configured dashboard status for state ${visit.state}`);
     }
@@ -570,22 +570,21 @@ export class VisitsService {
       ? (current === 'Discharge' ? 'Treatment' : current === 'Treatment' ? 'Exam' : 'BeginIntake')
       : target;
     const configured = await prisma.dashboardStatusColorSetting.findFirst({
-      where: { organizationId, locationId: visit.locationId, status: current, isEnabled: true },
+      where: { organizationId, locationId: visit.locationId, status: current },
     });
-    const allowedTransitionKeys = [...new Set([
-      ...(configured?.allowedTransitionKeys ?? []),
-      ...defaultAllowedTransitionKeys(current),
-    ])];
+    const allowedTransitionKeys = defaultAllowedTransitionKeys(current);
     if (!configured || !allowedTransitionKeys.includes(normalizedTarget)) {
       throw new ConflictException(`Visit ${id} cannot transition from its configured status to "${normalizedTarget}"`);
     }
     const targetStep = await prisma.dashboardStatusColorSetting.findFirst({
-      where: { organizationId, locationId: visit.locationId, status: normalizedTarget, isEnabled: true },
+      where: { organizationId, locationId: visit.locationId, status: normalizedTarget },
     });
     if (!targetStep) throw new ConflictException(`The requested workflow step is not available at this location.`);
-    assertRoleCanMoveToPhase(actorRole, targetStep.lifecyclePhase);
-    assertWorkflowPhaseChangeAllowed(visit, targetStep.lifecyclePhase);
-    const nextState = representativeStateForPhase(targetStep.lifecyclePhase, visit.state);
+    const targetPhase = SPARKI_WORKFLOW_PHASES[normalizedTarget as keyof typeof SPARKI_WORKFLOW_PHASES];
+    if (!targetPhase) throw new ConflictException('Unknown Sparki workflow step.');
+    assertRoleCanMoveToPhase(actorRole, targetPhase);
+    assertWorkflowPhaseChangeAllowed(visit, targetPhase);
+    const nextState = representativeStateForPhase(targetPhase, visit.state);
 
     return this.lifecycle.transition({
       visitId: id,
@@ -595,9 +594,9 @@ export class VisitsService {
       actorRole,
       expectedStates: [visit.state],
       toState: nextState,
-      toPhase: targetStep.lifecyclePhase,
+      toPhase: targetPhase,
       workflowStepId: targetStep.id,
-      currentOwnerId: ownerForPhase(visit, targetStep.lifecyclePhase, lastUpdatedById),
+      currentOwnerId: ownerForPhase(visit, targetPhase, lastUpdatedById),
       nextAction: nextActionForState(nextState),
     });
   }

@@ -3,6 +3,7 @@ import { AppointmentType, prisma, type Prisma } from '@sparki/db';
 import type { AuthenticatedUser } from '../auth/types';
 import { canManageAdminSettings } from '../auth/permissions';
 import type {
+  CreateDateExceptionInput,
   UpdateSchedulerSettingsInput,
   UpsertAppointmentTypeSettingInput,
   UpsertSlotTemplateInput,
@@ -26,7 +27,18 @@ export class SchedulerConfigService {
         where: { organizationId: user.organizationId, locationId: user.locationId },
         include: {
           providers: {
-            include: { provider: { select: { id: true, displayName: true, firstName: true, lastName: true, role: true, isActive: true } } },
+            include: {
+              provider: {
+                select: {
+                  id: true,
+                  displayName: true,
+                  firstName: true,
+                  lastName: true,
+                  role: true,
+                  isActive: true,
+                },
+              },
+            },
           },
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -58,16 +70,74 @@ export class SchedulerConfigService {
       })),
       slotTemplates: slotTemplates.map((template) => ({
         ...template,
-        appointmentTypeIds: template.appointmentTypes.map(({ appointmentTypeId }) => appointmentTypeId),
+        appointmentTypeIds: template.appointmentTypes.map(
+          ({ appointmentTypeId }) => appointmentTypeId,
+        ),
         appointmentTypes: undefined,
       })),
       canManage: canManageAdminSettings(user),
     };
   }
 
+  async listDateExceptions(user: AuthenticatedUser) {
+    return prisma.schedulerDateException.findMany({
+      where: { organizationId: user.organizationId, locationId: user.locationId, deletedAt: null },
+      orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    });
+  }
+
+  async createDateException(user: AuthenticatedUser, input: CreateDateExceptionInput) {
+    if (input.providerId) {
+      const eligible = await this.listEligibleProviders(user);
+      if (!eligible.some((provider) => provider.id === input.providerId))
+        throw new BadRequestException('Provider is not eligible at this location.');
+    }
+    return prisma.$transaction(async (tx) => {
+      const saved = await tx.schedulerDateException.create({
+        data: {
+          organizationId: user.organizationId,
+          locationId: user.locationId,
+          ...input,
+        },
+      });
+      await recordConfigChange(
+        tx,
+        user,
+        'SchedulerDateException',
+        saved.id,
+        'Created',
+        null,
+        saved,
+      );
+      return saved;
+    });
+  }
+
+  async removeDateException(user: AuthenticatedUser, id: string) {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.schedulerDateException.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          locationId: user.locationId,
+          deletedAt: null,
+        },
+      });
+      if (!before) throw new NotFoundException('Date exception not found.');
+      const saved = await tx.schedulerDateException.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
+      await recordConfigChange(tx, user, 'SchedulerDateException', id, 'Removed', before, saved);
+      return { id };
+    });
+  }
+
   async updateSettings(user: AuthenticatedUser, input: UpdateSchedulerSettingsInput) {
     return prisma.$transaction(async (tx) => {
-      const before = await tx.schedulerSettings.findUnique({ where: { locationId: user.locationId } });
+      const before = await tx.schedulerSettings.findUnique({
+        where: { locationId: user.locationId },
+      });
       const saved = await tx.schedulerSettings.upsert({
         where: { locationId: user.locationId },
         create: {
@@ -77,7 +147,15 @@ export class SchedulerConfigService {
         },
         update: { slotIntervalMinutes: input.slotIntervalMinutes },
       });
-      await recordConfigChange(tx, user, 'SchedulerSettings', saved.id, before ? 'Updated' : 'Created', before, saved);
+      await recordConfigChange(
+        tx,
+        user,
+        'SchedulerSettings',
+        saved.id,
+        before ? 'Updated' : 'Created',
+        before,
+        saved,
+      );
       return saved;
     });
   }
@@ -87,13 +165,19 @@ export class SchedulerConfigService {
     const eligibleIds = new Set(eligible.map((provider) => provider.id));
     const invalidProviderId = input.providerIds.find((id) => !eligibleIds.has(id));
     if (invalidProviderId) {
-      throw new BadRequestException('One or more selected doctors are not eligible at this location.');
+      throw new BadRequestException(
+        'One or more selected doctors are not eligible at this location.',
+      );
     }
 
     return prisma.$transaction(async (tx) => {
       const existing = input.id
         ? await tx.appointmentTypeSetting.findFirst({
-            where: { id: input.id, organizationId: user.organizationId, locationId: user.locationId },
+            where: {
+              id: input.id,
+              organizationId: user.organizationId,
+              locationId: user.locationId,
+            },
           })
         : null;
       if (input.id && !existing) throw new NotFoundException('Appointment type not found.');
@@ -114,7 +198,10 @@ export class SchedulerConfigService {
               : { providerId: { in: removedProviderIds.map(({ providerId }) => providerId) } }),
           },
         });
-        if (impactedAppointments > 0 && (affectsEveryFutureAppointment || removedProviderIds.length > 0)) {
+        if (
+          impactedAppointments > 0 &&
+          (affectsEveryFutureAppointment || removedProviderIds.length > 0)
+        ) {
           throw new BadRequestException(
             `${impactedAppointments} future appointment${impactedAppointments === 1 ? '' : 's'} must be reassigned before changing this appointment style.`,
           );
@@ -137,14 +224,26 @@ export class SchedulerConfigService {
       await tx.appointmentTypeProvider.deleteMany({ where: { appointmentTypeId: saved.id } });
       if (input.providerIds.length > 0) {
         await tx.appointmentTypeProvider.createMany({
-          data: input.providerIds.map((providerId) => ({ appointmentTypeId: saved.id, providerId, organizationId: user.organizationId })),
+          data: input.providerIds.map((providerId) => ({
+            appointmentTypeId: saved.id,
+            providerId,
+            organizationId: user.organizationId,
+          })),
         });
       }
       const result = await tx.appointmentTypeSetting.findUniqueOrThrow({
         where: { id: saved.id },
         include: { providers: { include: { provider: true } } },
       });
-      await recordConfigChange(tx, user, 'AppointmentTypeSetting', saved.id, existing ? 'Updated' : 'Created', existing, result);
+      await recordConfigChange(
+        tx,
+        user,
+        'AppointmentTypeSetting',
+        saved.id,
+        existing ? 'Updated' : 'Created',
+        existing,
+        result,
+      );
       return {
         ...result,
         providers: result.providers.map(({ provider }) => ({
@@ -165,9 +264,22 @@ export class SchedulerConfigService {
         isActive: true,
         staffProfile: { canReceiveAppointments: true },
         organizationMemberships: { some: { organizationId: user.organizationId, isActive: true } },
-        clinicLocationAccess: { some: { organizationId: user.organizationId, clinicLocationId: user.locationId, isActive: true } },
+        clinicLocationAccess: {
+          some: {
+            organizationId: user.organizationId,
+            clinicLocationId: user.locationId,
+            isActive: true,
+          },
+        },
       },
-      select: { id: true, displayName: true, firstName: true, lastName: true, role: true, isActive: true },
+      select: {
+        id: true,
+        displayName: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+      },
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
     return providers.map((provider) => ({
@@ -179,7 +291,9 @@ export class SchedulerConfigService {
   }
 
   async upsertSlotTemplate(user: AuthenticatedUser, input: UpsertSlotTemplateInput) {
-    const schedulerSettings = await prisma.schedulerSettings.findUnique({ where: { locationId: user.locationId } });
+    const schedulerSettings = await prisma.schedulerSettings.findUnique({
+      where: { locationId: user.locationId },
+    });
     const interval = schedulerSettings?.slotIntervalMinutes ?? DEFAULT_SLOT_INTERVAL_MINUTES;
     const startMinutes = clockMinutes(input.startTime);
     const endMinutes = clockMinutes(input.endTime);
@@ -188,8 +302,13 @@ export class SchedulerConfigService {
     if (startMinutes < visibleStart || endMinutes > visibleEnd) {
       throw new BadRequestException('Schedule blocks must be between 7:00 AM and 7:00 PM.');
     }
-    if ((startMinutes - visibleStart) % interval !== 0 || (endMinutes - visibleStart) % interval !== 0) {
-      throw new BadRequestException(`Block times must align to the ${interval}-minute schedule grid.`);
+    if (
+      (startMinutes - visibleStart) % interval !== 0 ||
+      (endMinutes - visibleStart) % interval !== 0
+    ) {
+      throw new BadRequestException(
+        `Block times must align to the ${interval}-minute schedule grid.`,
+      );
     }
     if (input.staffId) {
       const eligibleProviders = await this.listEligibleProviders(user);
@@ -206,7 +325,9 @@ export class SchedulerConfigService {
       },
     });
     if (validTypes !== new Set(input.appointmentTypeIds).size) {
-      throw new BadRequestException('One or more selected appointment styles are not available at this location.');
+      throw new BadRequestException(
+        'One or more selected appointment styles are not available at this location.',
+      );
     }
     const data = {
       dayOfWeek: input.dayOfWeek,
@@ -232,10 +353,20 @@ export class SchedulerConfigService {
         },
         include: { appointmentTypes: { select: { appointmentTypeId: true } } },
       });
-      await recordConfigChange(prisma, user, 'SchedulerSlotTemplate', created.id, 'Created', null, created);
+      await recordConfigChange(
+        prisma,
+        user,
+        'SchedulerSlotTemplate',
+        created.id,
+        'Created',
+        null,
+        created,
+      );
       return {
         ...created,
-        appointmentTypeIds: created.appointmentTypes.map(({ appointmentTypeId }) => appointmentTypeId),
+        appointmentTypeIds: created.appointmentTypes.map(
+          ({ appointmentTypeId }) => appointmentTypeId,
+        ),
         appointmentTypes: undefined,
       };
     }
@@ -264,8 +395,9 @@ export class SchedulerConfigService {
       select: { appointmentTypeId: true },
     });
     const mappingsChanged =
-      [...new Set(existingTypeIds.map(({ appointmentTypeId }) => appointmentTypeId))].sort().join(':') !==
-      [...new Set(input.appointmentTypeIds)].sort().join(':');
+      [...new Set(existingTypeIds.map(({ appointmentTypeId }) => appointmentTypeId))]
+        .sort()
+        .join(':') !== [...new Set(input.appointmentTypeIds)].sort().join(':');
     if (capacityChanged || mappingsChanged) {
       await this.assertBlockHasNoFutureAppointments(existing.id);
     }
@@ -281,31 +413,62 @@ export class SchedulerConfigService {
       },
       include: { appointmentTypes: { select: { appointmentTypeId: true } } },
     });
-    await recordConfigChange(prisma, user, 'SchedulerSlotTemplate', updated.id, 'Updated', existing, updated);
+    await recordConfigChange(
+      prisma,
+      user,
+      'SchedulerSlotTemplate',
+      updated.id,
+      'Updated',
+      existing,
+      updated,
+    );
     return {
       ...updated,
-      appointmentTypeIds: updated.appointmentTypes.map(({ appointmentTypeId }) => appointmentTypeId),
+      appointmentTypeIds: updated.appointmentTypes.map(
+        ({ appointmentTypeId }) => appointmentTypeId,
+      ),
       appointmentTypes: undefined,
     };
   }
 
   async setSlotTemplateVisibility(user: AuthenticatedUser, id: string, isActive: boolean) {
     const existing = await prisma.schedulerSlotTemplate.findFirst({
-      where: { id, organizationId: user.organizationId, locationId: user.locationId, deletedAt: null },
+      where: {
+        id,
+        organizationId: user.organizationId,
+        locationId: user.locationId,
+        deletedAt: null,
+      },
     });
     if (!existing) {
       throw new NotFoundException(`Scheduler slot template ${id} not found`);
     }
     if (!isActive && existing.isActive) await this.assertBlockHasNoFutureAppointments(id);
 
-    const updated = await prisma.schedulerSlotTemplate.update({ where: { id }, data: { isActive } });
-    await recordConfigChange(prisma, user, 'SchedulerSlotTemplate', id, isActive ? 'Activated' : 'Deactivated', existing, updated);
+    const updated = await prisma.schedulerSlotTemplate.update({
+      where: { id },
+      data: { isActive },
+    });
+    await recordConfigChange(
+      prisma,
+      user,
+      'SchedulerSlotTemplate',
+      id,
+      isActive ? 'Activated' : 'Deactivated',
+      existing,
+      updated,
+    );
     return updated;
   }
 
   async deleteSlotTemplate(user: AuthenticatedUser, id: string) {
     const existing = await prisma.schedulerSlotTemplate.findFirst({
-      where: { id, organizationId: user.organizationId, locationId: user.locationId, deletedAt: null },
+      where: {
+        id,
+        organizationId: user.organizationId,
+        locationId: user.locationId,
+        deletedAt: null,
+      },
     });
     if (!existing) {
       throw new NotFoundException(`Scheduler slot template ${id} not found`);
@@ -314,7 +477,10 @@ export class SchedulerConfigService {
     await this.assertBlockHasNoFutureAppointments(id);
 
     await prisma.schedulerSlotTemplate.update({ where: { id }, data: { deletedAt: new Date() } });
-    await recordConfigChange(prisma, user, 'SchedulerSlotTemplate', id, 'Deleted', existing, { ...existing, deletedAt: new Date().toISOString() });
+    await recordConfigChange(prisma, user, 'SchedulerSlotTemplate', id, 'Deleted', existing, {
+      ...existing,
+      deletedAt: new Date().toISOString(),
+    });
     return { id };
   }
 

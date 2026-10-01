@@ -34,6 +34,8 @@ export interface NewAppointmentInitialContext {
  *  same modal instead of copying this bookkeeping. */
 export function useNewAppointmentModal(onCreated?: (appointment: NewAppointmentCreatedSummary) => void) {
   const [open, setOpen] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [setupVersion, setSetupVersion] = useState(0);
   const [context, setContext] = useState<NewAppointmentInitialContext | null>(null);
   const [providers, setProviders] = useState<StaffMember[]>([]);
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeSetting[]>([]);
@@ -43,27 +45,33 @@ export function useNewAppointmentModal(onCreated?: (appointment: NewAppointmentC
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
+    setSetupStatus('loading');
     Promise.all([
       fetch('/api/staff?canReceiveAppointments=true', { signal: controller.signal }),
       fetch('/api/scheduler-config', { signal: controller.signal, cache: 'no-store' }),
     ])
       .then(async ([staffResponse, configResponse]) => {
-        setProviders(staffResponse.ok ? await staffResponse.json() as StaffMember[] : []);
+        if (!staffResponse.ok || !configResponse.ok) throw new Error('Booking setup unavailable');
+        setProviders(await staffResponse.json() as StaffMember[]);
         const config = configResponse.ok ? await configResponse.json() as { appointmentTypes: AppointmentTypeSetting[] } : null;
         setAppointmentTypes(config?.appointmentTypes ?? []);
+        setSetupStatus('ready');
       })
       .catch((caught) => {
         if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
           setProviders([]);
+          setAppointmentTypes([]);
+          setSetupStatus('error');
         }
       });
     return () => controller.abort();
-  }, [open]);
+  }, [open, setupVersion]);
 
   const openNewAppointment = useCallback((nextContext?: NewAppointmentInitialContext) => {
     setConfirmedAppointment(null);
     setEditingAppointment(null);
     setContext(nextContext ?? null);
+    setSetupStatus('loading');
     setOpen(true);
   }, []);
 
@@ -82,6 +90,8 @@ export function useNewAppointmentModal(onCreated?: (appointment: NewAppointmentC
       initialVisitReason={editingAppointment?.reason ?? null}
       providers={providers}
       appointmentTypes={appointmentTypes}
+      setupStatus={setupStatus}
+      onRetrySetup={() => setSetupVersion((value) => value + 1)}
       onClose={closeNewAppointment}
       onCreated={(appointment) => {
         setOpen(false);

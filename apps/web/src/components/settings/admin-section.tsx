@@ -3,6 +3,7 @@
 import { DashboardStatusColorsSection } from './dashboard-status-colors-section';
 import { SchedulerSettingsSection } from './scheduler-settings-section';
 import { VisitPolicySection } from './visit-policy-section';
+import { DateExceptionsSection } from './date-exceptions-section';
 import { ServicesSection } from './services-section';
 
 /** Settings > Admin — gated in settings/page.tsx on MANAGE_ADMIN_SETTINGS,
@@ -14,6 +15,7 @@ export function AdminSection() {
       <DashboardStatusColorsSection />
       <VisitPolicySection />
       <SchedulerSettingsSection />
+      <DateExceptionsSection />
     </>
   );
 }

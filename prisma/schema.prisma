@@ -54,6 +54,8 @@ enum SubscriptionStatus {
 }
 
 model Organization {
+  prescriptions PatientPrescription[]
+  prescriptionEvents PatientPrescriptionEvent[]
   id        String  @id @default(cuid())
   name      String
   legalName String?
@@ -148,6 +150,7 @@ model Organization {
 }
 
 model Location {
+  prescriptions PatientPrescription[]
   id             String   @id @default(cuid())
   organizationId String
   name           String
@@ -202,6 +205,9 @@ enum UserRole {
 }
 
 model User {
+  preparedPrescriptions PatientPrescription[] @relation("PrescriptionPreparedBy")
+  authorizedPrescriptions PatientPrescription[] @relation("PrescriptionAuthorizedBy")
+  prescriptionEvents PatientPrescriptionEvent[]
   id                          String   @id @default(cuid())
   organizationId              String
   email                       String   @unique
@@ -572,6 +578,7 @@ enum PatientStatus {
 }
 
 model Patient {
+  prescriptions PatientPrescription[]
   id             String        @id @default(cuid())
   organizationId String
   name           String
@@ -2444,6 +2451,7 @@ enum ItemDocumentType {
 }
 
 model CatalogItem {
+  prescriptions PatientPrescription[]
   id                  String            @id @default(uuid()) @db.Uuid
   organizationId      String
   locationId          String?
@@ -3723,4 +3731,55 @@ model InventoryUsageExportAudit {
   createdAt        DateTime @default(now())
 
   @@index([organizationId, clinicLocationId, lotId, createdAt])
+}
+
+
+// An authorized order is distinct from the editable medication profile and from dispensing.
+model PatientPrescription {
+  id String @id @default(cuid())
+  organizationId String
+  locationId String
+  patientId String
+  catalogItemId String? @db.Uuid
+  medicationName String
+  strength String
+  form String?
+  directions String
+  quantity Decimal @db.Decimal(18, 8)
+  quantityUnit String
+  allowedRefills Int @default(0)
+  expiresAt DateTime
+  status String @default("DRAFT")
+  version Int @default(1)
+  preparedById String
+  authorizedById String?
+  authorizedByName String?
+  licenseNumber String?
+  authorizedAt DateTime?
+  cancelledAt DateTime?
+  cancellationReason String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  patient Patient @relation(fields: [patientId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  preparedBy User @relation("PrescriptionPreparedBy", fields: [preparedById], references: [id])
+  authorizedBy User? @relation("PrescriptionAuthorizedBy", fields: [authorizedById], references: [id])
+  events PatientPrescriptionEvent[]
+  @@index([organizationId, locationId, patientId, createdAt])
+}
+
+model PatientPrescriptionEvent {
+  id String @id @default(cuid())
+  prescriptionId String
+  organizationId String
+  actorId String
+  action String
+  metadata Json?
+  createdAt DateTime @default(now())
+  prescription PatientPrescription @relation(fields: [prescriptionId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([organizationId, prescriptionId, createdAt])
 }

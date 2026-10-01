@@ -1,0 +1,35 @@
+import { expect, test } from '@playwright/test';
+
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
+test('prepares, authorizes, and downloads a patient prescription', async ({ page, request }) => {
+  const clientResponse = await request.post(`${API_URL}/clients`, { data: { firstName: 'Prescription', lastName: 'Test client', phone: '5550100' } });
+  expect(clientResponse.ok()).toBe(true);
+  const client = await clientResponse.json() as { id: string };
+  const patientResponse = await request.post(`${API_URL}/patients`, { data: { name: 'Prescription test patient', species: 'Canine', clients: [{ clientId: client.id, isPrimary: true }] } });
+  expect(patientResponse.ok()).toBe(true);
+  const patient = await patientResponse.json() as { id: string };
+  await page.goto(`/patients/${patient.id}`);
+  await page.getByRole('tab', { name: 'Medications', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Prescriptions', exact: true });
+  await panel.getByRole('button', { name: 'Prepare prescription' }).click();
+  await panel.getByLabel('Medication', { exact: true }).fill('Sample test medication');
+  await panel.getByLabel('Strength', { exact: true }).fill('Sample strength');
+  await panel.getByLabel('Patient directions').fill('Reviewed sample directions for a test fixture.');
+  await panel.getByLabel('Quantity', { exact: true }).fill('30');
+  await panel.getByLabel('Quantity unit').fill('tablets');
+  await panel.getByLabel('Expiration date').fill('2030-01-01');
+  await panel.getByRole('button', { name: 'Save draft' }).click();
+  await expect(panel.getByText(/draft · 30 tablets/)).toBeVisible();
+  await panel.getByRole('button', { name: 'Authorize prescription' }).click();
+  const downloadPromise = page.waitForEvent('download');
+  await panel.getByRole('link', { name: 'Download prescription PDF' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^prescription-.*\.pdf$/);
+  expect(await download.failure()).toBeNull();
+  await page.screenshot({ path: '/tmp/sparki-prescription-workflow.png' });
+  await panel.getByRole('button', { name: 'Cancel prescription', exact: true }).click();
+  await panel.getByLabel('Reason for cancellation').fill('Corrected test order');
+  await panel.getByRole('button', { name: 'Confirm cancellation', exact: true }).click();
+  await expect(panel.getByText(/cancelled · 30 tablets/)).toBeVisible();
+  await expect(panel.getByRole('link', { name: 'Download prescription PDF' })).toHaveCount(0);
+});

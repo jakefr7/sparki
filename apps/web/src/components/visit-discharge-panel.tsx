@@ -1,4 +1,5 @@
 'use client';
+import { VisitDocumentDownload } from './visit-document-download';
 
 import { useVisitStep } from './visit-care-sections';
 import { useRouter } from 'next/navigation';
@@ -91,6 +92,7 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
     <>
     <section id="visit-discharge" className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
       <div className="visit-discharge-panel__header"><div><h2 id="visit-discharge-heading">Discharge</h2><p>Review the client-facing summary assembled from completed care and take-home medication.</p></div><span className={visit.discharge ? 'is-complete' : ''}>{visit.discharge ? 'Prepared' : 'Draft'}</span></div>
+      {visit.discharge && !hasUnsavedChanges ? <VisitDocumentDownload visitId={visit.id} kind="discharge">Download discharge PDF</VisitDocumentDownload> : null}
       {canDischarge ? (
         <form id={`discharge-form-${visit.id}`} onSubmit={saveDischarge} onChange={() => setHasUnsavedChanges(true)} className="visit-discharge-form" noValidate>
           <div className="visit-discharge-summary" aria-label="Client discharge summary">

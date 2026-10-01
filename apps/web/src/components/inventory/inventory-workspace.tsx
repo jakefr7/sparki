@@ -57,15 +57,16 @@ type Item = {
     expirationDate: string | null;
     status: string;
     quantity: string;
-    stockLocation: { name: string };
+    stockLocation: { id: string; name: string };
   }>;
   balances: Array<{
     id: string;
+    lotId: string | null;
     onHand: string;
     quarantined: string;
     expired: string;
     reserved: string;
-    stockLocation: { name: string };
+    stockLocation: { id: string; name: string };
   }>;
   documents: Array<{ id: string; name: string; type: string; url: string }>;
   countHistory?: Array<{
@@ -377,6 +378,7 @@ export function InventoryWorkspace() {
   const [itemReviewNotice, setItemReviewNotice] = useState('');
   const [purchasingView, setPurchasingView] = useState<'Orders' | 'Vendors'>('Orders');
   const [selected, setSelected] = useState<Item | null>(null);
+  const [adjustItemId, setAdjustItemId] = useState<string | undefined>();
   const [modal, setModal] = useState<
     | 'add'
     | 'edit'
@@ -551,7 +553,7 @@ export function InventoryWorkspace() {
           <details className="inventory-command__menu">
             <summary role="button">Actions</summary>
             <div>
-              <button onClick={() => setModal('adjust')}>Adjust stock</button>
+              <button onClick={() => { setAdjustItemId(undefined); setModal('adjust'); }}>Adjust stock</button>
               <button onClick={() => setModal('transfer')}>Transfer stock</button>
               {tab !== 'Items' && <button onClick={() => setModal('add')}>Add item</button>}
               {tab !== 'Purchasing' && (
@@ -744,6 +746,7 @@ export function InventoryWorkspace() {
           activity={activity.filter((a) => a.item.name === selected.name)}
           onClose={() => setSelected(null)}
           onEdit={() => setModal('edit')}
+          onAdjust={() => { setAdjustItemId(selected.id); setModal('adjust'); }}
           onDuplicate={() => setModal('duplicate')}
           onDelete={async () => {
             if (!window.confirm(`Permanently delete unused item ${selected.name}?`)) return;
@@ -803,6 +806,7 @@ export function InventoryWorkspace() {
       )}
       {modal === 'adjust' && (
         <AdjustStock
+          initialItemId={adjustItemId}
           items={items}
           locations={locations}
           onClose={() => setModal(null)}
@@ -922,7 +926,7 @@ function ItemsTable({ items, search, view, onViewChange, onClear, onSelect }: {
             <tr>
               <th>Item</th>
               <th>Type</th>
-              <th>Available</th>
+              <th title="On hand minus reserved, quarantined, and expired stock">Available</th>
               <th>On Hand</th>
               <th>Status</th>
               <th>Next Expiration</th>
@@ -946,7 +950,7 @@ function ItemsTable({ items, search, view, onViewChange, onClear, onSelect }: {
               >
                 <td>
                   <strong>{i.name}</strong>
-                  <small>{i.sku || 'No SKU'}</small>
+                  <small>{[i.sku || 'No SKU', i.strength, i.form].filter(Boolean).join(' · ')}</small>
                 </td>
                 <td>{humanize(i.primaryType)}</td>
                 <td className="inventory-number">{fmt(i.available)}</td>
@@ -3069,6 +3073,7 @@ function ItemDrawer({
   onDuplicate,
   onDelete,
   onArchive,
+  onAdjust,
 }: {
   item: Item;
   activity: Activity[];
@@ -3077,6 +3082,7 @@ function ItemDrawer({
   onDuplicate: () => void;
   onDelete: () => void;
   onArchive: () => void;
+  onAdjust: () => void;
 }) {
   const [tab, setTab] = useState('Overview');
   return (
@@ -3109,6 +3115,8 @@ function ItemDrawer({
         <div className="item-drawer__body">
           {tab === 'Overview' && (
             <>
+              <p>{[item.strength, item.form, item.route].filter(Boolean).join(' · ')}</p>
+              <p>Stock unit: <strong>{item.conversions.find((conversion) => conversion.isActive)?.stockUnit || 'Not configured'}</strong></p>
               <div className="stock-summary">
                 <span>
                   On Hand<strong>{fmt(item.onHand)}</strong>
@@ -3123,6 +3131,7 @@ function ItemDrawer({
                   Expired<strong>{fmt(item.expired)}</strong>
                 </span>
               </div>
+              <p className="inventory-stock-explanation">Available stock excludes reserved, quarantined, and expired quantities.</p>
               <dl>
                 <dt>Status</dt>
                 <dd>{item.status}</dd>
@@ -3198,9 +3207,7 @@ function ItemDrawer({
         </div>
         <footer>
           {item.permissions.canEdit && <button onClick={onEdit}>Edit</button>}
-          <button disabled title="Use the page-level Adjust Stock action">
-            Adjust Stock
-          </button>
+          {item.inventoryTracked && item.status === 'ACTIVE' ? <button onClick={onAdjust}>Adjust stock</button> : null}
           <button onClick={onDuplicate}>Duplicate</button>
           <details className="drawer-more">
             <summary>More</summary>
@@ -3571,12 +3578,14 @@ function ItemEditor({
   );
 }
 function AdjustStock({
+  initialItemId,
   items,
   locations,
   onClose,
   onSaved,
   onError,
 }: {
+  initialItemId?: string | undefined;
   items: Item[];
   locations: Location[];
   onClose: () => void;
@@ -3584,13 +3593,16 @@ function AdjustStock({
   onError: (e: string) => void;
 }) {
   const [itemId, setItemId] = useState(
-    items.find((i) => i.inventoryTracked && i.status === 'ACTIVE')?.id || '',
+    initialItemId ?? items.find((i) => i.inventoryTracked && i.status === 'ACTIVE')?.id ?? '',
   );
   const [quantity, setQuantity] = useState('');
+  const [locationId, setLocationId] = useState('');
+  const [lotId, setLotId] = useState('');
   const [mode, setMode] = useState('DELTA');
   const [reason, setReason] = useState('CORRECTION');
   const item = items.find((i) => i.id === itemId);
-  const current = Number(item?.onHand || 0);
+  const current = Number(item?.balances.find((balance) => balance.stockLocation.id === locationId && (balance.lotId ?? '') === lotId)?.onHand ?? 0);
+  const stockUnit = item?.conversions.find((conversion) => conversion.isActive)?.stockUnit;
   const result = mode === 'COUNTED' ? Number(quantity || current) : current + Number(quantity || 0);
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -3600,8 +3612,8 @@ function AdjustStock({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         itemId,
-        stockLocationId: f.get('location'),
-        lotId: f.get('lot') || null,
+        stockLocationId: locationId,
+        lotId: lotId || null,
         lotNumber: f.get('lotNumber') || null,
         expirationDate: f.get('expirationDate') || null,
         mode,
@@ -3619,7 +3631,7 @@ function AdjustStock({
       <form className="inventory-form" onSubmit={submit}>
         <label>
           Item
-          <select required value={itemId} onChange={(e) => setItemId(e.target.value)}>
+          <select required value={itemId} onChange={(e) => { setItemId(e.target.value); setLotId(''); }}>
             <option value="">Choose item</option>
             {items
               .filter((i) => i.inventoryTracked && i.status === 'ACTIVE')
@@ -3632,7 +3644,7 @@ function AdjustStock({
         </label>
         <label>
           Location
-          <select required name="location">
+          <select required name="location" value={locationId} onChange={(event) => { setLocationId(event.target.value); setLotId(''); }}>
             <option value="">Choose location</option>
             {locations.map((l) => (
               <option value={l.id} key={l.id}>
@@ -3646,9 +3658,9 @@ function AdjustStock({
             {item.lots.length > 0 && (
               <label>
                 Existing lot
-                <select name="lot">
+                <select name="lot" value={lotId} onChange={(event) => setLotId(event.target.value)}>
                   <option value="">Create another lot</option>
-                  {item.lots.map((l) => (
+                  {item.lots.filter((lot) => lot.stockLocation.id === locationId).map((l) => (
                     <option value={l.id} key={l.id}>
                       {l.lotNumber}
                     </option>
@@ -3676,7 +3688,7 @@ function AdjustStock({
           </select>
         </label>
         <label>
-          Quantity
+          Quantity{stockUnit ? ` (${stockUnit})` : ' — stock unit not configured'}
           <input
             required
             value={quantity}
@@ -3697,7 +3709,7 @@ function AdjustStock({
               'INVENTORY_COUNT',
               'OTHER',
             ].map((value) => (
-              <option key={value}>{value.replaceAll('_', ' ')}</option>
+              <option value={value} key={value}>{value.replaceAll('_', ' ')}</option>
             ))}
           </select>
         </label>
@@ -3705,7 +3717,7 @@ function AdjustStock({
           Notes
           <textarea name="notes" required={reason === 'OTHER'} />
         </label>
-        <div className={result < 0 ? 'adjust-preview adjust-preview--danger' : 'adjust-preview'}>
+        {locationId ? <div className={result < 0 ? 'adjust-preview adjust-preview--danger' : 'adjust-preview'}>
           <span>
             Previous <strong>{fmt(String(current))}</strong>
           </span>
@@ -3713,7 +3725,7 @@ function AdjustStock({
             Resulting <strong>{fmt(String(result))}</strong>
           </span>
           {result < 0 && <small>Negative inventory is blocked.</small>}
-        </div>
+        </div> : <p>Select a stock location to preview the adjustment.</p>}
         <footer>
           <button type="button" onClick={onClose}>
             Cancel

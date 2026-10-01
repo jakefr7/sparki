@@ -1,3 +1,5 @@
+import { VisitDocumentsController } from './visit-documents.controller';
+import { VisitDocumentsService } from './visit-documents.service';
 import { Module } from '@nestjs/common';
 import { AppointmentsModule } from '../appointments/appointments.module';
 import { PatientsModule } from '../patients/patients.module';
@@ -17,9 +19,10 @@ import { PatientBillingController } from './patient-billing.controller';
 
 @Module({
   imports: [PatientsModule, AppointmentsModule, InventoryModule, MessagingModule],
-  controllers: [VisitsController, VisitPolicyController, ClinicalAttachmentsController, PatientBillingController],
+  controllers: [VisitDocumentsController, VisitsController, VisitPolicyController, ClinicalAttachmentsController, PatientBillingController],
   providers: [
     VisitsService,
+    VisitDocumentsService,
     VisitLifecycleService,
     VisitRecordsService,
     VisitDischargeService,

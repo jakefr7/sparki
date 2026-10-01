@@ -1,3 +1,4 @@
+import { PatientPrescriptionsPanel } from '../../../components/patient-prescriptions-panel';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -301,7 +302,7 @@ export default async function PatientWorkspacePage({
           {
             id: 'medications',
             label: 'Medications',
-            panel: medications ? <PatientMedicationsPanel patientId={patient.id} medications={medications} /> : null,
+            panel: medications ? <><PatientMedicationsPanel patientId={patient.id} medications={medications} />{medications.permissions.canManage ? <PatientPrescriptionsPanel patientId={patient.id} /> : null}</> : null,
           },
           {
             id: 'alerts',

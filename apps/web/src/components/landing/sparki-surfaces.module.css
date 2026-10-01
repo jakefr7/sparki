@@ -155,6 +155,8 @@
   gap: 3px;
 }
 .navItem {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -164,6 +166,18 @@
   color: var(--sk-text-2);
   font-size: 12.5px;
   font-weight: 700;
+}
+/* One Sparki Pulse sweep each time the active section changes (the <nav>
+   remounts on scene change), signalling the handoff into a new part of the
+   same connected system rather than a disconnected screen swap. */
+.navItem[data-active='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 60%;
+  background: linear-gradient(90deg, rgba(31, 169, 160, 0.24), transparent);
+  animation: sparkiPulseSweep 1.8s linear both;
+  pointer-events: none;
 }
 .navItem svg {
   width: 15px;
@@ -312,6 +326,7 @@
   border-radius: 14px;
   background: var(--sk-surface);
   box-shadow: 0 12px 30px rgba(30, 55, 70, 0.055);
+  transition: opacity 0.4s ease;
 }
 .cardHead {
   display: flex;
@@ -501,6 +516,37 @@
 }
 .pill[data-tone='accent'] {
   --pill: var(--sk-accent);
+}
+
+/* ---- sparki pulse: information moving through one connected system ---- */
+@keyframes sparkiPulseSweep {
+  0% {
+    transform: translate3d(-110%, 0, 0);
+    opacity: 0;
+  }
+  18%, 78% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(350%, 0, 0);
+    opacity: 0;
+  }
+}
+.row:has(> .pulseSweep),
+.pulse {
+  position: relative;
+  overflow: hidden;
+}
+.pulse::after,
+.pulseSweep {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(31, 169, 160, 0.14), transparent);
+  animation: sparkiPulseSweep 2.2s linear both;
+  will-change: transform, opacity;
+  pointer-events: none;
 }
 
 /* ---- today scene ---- */
@@ -875,6 +921,16 @@
   display: grid;
   grid-template-columns: 1.4fr 1fr;
   gap: 12px;
+}
+/* Sparki carries one visit through exam and treatment in the same workspace
+   — the piece under discussion recedes the supporting one rather than the
+   page swapping to an unrelated screen. Record leaves both at full weight:
+   by then the exam and the plan are equally part of the same history. */
+.examGrid[data-focus='treatment'] > .card:first-child {
+  opacity: 0.6;
+}
+.examGrid[data-focus='exam'] .planCard {
+  opacity: 0.6;
 }
 .vitals {
   display: grid;

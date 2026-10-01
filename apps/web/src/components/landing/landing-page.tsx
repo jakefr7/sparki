@@ -1,9 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import s from './landing.module.css';
-import { SparkiCanvas, type SparkiJourney } from './sparki-surfaces';
+import {
+  useAmbientDrift,
+  usePointerDepth,
+  useReducedMotion,
+  useRevealOnScroll,
+  useScrollRail,
+  useViewportAtLeast,
+} from './landing-motion';
+import { SparkiCanvas, type SparkiJourney, type SparkiScene } from './sparki-surfaces';
 import { SparkiLogo } from '../sparki-logo';
 
 const STEPS: ReadonlyArray<Omit<SparkiJourney, 'step'> & { name: string }> = [
@@ -24,12 +32,31 @@ const AREAS = [
 ] as const;
 function Arrow() { return <span aria-hidden="true">↗</span>; }
 function journey(step: number): SparkiJourney { const item = STEPS[step] ?? STEPS[0]!; return { ...item, step }; }
+// Several journey steps truthfully share one surface (Sparki carrying a
+// visit forward rather than switching screens); see landing/README.md.
+function sceneForStep(step: number): SparkiScene {
+  if (step === 0) return 'scheduler'; // Appointment
+  if (step <= 3) return 'today'; // Check In, Begin Intake, Ready for Veterinarian
+  if (step <= 5) return 'patient'; // Exam, Treatment
+  if (step === 6) return 'billing'; // Checkout
+  return 'patient'; // Record — the visit's own history view
+}
 
 export function LandingPage() {
   const [step, setStep] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const reducedMotion = useReducedMotion();
+  // The scroll-driven journey is a desktop refinement, not a requirement —
+  // tablet, mobile, and reduced-motion visitors keep the plain click-tabs.
+  const desktopRail = useViewportAtLeast(1001);
+  const railActive = desktopRail && !reducedMotion;
+  const railRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const areaGridRef = useRef<HTMLDivElement>(null);
+  const finalCtaRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setReady(true);
     const onScroll = () => {
@@ -39,21 +66,55 @@ export function LandingPage() {
     onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', onScroll);
     return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
   }, []);
+  useScrollRail(railRef, { enabled: railActive, steps: STEPS.length, onStep: setStep });
+  useAmbientDrift(heroRef, { enabled: !reducedMotion, period: 14000 });
+  usePointerDepth(previewRef, { enabled: !reducedMotion });
+  useRevealOnScroll(areaGridRef, { enabled: !reducedMotion });
+  useRevealOnScroll(finalCtaRef, { enabled: !reducedMotion });
+  // On the desktop rail, a step button scrolls to that step's position —
+  // scroll position stays the single source of truth for `step`, so native
+  // scrolling (forward, backward, or landing here after a refresh) always
+  // agrees with whichever step a click last requested. Elsewhere it's a
+  // plain, instant tab switch, same as today.
+  const goToStep = (index: number) => {
+    const rail = railRef.current;
+    if (railActive && rail) {
+      const rect = rail.getBoundingClientRect();
+      const scrollable = Math.max(1, rect.height - window.innerHeight);
+      const top = rect.top + window.scrollY + ((index + 0.5) / STEPS.length) * scrollable;
+      window.scrollTo({ top, behavior: 'smooth' });
+    } else {
+      setStep(index);
+    }
+  };
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        document.querySelector<HTMLButtonElement>('[aria-controls="landing-navigation"]')?.focus();
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [menuOpen]);
   const current = journey(step);
   return <div className={s.landing} id="top" data-ready={ready ? 'true' : undefined}>
     <a className={s.skip} href="#main">Skip to content</a>
     <header className={`${s.header} ${scrolled ? s.headerScrolled : ''}`}>
-      <Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link>
-      <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
-      <div className={s.headerActions}><Link href="/login" className={s.signIn}>Sign In</Link><Link href="/pricing" className={s.buttonSmall}>Get Started <Arrow /></Link><button className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div>
+      <div className={s.headerInner}>
+        <Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
+        <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} id="landing-navigation" aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>Product</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
+        <div className={s.headerActions}><Link href="/login" className={s.signIn}>Sign In</Link><Link href="/pricing" className={s.buttonSmall}>Get Started <Arrow /></Link><button className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="landing-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div>
+      </div>
     </header>
     <main id="main">
-      <section className={s.hero} aria-labelledby="hero-heading"><div className={s.heroCopy}><p className={s.eyebrow}>The veterinary practice operating system</p><h1 id="hero-heading">Your clinic.<br /><span>Finally in sync.</span></h1><p className={s.lede}>Sparki brings scheduling, patients, clinical visits, inventory, and daily clinic operations into one connected veterinary workspace.</p><div className={s.actions}><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link><a href="#product" className={s.textLink}>Explore Sparki <span>↓</span></a></div></div><div className={s.heroProduct} aria-label="Sparki product preview"><div className={s.preview}><SparkiCanvas scene="dashboard" role="veterinarian" journey={journey(0)} className={s.canvas} /></div><div className={s.productContext}><span className={s.contextDot} />Today at a glance <strong>Appointments · Patients · Clinic flow</strong><small>Illustrative product preview</small></div></div></section>
+      <section ref={heroRef} className={s.hero} aria-labelledby="hero-heading"><div className={s.heroCopy}><p className={s.eyebrow}>The veterinary practice operating system</p><h1 id="hero-heading">Your clinic.<br /><span>Finally in sync.</span></h1><p className={s.lede}>From the first appointment to the final record. Bring your patients, people, and daily work together in one calm, connected workspace.</p><div className={s.actions}><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link><a href="#product" className={s.textLink}>Explore Sparki <span>↓</span></a></div></div><div className={s.heroProduct} aria-label="Sparki product preview"><div className={s.previewLabel}><span><span className={s.contextDot} /> THE CONNECTED CLINIC</span><span>One workspace. A clearer day.</span></div><div ref={previewRef} className={s.preview}><SparkiCanvas scene="dashboard" role="veterinarian" journey={journey(0)} className={s.canvas} /></div><div className={s.productContext}><span className={s.contextDot} />Today at a glance <strong>Appointments · Patients · Clinic flow</strong><small>Illustrative product preview</small></div></div></section>
       <div className={s.continuity}><p>Less chasing. More caring.</p><span>Patient context, always close</span><span>Clear ownership at each handoff</span><span>One connected clinic day</span></div>
-      <section className={s.flow} id="product" aria-labelledby="flow-heading"><div className={s.flowSticky}><div className={s.flowCopy}><p className={s.eyebrow}>The patient journey</p><h2 id="flow-heading">Every patient.<br /><span>A clear next step.</span></h2><p className={s.body}>One connected visit from appointment to the final record. The right person sees what needs to happen next.</p><p className={s.flowHint}>Explore a visit, step by step ↓</p><div className={s.stepList} aria-label="Patient flow">{STEPS.map((item, index) => <button key={item.name} type="button" aria-pressed={index === step} onClick={() => setStep(index)}><span>{String(index + 1).padStart(2, '0')}</span>{item.name}</button>)}</div></div><div className={s.flowProduct}><div className={s.preview}><SparkiCanvas scene="today" role="veterinarian" journey={current} className={s.canvas} /></div><div className={s.flowCaption} key={step} aria-live="polite"><span>{current.label}</span><strong>{current.action}</strong><small>{current.detail}</small><p>{current.note}</p><small>Next with: {current.owner}</small></div></div></div></section>
-      <section className={s.solutions} id="solutions" aria-labelledby="solutions-heading"><div className={s.sectionIntro}><p className={s.eyebrow}>One connected workspace</p><h2 id="solutions-heading">One system.<br /><span>Every part of the clinic.</span></h2><p className={s.body}>Sparki keeps the clinic’s major workflows connected without asking your team to carry the gaps.</p></div><div className={s.areaGrid}>{AREAS.map(([name, copy, detail], index) => <div className={s.area} key={name}><span className={s.areaNumber}>0{index + 1}</span><h3>{name}</h3><p>{copy}</p><div className={s.areaDetail}>{detail}</div></div>)}</div></section>
-      <section className={s.finalCta} id="demo"><p className={s.eyebrow}>See Sparki in your clinic</p><h2>Give your clinic<br /><span>a better operating system.</span></h2><p>See how Sparki keeps your patients, people, and daily work connected.</p><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link></section>
+      <section className={s.flow} id="product" aria-labelledby="flow-heading"><div ref={railRef} className={railActive ? `${s.flowRail} ${s.flowRailActive}` : s.flowRail}><div className={s.flowSticky}><div className={s.flowCopy}><p className={s.eyebrow}>The patient journey</p><h2 id="flow-heading">Every patient.<br /><span>A clear next step.</span></h2><p className={s.body}>One connected visit from appointment to the final record. The right person sees what needs to happen next.</p><p className={s.flowHint}>Explore a visit, step by step ↓</p><div className={s.stepList} aria-label="Patient flow">{STEPS.map((item, index) => <button key={item.name} type="button" aria-pressed={index === step} onClick={() => goToStep(index)}><span>{String(index + 1).padStart(2, '0')}</span>{item.name}</button>)}</div></div><div className={s.flowProduct}><div className={s.preview}><SparkiCanvas scene={sceneForStep(step)} role="veterinarian" journey={current} className={s.canvas} /></div><div className={s.flowCaption} aria-live="polite"><span>{current.label}</span><strong>{current.action}</strong><small>{current.detail}</small><p>{current.note}</p><small>Next with: {current.owner}</small></div></div></div></div></section>
+      <section className={s.solutions} id="solutions" aria-labelledby="solutions-heading"><div className={s.sectionIntro}><p className={s.eyebrow}>One connected workspace</p><h2 id="solutions-heading">One system.<br /><span>Every part of the clinic.</span></h2><p className={s.body}>Sparki keeps the clinic’s major workflows connected without asking your team to carry the gaps.</p></div><div ref={areaGridRef} className={s.areaGrid}>{AREAS.map(([name, copy, detail], index) => <div className={s.area} key={name} style={{ ['--i' as string]: index }}><span className={s.areaNumber}>0{index + 1}</span><h3>{name}</h3><p>{copy}</p><div className={s.areaDetail}>{detail}</div></div>)}</div></section>
+      <section ref={finalCtaRef} className={s.finalCta} id="demo"><p className={s.eyebrow}>See Sparki in your clinic</p><h2>Give your clinic<br /><span>a better operating system.</span></h2><p>See how Sparki keeps your patients, people, and daily work connected.</p><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link></section>
     </main>
-    <footer className={s.footer}><Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link><span>Built for the people who care.</span><div><Link href="#product">Product</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
+    <footer className={s.footer}><Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link><span>Built for the people who care.</span><div><Link href="#product">Product</Link><Link href="/pricing">Pricing <Arrow /></Link><Link href="/login">Sign In <Arrow /></Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
   </div>;
 }

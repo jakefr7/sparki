@@ -1,4 +1,5 @@
 'use client';
+import { VisitDocumentDownload } from './visit-document-download';
 
 import { useVisitStep } from './visit-care-sections';
 import { useRouter } from 'next/navigation';
@@ -257,6 +258,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
         </div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{RECORD_STATUS_LABELS[note.status] ?? note.status}</span>
       </div>
+      {lockedNote ? <VisitDocumentDownload visitId={visit.id} kind="record">Download medical record PDF</VisitDocumentDownload> : null}
       {canEdit ? (
         <form id={`visit-record-form-${visit.id}`} ref={recordForm} onChange={scheduleSave} onSubmit={(event) => event.preventDefault()} className="visit-record-form visit-record-form--review">
           {SOAP_FIELDS.map(([name, label]) => {

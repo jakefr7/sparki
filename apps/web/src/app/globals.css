@@ -108,6 +108,31 @@ body:has(.clinic-access) {
   background: #f7fbfb;
 }
 
+/* html/body's overflow-x: hidden below pairs with an implicit
+ * overflow-y: auto per the CSS overflow spec (an explicit 'visible' on one
+ * axis computes to 'auto' when the other axis isn't 'visible'), which
+ * quietly turns html/body into position: sticky's reference scroll
+ * container instead of the viewport. Since body itself never actually
+ * overflows (it's sized to exactly fit its content), position: sticky
+ * descendants bound to it never engage — they just scroll with the page
+ * as if position: static. The landing page's patient-journey section
+ * relies on a real pinned-while-scrolling element, so swap to 'clip' for
+ * landing only: it clips horizontal overflow exactly like 'hidden', but
+ * (per spec) is exempt from the visible/auto pairing, leaving overflow-y
+ * genuinely 'visible' and sticky working again.
+ * Keyed off #top (the landing root's literal id, unique in the app) rather
+ * than :has(.landing) like the background overrides above — landing-page.tsx
+ * now sources .landing from a CSS module, so that selector's class name is
+ * hashed at build time and no longer matches here (a separate, pre-existing
+ * gap worth a follow-up, left alone since fixing it also touches
+ * login-page/clinic-access, outside this change's scope). */
+html:has(#top) {
+  overflow-x: clip;
+}
+body:has(#top) {
+  overflow-x: clip;
+}
+
 body {
   margin: 0;
   overflow-x: hidden;

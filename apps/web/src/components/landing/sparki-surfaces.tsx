@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode, Ref } from 'react';
 
 import s from './sparki-surfaces.module.css';
+import { useReducedMotion } from './landing-motion';
 import { SparkiLogo } from '../sparki-logo';
 
 /**
@@ -21,6 +23,7 @@ export type SparkiScene =
   | 'today'
   | 'scheduler'
   | 'patient'
+  | 'billing'
   | 'inventory'
   | 'messages';
 
@@ -45,7 +48,7 @@ const NAV: ReadonlyArray<{ label: string; scene?: SparkiScene; muted?: boolean; 
   { label: 'Tasks', muted: true, d: 'M5 12l4 4 10-10' },
   { label: 'Reports', muted: true, d: 'M5 20V8m5 12V4m5 16v-7m5 7V10' },
   { label: 'Inventory', scene: 'inventory', d: 'M4 7l8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10' },
-  { label: 'Billing', muted: true, d: 'M3 7h18v10H3zM3 11h18M7 15h4' },
+  { label: 'Billing', scene: 'billing', d: 'M3 7h18v10H3zM3 11h18M7 15h4' },
   { label: 'Settings', muted: true, d: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM4 12h2m12 0h2M12 4v2m0 12v2' },
   { label: 'Help', muted: true, d: 'M9 9a3 3 0 1 1 4 2.8c-1 .6-1 .9-1 2.2M12 17h.01' },
 ];
@@ -55,6 +58,7 @@ const SCENE_NAV: Record<SparkiScene, string> = {
   today: 'Today',
   scheduler: 'Scheduler',
   patient: 'Patients / Clients',
+  billing: 'Billing',
   inventory: 'Inventory',
   messages: 'Team Messages',
 };
@@ -79,6 +83,11 @@ const TOPBAR: Record<SparkiScene, { eyebrow: string; title: string; subtitle: st
     eyebrow: 'Clinical visit',
     title: 'Maple Reyes',
     subtitle: 'Exam in progress · Room 2 · Dr. Reyes',
+  },
+  billing: {
+    eyebrow: 'Checkout',
+    title: 'Checkout',
+    subtitle: 'Review charges, collect payment, and prepare discharge.',
   },
   inventory: {
     eyebrow: 'Operations',
@@ -148,7 +157,15 @@ const DASH_ROWS: Array<[string, string, string, string, 'dog' | 'cat']> = [
   ['10:30', 'Biscuit Alvarez', 'Dental consult', 'Scheduled', 'dog'],
 ];
 
-function DashboardScene({ role, active }: { role: SparkiRole; active: boolean }) {
+function DashboardScene({
+  role,
+  active,
+  liveTick,
+}: {
+  role: SparkiRole;
+  active: boolean;
+  liveTick: number;
+}) {
   const user = ROLE_USER[role];
   const first = user.name.replace(/^Dr\.\s*/, '').split(' ')[0];
   return (
@@ -177,7 +194,14 @@ function DashboardScene({ role, active }: { role: SparkiRole; active: boolean })
         <Card title="Appointment Queue" meta="Next arrivals and where they are" link="Open">
           <div className={s.rowList}>
             {DASH_ROWS.map(([time, name, reason, status, kind], i) => (
-              <div key={name} className={s.row} data-active={i === 0}>
+              <div
+                key={name}
+                className={s.row}
+                data-active={i === 0}
+              >
+                {i === 0 && active && liveTick > 0 ? (
+                  <span key={liveTick} className={s.pulseSweep} aria-hidden="true" />
+                ) : null}
                 <span className={s.rowTime}>{time}</span>
                 <span className={s.avatar}>{kind === 'cat' ? <Cat /> : <Dog />}</span>
                 <span className={s.rowMain}>
@@ -227,36 +251,58 @@ function DashboardScene({ role, active }: { role: SparkiRole; active: boolean })
   );
 }
 
+// Which status group Maple truthfully belongs to while she's still ahead of
+// the exam room — checked in and intake both happen in/around the waiting
+// area, so she only moves groups once a veterinarian is ready for her.
+const GROUP_FOR_TONE: Record<string, number> = { waiting: 0, active: 0, exam: 1 };
+
 function TodayScene({ journey, active }: { journey: SparkiJourney; active: boolean }) {
-  const maplePill = journey.tone;
+  const mapleGroup = GROUP_FOR_TONE[journey.tone] ?? 1;
+  // The Sparki Pulse marks the one real handoff in this scene: Maple leaving
+  // the waiting area once a veterinarian is ready for her.
+  const isHandoff = journey.step === 3;
+  const groups: Array<[string, string, Array<[string, string, string, string, string]>]> = [
+    ['Waiting', 'var(--sk-waiting)', [['9:15', 'Luna Park', 'Vaccines + nails', 'Room 3', 'Tech: Sam']]],
+    ['In Exam', 'var(--sk-exam)', [['9:00', 'Oliver Tran', 'Derm recheck', 'Room 1', 'Dr. Okafor']]],
+    ['Checkout', 'var(--sk-checkout)', [['8:30', 'Willow Kim', 'Senior panel', 'Reception', 'Front desk']]],
+  ];
   return (
     <div className={s.scene} data-scene="today" data-active={active || undefined}>
       <div className={s.todayGrid}>
         <Card title="Today's Patient Flow" meta="Appointments & active visits" link="All statuses">
-          {(
-            [
-              ['Waiting', 'var(--sk-waiting)', [['9:15', 'Luna Park', 'Vaccines + nails', 'Room 3', 'Tech: Sam']]],
-              [
-                'In Exam',
-                'var(--sk-exam)',
-                [
-                  ['9:30', 'Maple Reyes', 'Wellness exam', 'Room 2', 'Dr. Reyes'],
-                  ['9:00', 'Oliver Tran', 'Derm recheck', 'Room 1', 'Dr. Okafor'],
-                ],
-              ],
-              ['Checkout', 'var(--sk-checkout)', [['8:30', 'Willow Kim', 'Senior panel', 'Reception', 'Front desk']]],
-            ] as Array<[string, string, Array<[string, string, string, string, string]>]>
-          ).map(([group, dot, rows]) => (
-            <div key={group} className={s.statusGroup} style={{ ['--dot' as string]: dot }}>
-              <div className={s.statusGroupHead}>
-                <i />
-                <span className={s.groupName}>{group}</span>
-                <strong>{rows.length}</strong>
-              </div>
-              {rows.map(([time, name, reason, room, who]) => {
-                const isMaple = name === 'Maple Reyes';
-                return (
-                  <div key={name} className={s.todayRow} data-active={isMaple}>
+          {groups.map(([group, dot, rows], groupIndex) => {
+            const hasMaple = groupIndex === mapleGroup;
+            return (
+              <div key={group} className={s.statusGroup} style={{ ['--dot' as string]: dot }}>
+                <div className={s.statusGroupHead}>
+                  <i />
+                  <span className={s.groupName}>{group}</span>
+                  <strong>{rows.length + (hasMaple ? 1 : 0)}</strong>
+                </div>
+                {hasMaple ? (
+                  <div
+                    key={`maple-${journey.step}`}
+                    className={isHandoff ? `${s.todayRow} ${s.pulse}` : s.todayRow}
+                    data-active="true"
+                  >
+                    <span className={s.rowTime}>9:05</span>
+                    <span className={s.miniCell}>
+                      <span className={s.avatar}>
+                        <Dog />
+                      </span>
+                      <span>
+                        <strong>Maple Reyes</strong>
+                        <span>Wellness exam</span>
+                      </span>
+                    </span>
+                    <span className={s.todayRowMeta}>Room 2</span>
+                    <span className={s.pill} data-tone={journey.tone}>
+                      {journey.label}
+                    </span>
+                  </div>
+                ) : null}
+                {rows.map(([time, name, reason, room, who]) => (
+                  <div key={name} className={s.todayRow}>
                     <span className={s.rowTime}>{time}</span>
                     <span className={s.miniCell}>
                       <span className={s.avatar}>{name === 'Oliver Tran' ? <Cat /> : <Dog />}</span>
@@ -266,14 +312,14 @@ function TodayScene({ journey, active }: { journey: SparkiJourney; active: boole
                       </span>
                     </span>
                     <span className={s.todayRowMeta}>{room}</span>
-                    <span className={s.pill} data-tone={isMaple ? maplePill : 'exam'}>
-                      {isMaple ? journey.label : who}
+                    <span className={s.pill} data-tone="exam">
+                      {who}
                     </span>
                   </div>
-                );
-              })}
-            </div>
-          ))}
+                ))}
+              </div>
+            );
+          })}
         </Card>
         <div className={s.rail}>
           <Card title="Maple Reyes" meta="Golden Retriever · Wellness exam">
@@ -331,7 +377,7 @@ const APPTS: Array<[number, number, number, string]> = [
   [4, 250, 48, 'var(--sk-completed)'],
 ];
 const APPT_TEXT: Array<[string, string, string]> = [
-  ['Maple Reyes', 'Wellness · Dr. Reyes', 'Checked in'],
+  ['Maple Reyes', 'Wellness · Dr. Reyes', 'Confirmed'],
   ['Pepper Doyle', 'Dental · Dr. Okafor', 'In progress'],
   ['Kobe Nash', 'Lameness · Dr. Reyes', 'Confirmed'],
   ['Luna Park', 'Vaccines · Tech', 'Arrived'],
@@ -413,9 +459,23 @@ function SchedulerScene({ active }: { active: boolean }) {
   );
 }
 
+const STAGE_LABELS = ['Intake', 'Exam', 'Plan', 'Client decision', 'Checkout', 'Record'];
+
+// The 8-step marketing journey and this workspace's own 6-stage visit
+// stepper describe the same visit at different grain. Treatment stays in
+// this same workspace (Sparki carries the visit forward rather than
+// switching screens), and Record intentionally shows Checkout as already
+// done — it happened in Billing, a different part of one connected system.
+function stageForStep(step: number): number {
+  if (step === 7) return 5; // Record
+  if (step === 5) return 2; // Treatment -> Plan
+  return 1; // Exam (and any other step reaching this scene) -> Exam
+}
+
 function PatientScene({ journey, active }: { journey: SparkiJourney; active: boolean }) {
-  const stages = ['Intake', 'Exam', 'Plan', 'Client decision', 'Checkout', 'Record'];
-  const activeStage = Math.min(stages.length - 1, Math.max(1, journey.step - 1));
+  const focus: 'exam' | 'treatment' | 'record' =
+    journey.step === 5 ? 'treatment' : journey.step === 7 ? 'record' : 'exam';
+  const activeStage = stageForStep(journey.step);
   return (
     <div className={s.scene} data-scene="patient" data-active={active || undefined}>
       <div className={s.ctxBar}>
@@ -434,7 +494,7 @@ function PatientScene({ journey, active }: { journey: SparkiJourney; active: boo
         </span>
       </div>
       <div className={s.progress}>
-        {stages.map((stage, i) => (
+        {STAGE_LABELS.map((stage, i) => (
           <i
             key={stage}
             data-state={i < activeStage ? 'done' : i === activeStage ? 'current' : undefined}
@@ -444,7 +504,7 @@ function PatientScene({ journey, active }: { journey: SparkiJourney; active: boo
         ))}
         <u />
       </div>
-      <div className={s.examGrid}>
+      <div className={s.examGrid} data-focus={focus}>
         <Card title="Physical Exam" meta="By system · Dr. Reyes">
           <div className={s.vitals}>
             {[
@@ -498,7 +558,7 @@ function PatientScene({ journey, active }: { journey: SparkiJourney; active: boo
             <span>$171</span>
           </div>
           <div className={s.msgLinked} style={{ marginTop: 10 }}>
-            ↳ <span>Client approved · {journey.detail}</span>
+            ↳ <span>{journey.note}</span>
           </div>
         </Card>
       </div>
@@ -571,6 +631,72 @@ function InventoryScene({ active }: { active: boolean }) {
           </tbody>
         </table>
       </Card>
+    </div>
+  );
+}
+
+const CHECKOUT_STAGES = ['Review', 'Payment', 'Done'];
+const CHECKOUT_LINE_ITEMS: Array<[string, string]> = [
+  ['Wellness exam', '$68'],
+  ['DHPP booster', '$32'],
+  ['Ear cytology', '$45'],
+  ['Otic medication', '$26'],
+];
+
+function BillingScene({ journey, active }: { journey: SparkiJourney; active: boolean }) {
+  return (
+    <div className={s.scene} data-scene="billing" data-active={active || undefined}>
+      <div className={s.ctxBar}>
+        <span className={s.avatar}>
+          <Dog />
+        </span>
+        <span className={s.ctxBarMain}>
+          <strong>Maple Reyes</strong>
+          <span>Wellness exam · Ready for checkout</span>
+        </span>
+      </div>
+      <div className={s.progress}>
+        {CHECKOUT_STAGES.map((stage, i) => (
+          <i key={stage} data-state={i < 1 ? 'done' : i === 1 ? 'current' : undefined}>
+            {stage}
+          </i>
+        ))}
+        <u />
+      </div>
+      <div className={s.examGrid}>
+        <Card title="Invoice" meta="Visit charges · Maple Reyes">
+          <p className={s.planHeading}>Authorized care</p>
+          {CHECKOUT_LINE_ITEMS.map(([line, price]) => (
+            <div key={line} className={s.planLine}>
+              <span>{line}</span>
+              <b>{price}</b>
+            </div>
+          ))}
+          <div className={s.planTotal}>
+            <span>Total due</span>
+            <span>$171</span>
+          </div>
+        </Card>
+        <div className={s.rail}>
+          <Card title="Payment" meta="Collected at checkout">
+            <div className={s.rowList}>
+              <div className={s.planLine}>
+                <span>Method</span>
+                <b>Card on file</b>
+              </div>
+              <div className={s.planLine}>
+                <span>Status</span>
+                <b>{journey.action}</b>
+              </div>
+            </div>
+          </Card>
+          <Card title="Discharge" meta="Before departure">
+            <div className={s.msgLinked}>
+              ↳ <span>{journey.detail}</span>
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
@@ -668,6 +794,18 @@ export function SparkiCanvas({
   const bar = TOPBAR[scene];
   const user = ROLE_USER[role];
   const activeNav = SCENE_NAV[scene];
+  const reducedMotion = useReducedMotion();
+
+  // A quiet "the clinic is operating" ambient loop, scoped to the dashboard
+  // scene only (the hero) so the journey canvas never idles on its own.
+  const [liveTick, setLiveTick] = useState(0);
+  useEffect(() => {
+    if (scene !== 'dashboard' || reducedMotion) return;
+    const id = setInterval(() => setLiveTick((tick) => tick + 1), 10000);
+    return () => clearInterval(id);
+  }, [scene, reducedMotion]);
+  const liveMinutes = 9 * 60 + 41 + liveTick;
+  const liveClock = `${Math.floor(liveMinutes / 60)}:${String(liveMinutes % 60).padStart(2, '0')} AM`;
 
   return (
     <div
@@ -685,7 +823,7 @@ export function SparkiCanvas({
           <i />
         </span>
         <span className={s.chromeUrl}>
-          <b>app.sparki.com</b> / {activeNav.toLowerCase().replace(/[^a-z]+/g, '-')}
+          <b>sparki.vet</b> / {activeNav.toLowerCase().replace(/[^a-z]+/g, '-')}
         </span>
         <span className={s.chromeTag}>Illustrative preview</span>
       </div>
@@ -697,7 +835,7 @@ export function SparkiCanvas({
             </span>
             <span className={s.collapse}>‹</span>
           </div>
-          <nav className={s.nav}>
+          <nav className={s.nav} key={scene}>
             {NAV.map((item) => (
               <span
                 key={item.label}
@@ -732,7 +870,7 @@ export function SparkiCanvas({
                 <div>
                   <span className={s.ctxStack}>
                     <strong>Tue, Sep 9</strong>
-                    <small>9:41 AM</small>
+                    <small>{liveClock}</small>
                   </span>
                 </div>
                 <div>
@@ -748,10 +886,11 @@ export function SparkiCanvas({
             </div>
           </div>
           <div className={s.stage}>
-            <DashboardScene role={role} active={scene === 'dashboard'} />
+            <DashboardScene role={role} active={scene === 'dashboard'} liveTick={liveTick} />
             <TodayScene journey={journey} active={scene === 'today'} />
             <SchedulerScene active={scene === 'scheduler'} />
             <PatientScene journey={journey} active={scene === 'patient'} />
+            <BillingScene journey={journey} active={scene === 'billing'} />
             <InventoryScene active={scene === 'inventory'} />
             <MessagesScene active={scene === 'messages'} />
           </div>

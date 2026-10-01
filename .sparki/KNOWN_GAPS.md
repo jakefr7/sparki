@@ -1,8 +1,8 @@
 # Known Gaps
 
 - The Playwright harness works, but the full browser suite has historical product/test drift. Treat failures as real findings and fix them when working in the affected surface; do not preserve them as an active phase exception.
-- Phone refills without an active visit need a defined standalone-invoice or encounter policy.
-- Printable medical records, visit summaries, discharge instructions, medication labels, and prescriptions need the requested example output and Packleader references.
+- Phone refills are approved to use a medication-only encounter with linked invoice. Implementation remains pending; the existing medication-profile refill action does not deduct stock.
+- Current-information discharge, signed-record/amendment, finalized-receipt and authorized-prescription PDF downloads are implemented locally. Medication label hardware/format, connected dispensing, and medication-only encounter billing remain unfinished; see questions for Anna.
 - RDVM intake needs a directory source and licensing decision.
 - FAS needs a defined scale and capture workflow.
 - Service markup needs a pricing rule before it can calculate a selling price.

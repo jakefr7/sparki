@@ -107,4 +107,13 @@ test('inventory search does not reload operational data and preserves the item v
   await page.setViewportSize({ width: 1024, height: 768 });
   await expect(page.getByRole('textbox', { name: 'Search items' })).toBeInViewport();
   await page.screenshot({ path: '/tmp/sparki-inventory-navigation.png' });
+  await page.getByRole('row', { name: /Carprofen 75 mg tablets/ }).click();
+  const drawer = page.locator('.item-drawer');
+  await expect(drawer.getByText('Available stock excludes reserved, quarantined, and expired quantities.')).toBeVisible();
+  await drawer.getByRole('button', { name: 'Adjust stock', exact: true }).click();
+  const modal = page.locator('.inventory-modal');
+  await expect(modal.getByRole('combobox', { name: 'Item', exact: true }).locator('option:checked')).toHaveText('Carprofen 75 mg tablets');
+  await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(drawer.getByRole('heading', { name: 'Carprofen 75 mg tablets' })).toBeVisible();
+
 });

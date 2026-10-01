@@ -1,6 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+
+// Next.js server-renders 'use client' components for the initial HTML, and
+// useLayoutEffect warns when it runs there. Resolve to a plain effect on the
+// server and the real layout effect once mounted in the browser, so the few
+// hooks here that must settle before first paint (no flash of the wrong
+// state) never do so at the cost of an SSR warning.
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 /**
  * Landing-page motion primitives — no animation-library dependency.
@@ -65,6 +72,61 @@ export function useReducedMotion(): boolean {
   return reduced;
 }
 
+/** True once the viewport is at least `px` wide — for gating desktop-only choreography. */
+export function useViewportAtLeast(px: number): boolean {
+  const [atLeast, setAtLeast] = useState(false);
+
+  useIsomorphicLayoutEffect(() => {
+    const query = window.matchMedia(`(min-width: ${px}px)`);
+    const sync = () => setAtLeast(query.matches);
+    sync();
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
+  }, [px]);
+
+  return atLeast;
+}
+
+// --- reveal on scroll -------------------------------------------------------
+
+/**
+ * Sets `data-revealed="true"` on `ref`'s element the first time it crosses
+ * into the viewport, then disconnects — for a one-time entrance (opacity/
+ * translate driven entirely by CSS reading the attribute). Reveals
+ * immediately when disabled (reduced motion, or no IntersectionObserver) so
+ * content is never stuck hidden.
+ */
+export function useRevealOnScroll<T extends HTMLElement>(
+  ref: React.RefObject<T | null>,
+  { enabled, rootMargin = '0px 0px -10% 0px' }: { enabled: boolean; rootMargin?: string },
+) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    if (!enabled || typeof IntersectionObserver === 'undefined') {
+      el.setAttribute('data-revealed', 'true');
+      return;
+    }
+
+    el.setAttribute('data-revealed', 'false');
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          el.setAttribute('data-revealed', 'true');
+          observer.disconnect();
+        }
+      },
+      { rootMargin, threshold: 0.15 },
+    );
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      el.setAttribute('data-revealed', 'true');
+    };
+  }, [ref, enabled, rootMargin]);
+}
+
 // --- scroll rail progress ----------------------------------------------------
 
 /**
@@ -94,7 +156,7 @@ export function useScrollRail(
   onProgressRef.current = onProgress;
   onStepRef.current = onStep;
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const el = ref.current;
     if (!el || !enabled) return;
 

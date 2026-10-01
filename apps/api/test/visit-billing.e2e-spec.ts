@@ -108,6 +108,32 @@ describe('Visit checkout billing (e2e)', () => {
     return finalized.body;
   }
 
+  describe('Patient document downloads', () => {
+    it('requires signoff, downloads all three PDF types, and leaves billing unchanged', async () => {
+      const { visitId, draft } = await createVisitReadyForCheckout('Document downloads');
+      const unsigned = await request(app.getHttpServer()).get(`/visits/${visitId}/documents/record`);
+      expect(unsigned.status).toBe(409);
+      const discharge = await request(app.getHttpServer()).get(`/visits/${visitId}/documents/discharge`);
+      expect(discharge.status).toBe(200);
+      expect(discharge.headers['content-type']).toContain('application/pdf');
+      expect(discharge.headers['cache-control']).toContain('no-store');
+      await finalizeRecord(visitId, draft);
+      const record = await request(app.getHttpServer()).get(`/visits/${visitId}/documents/record`);
+      expect(record.status).toBe(200);
+      expect(record.headers['content-disposition']).toContain('record-');
+      await request(app.getHttpServer()).get(`/visits/${visitId}/invoice`);
+      await finalizeInvoice(visitId);
+      const before = await request(app.getHttpServer()).get(`/visits/${visitId}/invoice`);
+      const receipt = await request(app.getHttpServer()).get(`/visits/${visitId}/documents/receipt`);
+      expect(receipt.status).toBe(200);
+      expect(receipt.headers['content-type']).toContain('application/pdf');
+      const after = await request(app.getHttpServer()).get(`/visits/${visitId}/invoice`);
+      expect(after.body).toEqual(before.body);
+      const missing = await request(app.getHttpServer()).get('/visits/nonexistent/documents/record');
+      expect(missing.status).toBe(404);
+    });
+  });
+
   describe('Invoice creation and totals', () => {
     it('creates an empty DRAFT invoice on first request and updates totals as lines are added', async () => {
       const { visitId } = await createVisitReadyForCheckout('Invoice totals');

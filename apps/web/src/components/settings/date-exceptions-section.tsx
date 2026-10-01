@@ -108,9 +108,8 @@ export function DateExceptionsSection() {
     <section className="settings-section" aria-labelledby="date-exceptions-heading">
       <h2 id="date-exceptions-heading">Date exceptions</h2>
       <p>
-        Close booking for one date, for the whole clinic or one provider. Times use the clinic time
-        zone. Weekly availability stays unchanged. Existing appointments are not cancelled; review
-        the Scheduler for any affected bookings.
+        Plan holidays and provider leave without changing your weekly schedule. Times use the clinic
+        time zone; existing appointments stay scheduled.
       </p>
       {loading ? <p role="status">Loading date exceptions…</p> : null}
       {error ? (
@@ -124,7 +123,7 @@ export function DateExceptionsSection() {
         </div>
       ) : null}
       {!loading && !error && !items.length ? (
-        <p>No date exceptions. Booking follows weekly availability.</p>
+        <p className="admin-empty">No date exceptions. Booking follows weekly availability.</p>
       ) : null}
       <button
         type="button"
@@ -138,13 +137,14 @@ export function DateExceptionsSection() {
         Add date exception
       </button>
       {editing ? (
-        <form onSubmit={submit}>
+        <form className="date-exceptions-editor" onSubmit={submit}>
           <fieldset disabled={pending} className="settings-form-grid">
             <legend>Close booking on a date</legend>
             <label>
               Date
               <input
                 type="date"
+                autoFocus
                 required
                 value={form.date}
                 onChange={(event) => setForm({ ...form, date: event.target.value })}
@@ -164,7 +164,7 @@ export function DateExceptionsSection() {
                 ))}
               </select>
             </label>
-            <label>
+            <label className="settings-checkbox">
               <input
                 type="checkbox"
                 checked={form.allDay}
@@ -204,20 +204,25 @@ export function DateExceptionsSection() {
                 onChange={(event) => setForm({ ...form, reason: event.target.value })}
               />
             </label>
-            <button type="submit">{pending ? 'Saving…' : 'Save date exception'}</button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(false);
-                setError(null);
-              }}
-            >
-              Cancel
-            </button>
+            <div className="admin-form-actions">
+              <button className="button-primary" type="submit">
+                {pending ? 'Saving…' : 'Save date exception'}
+              </button>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => {
+                  setEditing(false);
+                  setError(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </fieldset>
         </form>
       ) : null}
-      <div className="scheduler-type-list">
+      <div className="scheduler-type-list date-exceptions-list">
         {items.map((item) => (
           <article className="scheduler-type-card" key={item.id}>
             <div>
@@ -232,7 +237,12 @@ export function DateExceptionsSection() {
                 · {item.reason}
               </p>
             </div>
-            <button type="button" className="button-secondary" disabled={pending} onClick={() => void remove(item)}>
+            <button
+              type="button"
+              className="button-secondary"
+              disabled={pending}
+              onClick={() => void remove(item)}
+            >
               Remove exception
             </button>
           </article>

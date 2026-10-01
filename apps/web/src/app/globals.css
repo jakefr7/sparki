@@ -14110,3 +14110,88 @@ button.settings-nav__sign-out:hover {
   .scheduler-toolbar__period strong { font-size: .88rem; }
   .scheduler-live-status { margin-left: 0; width: 100%; }
 }
+
+/* Clinic administration shares Sparki's quiet surfaces and teal emphasis. */
+.admin-settings { display: grid; gap: 1.25rem; min-width: 0; }
+.admin-settings [hidden] { display: none !important; }
+.admin-settings__heading { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: .5rem 0; }
+.admin-settings__heading h2 { margin: .25rem 0 .4rem; font-size: clamp(1.3rem, 2vw, 1.8rem); letter-spacing: -.035em; color: var(--text-primary); }
+.admin-settings__heading p:not(.eyebrow) { margin: 0; color: var(--text-secondary); font-size: .9rem; }
+.admin-settings__heading a { flex-shrink: 0; text-decoration: none; display: flex; gap: .6rem; align-items: center; }
+.admin-settings__nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; padding: .4rem; background: var(--surface); border: 1px solid var(--border); border-radius: 1rem; }
+.admin-settings__nav button { display: flex; gap: .7rem; align-items: flex-start; text-align: left; padding: .85rem .7rem; border: 1px solid transparent; border-radius: .75rem; background: transparent; color: var(--text-secondary); cursor: pointer; font: inherit; min-width: 0; }
+.admin-settings__nav button[aria-current] { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); color: var(--text-primary); }
+.admin-settings__nav button:hover { background: var(--surface-secondary); }
+.admin-settings__nav button:focus-visible, .admin-settings button:focus-visible, .admin-settings a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.admin-settings__nav strong { display: block; font-size: .84rem; line-height: 1.5; }
+.admin-settings__nav small { display: block; margin-top: .25rem; font-size: .74rem; font-weight: 400; line-height: 1.5; color: var(--text-secondary); }
+.admin-settings__icon { display: grid; place-items: center; color: var(--accent); padding-top: .15rem; }
+.admin-settings__panel { display: grid; gap: 1.25rem; }
+.admin-settings .settings-section, .admin-settings .settings-card { padding: 1.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); box-shadow: 0 4px 18px rgba(30,55,70,.025); min-width: 0; }
+.admin-settings .settings-section h2, .admin-settings .settings-card h2 { margin: 0 0 .35rem; font-size: 1.15rem; letter-spacing: -.02em; }
+.admin-settings p { line-height: 1.6; }
+.admin-settings .settings-section > p, .admin-settings .settings-section-heading p, .admin-settings .visit-policy-settings p { color: var(--text-secondary); font-size: .86rem; margin-top: .25rem; }
+.admin-settings .scheduler-settings-stack { gap: .9rem; }
+.admin-settings .scheduler-settings-card { border-radius: .8rem; background: var(--surface); padding: 1.1rem; }
+.admin-workflow__list { display: grid; margin-top: 1.5rem; }
+.admin-workflow__row { display: grid; grid-template-columns: 2rem minmax(0,1fr) auto; align-items: center; gap: .85rem; padding: .85rem 0; border-bottom: 1px solid var(--border); }
+.admin-workflow__row:last-child { border-bottom: 0; }
+.admin-workflow__number { color: var(--text-secondary); font-size: .75rem; font-variant-numeric: tabular-nums; }
+.admin-workflow__row .scheduler-type-card__main strong, .admin-workflow__row .scheduler-type-card__main span { white-space: normal; }
+.admin-workflow__row .button-secondary { min-width: 4rem; font-size: .82rem; padding: .4rem .7rem; }
+.admin-inline-editor { grid-column: 2 / -1; border-radius: .8rem; background: var(--surface-secondary); border: 1px solid var(--border); padding: 1rem; margin: .3rem 0; }
+.admin-form-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.4fr) 6rem; gap: 1rem; border: 0; padding: 0; margin: 0; min-width: 0; }
+.admin-form-grid legend { padding: 0 0 1rem; font-weight: 700; font-size: .9rem; }
+.admin-settings label { font-size: .85rem; }
+.admin-form-grid label, .admin-settings .settings-form-grid label { display: grid; gap: .4rem; min-width: 0; color: var(--text-secondary); font-weight: 600; }
+.admin-settings input:not([type='checkbox']), .admin-settings select, .admin-settings textarea { min-width: 0; width: 100%; min-height: 2.6rem; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: .6rem; color: var(--text-primary); background: var(--surface); font: inherit; box-sizing: border-box; }
+.admin-settings input[type='color'] { padding: .25rem; }
+.admin-form-actions { display: flex; flex-wrap: wrap; gap: .6rem; grid-column: 1 / -1; align-items: center; }
+.admin-settings .visit-policy-settings__toggle { background: var(--surface-secondary); border-color: var(--border); margin-top: .6rem; color: var(--text-primary); cursor: pointer; }
+.admin-settings .visit-policy-settings__toggle input { flex-shrink: 0; }
+.admin-settings .visit-policy-settings__signers { padding-top: .5rem; }
+.admin-settings .visit-policy-settings__signers + .visit-policy-settings__signers { border-top: 1px solid var(--border); padding-top: 1.25rem; }
+.admin-settings .visit-policy-settings__signers h3 { margin: 0; font-size: 1rem; }
+.admin-empty { border: 1px dashed var(--border); background: var(--surface-secondary); border-radius: .75rem; padding: 1rem; }
+.admin-feedback { padding: .75rem 1rem; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-radius: .6rem; color: var(--text-primary); }
+.admin-feedback--error { border: 1px solid #d99090; }
+.admin-booking-summary { display: flex; gap: 1rem; justify-content: space-between; align-items: center; padding: 1rem; margin: 1.25rem 0; border-radius: .75rem; background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border)); }
+.admin-booking-summary strong { font-size: .9rem; }
+.admin-booking-summary p { margin: .25rem 0 0; font-size: .82rem; color: var(--text-secondary); }
+.admin-settings .date-exceptions-editor { margin: 1rem 0; padding: 1rem; background: var(--surface-secondary); border-radius: .8rem; border: 1px solid var(--border); }
+.admin-settings .date-exceptions-editor fieldset { border: 0; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; min-width: 0; }
+.admin-settings .date-exceptions-editor legend { font-weight: 700; padding-bottom: 1rem; }
+.admin-settings .date-exceptions-editor .settings-checkbox { display: flex; align-items: center; }
+.admin-settings .date-exceptions-editor .settings-checkbox input { width: 1rem; height: 1rem; accent-color: var(--accent); }
+.admin-settings .date-exceptions-list { margin-top: 1rem; }
+@media (max-width: 1100px) { .admin-settings__nav { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 720px) {
+  .admin-settings__heading { align-items: flex-start; flex-direction: column; gap: 1rem; }
+  .admin-settings__nav { gap: .25rem; padding: .3rem; }
+  .admin-settings__nav button { padding: .65rem .5rem; gap: .4rem; }
+  .admin-settings__nav small { display: none; }
+  .admin-settings__nav strong { font-size: .78rem; }
+  .admin-settings .settings-section, .admin-settings .settings-card { padding: 1rem; }
+  .admin-inline-editor { grid-column: 1 / -1; }
+  .admin-form-grid, .admin-settings .date-exceptions-editor fieldset { grid-template-columns: 1fr; }
+  .admin-workflow__row { grid-template-columns: 1.3rem minmax(0,1fr) auto; gap: .5rem; }
+  .admin-booking-summary { align-items: flex-start; flex-direction: column; }
+}
+.admin-settings .button-primary, .admin-settings .scheduler-primary-action { min-height: 2.5rem; padding: .6rem 1rem; border: 1px solid var(--accent); border-radius: .6rem; background: var(--accent); color: #fff; font: inherit; font-size: .84rem; font-weight: 750; cursor: pointer; box-shadow: none; }
+.admin-settings .button-secondary { min-height: 2.5rem; padding: .5rem .85rem; border: 1px solid var(--border); border-radius: .6rem; background: var(--surface); color: var(--text-primary); font: inherit; font-size: .84rem; font-weight: 650; cursor: pointer; box-shadow: none; }
+.admin-settings .button-secondary:hover:not(:disabled) { background: var(--surface-secondary); border-color: var(--accent); }
+.admin-settings .button-primary:hover:not(:disabled) { filter: brightness(.94); }
+.admin-settings button:disabled { opacity: .55; cursor: default; }
+.admin-editor-fields { display: grid; gap: 1rem; border: 0; padding: 0; margin: 0; min-width: 0; }
+.admin-settings .admin-empty { color: var(--text-secondary); font-size: .85rem; line-height: 1.6; }
+.admin-settings .schedule-blocks-header__actions { flex-shrink: 0; flex-wrap: nowrap; }
+@media (max-width: 640px) {
+  .settings-page--admin .settings-nav { flex-wrap: nowrap; overflow-x: auto; padding: .2rem; scrollbar-width: thin; }
+  .settings-page--admin .settings-nav li { flex: 0 0 auto; }
+  .settings-page--admin .settings-nav__sign-out-row { margin: 0; padding: 0; border: 0; }
+}
+@media (max-width: 640px) {
+  .settings-page--admin { grid-template-columns: minmax(0, 1fr); }
+  .settings-page--admin > nav { min-width: 0; }
+  .settings-page--admin .settings-nav { width: 100%; box-sizing: border-box; }
+}

@@ -49,7 +49,7 @@ export default function SettingsPage() {
 
   return (
     <DashboardShell activeHref="/settings" eyebrow="Settings" title="Settings">
-      <div className="settings-page">
+      <div className={activeTab === 'admin' ? 'settings-page settings-page--admin' : 'settings-page'}>
         <nav aria-label="Settings sections">
           <ul className="settings-nav">
             <li><button type="button" className={activeTab === 'profile' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'profile' ? 'page' : undefined} onClick={() => setActiveTab('profile')}>Profile</button></li>

@@ -36,6 +36,20 @@ Use these defaults for local web/e2e work unless the user explicitly says otherw
 - Avoid port `3000` for e2e web runs; it is commonly occupied by another local service in this workspace.
 - When starting servers manually, run Playwright with `PLAYWRIGHT_SKIP_WEB_SERVER=1`, `API_URL=http://127.0.0.1:4000`, and `WEB_PORT=3001`.
 
+## Deploying to Staging
+
+Staging (`staging.sparki.vet`) is a self-hosted DigitalOcean VPS (`/opt/sparki`, `sparki-api` and `sparki-web` as systemd services, Caddy as reverse proxy) with no auto-deploy on push — pushing to `main` only updates GitHub. The one sanctioned way for an agent to update it is the `Deploy Staging` GitHub Actions workflow (`.github/workflows/deploy-staging.yml`, manual `workflow_dispatch` only). It SSHes in, fetches and hard-resets `/opt/sparki` to `origin/main`, runs `pnpm install --frozen-lockfile`, applies pending Prisma migrations against the staging (Neon) database, runs `pnpm build`, restarts both systemd units, verifies they're active, and runs HTTP health checks (`/health/ready` for the API, `/` for web) before reporting the deployed commit SHA. It never touches staging's `.env`.
+
+**When the user says "update staging," "deploy this to staging," "commit, push, and update staging," or similar** — this is what they mean. Do not SSH into the VPS by hand and do not improvise another deploy path; use the workflow.
+
+1. If there are uncommitted changes the user wants deployed: commit them, then `git push origin main`.
+2. If the target commit is already on `main`: skip straight to the next step.
+3. Trigger the deploy: `gh workflow run deploy-staging.yml`.
+4. Optionally watch it to completion: `gh run watch "$(gh run list --workflow=deploy-staging.yml --limit=1 --json databaseId -q '.[0].databaseId')"` (or `gh run list --workflow=deploy-staging.yml --limit=1` to just check status without blocking).
+5. Report back clearly: whether the deploy succeeded or failed, and which commit SHA is now live (the workflow log's final line, or re-derive it with `git rev-parse origin/main` if the run succeeded).
+
+This workflow is deliberately **not** wired to run automatically on push — every run is either a human clicking "Run workflow" or an agent invoking it because it was explicitly asked to. Required repo secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, optional `STAGING_SSH_PORT`) hold the SSH credential only; no application secret lives in the workflow or in GitHub — staging's `.env` stays on the VPS.
+
 ## Handoff Expectations
 
 When work crosses roles:

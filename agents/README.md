@@ -48,7 +48,7 @@ Staging (`staging.sparki.vet`) is a self-hosted DigitalOcean VPS (`/opt/sparki`,
 4. Optionally watch it to completion: `gh run watch "$(gh run list --workflow=deploy-staging.yml --limit=1 --json databaseId -q '.[0].databaseId')"` (or `gh run list --workflow=deploy-staging.yml --limit=1` to just check status without blocking).
 5. Report back clearly: whether the deploy succeeded or failed, and which commit SHA is now live (the workflow log's final line, or re-derive it with `git rev-parse origin/main` if the run succeeded).
 
-This workflow is deliberately **not** wired to run automatically on push — every run is either a human clicking "Run workflow" or an agent invoking it because it was explicitly asked to. Required repo secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, optional `STAGING_SSH_PORT`) hold the SSH credential only; no application secret lives in the workflow or in GitHub — staging's `.env` stays on the VPS.
+This workflow is deliberately **not** wired to run automatically on push — every run is either a human clicking "Run workflow" or an agent invoking it because it was explicitly asked to. It connects on port 22 with strict host-key checking (no TOFU, no `StrictHostKeyChecking=no`) and runs with `permissions: contents: read`. Required repo secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`) hold the SSH credential and the server's trusted host key only; no application secret lives in the workflow or in GitHub — staging's `.env` stays on the VPS.
 
 ## Handoff Expectations
 

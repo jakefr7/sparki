@@ -14,24 +14,6 @@ function nameOf(user: { firstName: string; lastName: string; displayName: string
 @Injectable()
 export class MessagingService {
   constructor(private readonly attachmentStorage: AttachmentStorageService) {}
-  async clientThreads(user: AuthenticatedUser, search?: string) {
-    const term = search?.trim();
-    return prisma.clientCommunicationThread.findMany({ where: { organizationId: user.organizationId, locationId: user.locationId, ...(term ? { OR: [{ client: { firstName: { contains: term, mode: 'insensitive' } } }, { client: { lastName: { contains: term, mode: 'insensitive' } } }, { patient: { name: { contains: term, mode: 'insensitive' } } }, { phone: { contains: term } }] } : {}) }, include: { client: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, patient: { select: { id: true, name: true, species: true, breed: true } }, assignedTo: { select: personSelect }, messages: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { lastMessageAt: 'desc' }, take: 100 });
-  }
-  async clientThread(user: AuthenticatedUser, id: string) {
-    const thread = await prisma.clientCommunicationThread.findFirst({ where: { id, organizationId: user.organizationId, locationId: user.locationId }, include: { client: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } }, patient: { select: { id: true, name: true, species: true, breed: true } }, assignedTo: { select: personSelect }, messages: { include: { senderUser: { select: personSelect } }, orderBy: { createdAt: 'asc' }, take: 200 } } });
-    if (!thread) throw new NotFoundException('Client conversation not found.');
-    if (thread.isUnread) await prisma.clientCommunicationThread.update({ where: { id }, data: { isUnread: false } });
-    return thread;
-  }
-  async sendClientMessage(user: AuthenticatedUser, id: string, body: string) {
-    await this.clientThread(user, id);
-    return prisma.$transaction(async (tx) => { const message = await tx.clientCommunicationMessage.create({ data: { organizationId: user.organizationId, threadId: id, senderUserId: user.id, direction: 'OUTBOUND', body: cleanBody(body) } }); await tx.clientCommunicationThread.update({ where: { id }, data: { lastMessageAt: message.createdAt, status: 'WAITING', isUnread: false } }); return message; });
-  }
-  async updateClientThread(user: AuthenticatedUser, id: string, body: { status?: 'OPEN' | 'WAITING' | 'CLOSED'; isUnread?: boolean }) {
-    await this.clientThread(user, id);
-    return prisma.clientCommunicationThread.update({ where: { id }, data: { ...(body.status ? { status: body.status } : {}), ...(body.isUnread !== undefined ? { isUnread: body.isUnread } : {}) } });
-  }
   async directory(user: AuthenticatedUser, search?: string) {
     const people = await prisma.user.findMany({
       where: { organizationId: user.organizationId, isActive: true, role: { in: [...staffRoles] }, id: { not: user.id },

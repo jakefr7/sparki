@@ -1,5 +1,6 @@
 'use client';
 
+import { AppointmentTextStatus } from './appointment-text-status';
 import Link from 'next/link';
 import {
   useCallback,
@@ -1738,6 +1739,7 @@ export function AppointmentDetailPopover({
           <div><dt>Room</dt><dd>{appointment.room ?? 'Not assigned'}</dd></div>
           <div><dt>Schedule color</dt><dd><span className="scheduler-color-readout" style={{ '--scheduler-readout-color': color } as CSSProperties}>{appointment.colorKey ? appointmentColorLabel(appointment.colorKey) : 'Type color'}</span></dd></div>
         </dl>
+        <AppointmentTextStatus appointmentId={appointment.id} />
         {isPastAppointment ? (
           <div className="appointment-viewer__note appointment-viewer__note--read-only">
             <div><span>Appointment note</span><small>Historical appointment · View only</small></div>

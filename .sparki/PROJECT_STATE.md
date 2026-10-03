@@ -19,7 +19,7 @@ For user-authorized staging testing, Codex and Claude should read [shared stagin
 ## Partial or intentionally bounded
 
 - Billing records clinic-managed invoice and external-payment state; Sparki does not process or verify card/bank payments.
-- Client SMS remains simulated and is represented as simulated rather than externally delivered.
+- Client texting has a real backend (2026-10-02, local only) but no provider account or clinic number, so every location remains in simulation and is represented as simulated rather than externally delivered.
 - Patient-profile invoices currently require an active visit for new charges.
 - Behavior/FAS has an at-a-glance profile location, but FAS capture is not modeled yet.
 - Service markup is stored as metadata but does not alter price until its calculation policy is defined.

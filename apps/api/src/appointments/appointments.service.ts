@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { prisma, type AppointmentSource, type AppointmentState, type Prisma } from '@sparki/db';
 import { assertBelongsToOrganization } from '../common/assert-organization-scope';
+import { normalizeUsPhone } from '../common/phone';
 import type {
   CreateAppointmentInput,
   CreateAppointmentWithNewPatientInput,
@@ -241,6 +242,8 @@ export class AppointmentsService {
           email: input.client.email ?? null,
           phone: input.client.phone ?? null,
           alternatePhone: input.client.alternatePhone ?? null,
+          phoneE164: normalizeUsPhone(input.client.phone),
+          alternatePhoneE164: normalizeUsPhone(input.client.alternatePhone),
           preferredContactMethod: input.client.preferredContactMethod ?? null,
           addressLine1: input.client.addressLine1 ?? null,
           addressLine2: input.client.addressLine2 ?? null,

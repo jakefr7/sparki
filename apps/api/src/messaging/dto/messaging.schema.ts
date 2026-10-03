@@ -33,4 +33,3 @@ export type UpdateMembershipInput = z.infer<typeof updateMembershipSchema>;
 export const updateMessageSchema = z.object({ body: z.string().trim().min(1).max(10000).optional(), deleted: z.boolean().optional() });
 export type UpdateMessageInput = z.infer<typeof updateMessageSchema>;
 export const reactionSchema = z.object({ emoji: z.string().min(1).max(16) });
-export const sendClientMessageSchema = z.object({ body: z.string().trim().min(1).max(1600) });

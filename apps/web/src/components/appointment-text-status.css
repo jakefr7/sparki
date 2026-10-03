@@ -1,0 +1,41 @@
+.appointment-text-status {
+  border: 1px solid var(--color-border, #dce4e7);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 14px 0;
+  text-align: left;
+  font-size: 13px;
+}
+.appointment-text-status h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+.appointment-text-status p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.appointment-text-status > small {
+  display: block;
+  color: var(--color-text-muted, #66777b);
+  font-size: 11px;
+  margin-top: 10px;
+}
+.appointment-text-status__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border, #dce4e7);
+}
+.appointment-text-status__row strong {
+  font-weight: 600;
+}
+.appointment-text-status__row small {
+  grid-column: 1/-1;
+  color: var(--color-text-muted, #66777b);
+}
+.appointment-text-status a {
+  display: inline-block;
+  margin-top: 10px;
+  color: #176f69;
+}

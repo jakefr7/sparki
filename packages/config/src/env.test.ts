@@ -169,6 +169,23 @@ describe('loadApiEnv', () => {
     } as NodeJS.ProcessEnv)).toThrow(/RESEND_API_KEY and EMAIL_FROM are required together/);
   });
 
+  it('rejects a Telnyx API key without the webhook public key', () => {
+    expect(() => loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      TELNYX_API_KEY: 'KEY_example',
+    } as NodeJS.ProcessEnv)).toThrow(/TELNYX_API_KEY and TELNYX_PUBLIC_KEY are required together/);
+  });
+
+  it('accepts complete Telnyx configuration', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      TELNYX_API_KEY: 'KEY_example',
+      TELNYX_PUBLIC_KEY: 'cHVibGljLWtleS1leGFtcGxl',
+    } as NodeJS.ProcessEnv);
+
+    expect(env.TELNYX_PUBLIC_KEY).toBe('cHVibGljLWtleS1leGFtcGxl');
+  });
+
   it('boots in production with no storage, Stripe, or email configured', () => {
     const env = loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',

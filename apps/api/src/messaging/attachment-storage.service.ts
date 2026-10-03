@@ -34,6 +34,14 @@ export class AttachmentStorageService {
     return key.startsWith(`organizations/${organizationId}/patients/${patientId}/photo/`) && !key.includes('..');
   }
 
+  clientCommunicationKey(organizationId: string, locationId: string): string {
+    return `organizations/${organizationId}/locations/${locationId}/client-communication/${randomUUID()}`;
+  }
+
+  clientCommunicationBelongsTo(key: string, organizationId: string, locationId: string): boolean {
+    return key.startsWith(`organizations/${organizationId}/locations/${locationId}/client-communication/`) && !key.includes('..');
+  }
+
   belongsTo(key: string, organizationId: string, locationId: string): boolean {
     return key.startsWith(`organizations/${organizationId}/locations/${locationId}/messaging/`) && !key.includes('..');
   }

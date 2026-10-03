@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@sparki/db';
 import { clientFuzzyMatchCondition, clientNameSimilarity } from '../common/client-fuzzy-match.sql';
+import { normalizeUsPhone } from '../common/phone';
 import type { CreateClientInput } from './dto/create-client.schema';
 import type { UpdateClientInput } from './dto/update-client.schema';
 
@@ -24,6 +25,8 @@ export class ClientsService {
         email: input.email ?? null,
         phone: input.phone ?? null,
         alternatePhone: input.alternatePhone ?? null,
+        phoneE164: normalizeUsPhone(input.phone),
+        alternatePhoneE164: normalizeUsPhone(input.alternatePhone),
         preferredContactMethod: input.preferredContactMethod ?? null,
         addressLine1: input.addressLine1 ?? null,
         addressLine2: input.addressLine2 ?? null,
@@ -49,7 +52,10 @@ export class ClientsService {
 
   async update(id: string, organizationId: string, input: UpdateClientInput) {
     const existing = await this.findById(id, organizationId);
-    const data = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    const data: Record<string, unknown> = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    // Client texting matches numbers through these normalized copies.
+    if (input.phone !== undefined) data.phoneE164 = normalizeUsPhone(input.phone);
+    if (input.alternatePhone !== undefined) data.alternatePhoneE164 = normalizeUsPhone(input.alternatePhone);
 
     return prisma.$transaction(async (tx) => {
       const updated = await tx.client.update({ where: { id }, data });

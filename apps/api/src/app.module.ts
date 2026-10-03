@@ -5,6 +5,7 @@ import { AppointmentsModule } from './appointments/appointments.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { ClientsModule } from './clients/clients.module';
+import { ClientCommunicationModule } from './client-communication/client-communication.module';
 import { ClinicModule } from './clinic/clinic.module';
 import { DashboardStatusColorsModule } from './dashboard-status-colors/dashboard-status-colors.module';
 import { HealthModule } from './health/health.module';
@@ -37,6 +38,7 @@ import { InventoryModule } from './inventory/inventory.module';
     OperationsModule,
     AddressModule,
     MessagingModule,
+    ClientCommunicationModule,
     InventoryModule,
     BillingModule,
     ClinicModule,

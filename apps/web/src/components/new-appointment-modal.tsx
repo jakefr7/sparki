@@ -1,5 +1,6 @@
 'use client';
 
+import { AppointmentTextStatus } from './appointment-text-status';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
@@ -1167,7 +1168,7 @@ export function AppointmentConfirmationModal({ appointment, onClose, onEdit }: {
           <div><dt>Provider</dt><dd>{appointment.provider?.displayName ?? 'Any available provider'}</dd></div>
           <div><dt>Client</dt><dd>{appointment.client ? `${appointment.client.firstName} ${appointment.client.lastName}` : 'Not listed'}</dd></div>
         </dl>
-        <p className="appointment-confirmation__note">The appointment was saved successfully. Confirmation messages are managed separately.</p>
+        <AppointmentTextStatus appointmentId={appointment.id} />
         <div className="appointment-confirmation__actions">
           <button type="button" className="scheduler-secondary-action" onClick={onEdit}>Edit Appointment</button>
           <button type="button" className="scheduler-primary-action" onClick={onClose}>Done</button>

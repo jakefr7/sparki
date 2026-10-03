@@ -6,16 +6,18 @@ import { DashboardShell } from '../../components/dashboard-shell';
 import { AdminSection } from '../../components/settings/admin-section';
 import { AppearanceSection } from '../../components/settings/appearance-section';
 import { ProfileSection } from '../../components/settings/profile-section';
+import { AppointmentTextSettings } from '../../components/settings/appointment-text-settings';
 import { TeamSection } from '../../components/settings/team-section';
 import { useCurrentUser } from '../../lib/use-current-user';
 import { MANAGE_ADMIN_SETTINGS } from '../../lib/permissions';
 
-type TabId = 'profile' | 'appearance' | 'admin' | 'team';
+type TabId = 'profile' | 'appearance' | 'admin' | 'team' | 'texts';
 
 export default function SettingsPage() {
   const { user, loading } = useCurrentUser();
   const isAdmin = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
   const canManageTeam = !loading && (user?.role === 'OWNER' || user?.role === 'PRACTICE_MANAGER');
+  const [textsVisited, setTextsVisited] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('profile');
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -68,6 +70,7 @@ export default function SettingsPage() {
               </button>
             </li>
             {canManageTeam ? <li><button type="button" className={activeTab === 'team' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>Team</button></li> : null}
+            {canManageTeam && <li><button type="button" className={activeTab === 'texts' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'texts' ? 'page' : undefined} onClick={() => { setTextsVisited(true); setActiveTab('texts'); }}>Appointment texts</button></li>}
             {isAdmin ? (
               <li>
                 <button
@@ -93,6 +96,7 @@ export default function SettingsPage() {
         </nav>
 
         <div className="settings-sections-stack">
+          {textsVisited && canManageTeam && <div hidden={activeTab !== 'texts'}><AppointmentTextSettings /></div>}
           {activeTab === 'profile' && <ProfileSection />}
           {activeTab === 'appearance' && <AppearanceSection />}
           {activeTab === 'admin' && isAdmin && <AdminSection />}

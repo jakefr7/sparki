@@ -47,6 +47,21 @@ export class DevelopmentUserService {
       },
     });
 
+    // The development clinic is a demo clinic: client texting runs in
+    // labelled simulation here. A real clinic has no channel, and no
+    // Communication tab, until its number is registered and approved (see
+    // ClientTextingReadinessService). Never replaces an existing channel.
+    await prisma.clientMessagingChannel.upsert({
+      where: { locationId: location.id },
+      update: {},
+      create: {
+        organizationId: organization.id,
+        locationId: location.id,
+        provider: 'SIMULATED',
+        status: 'ACTIVE',
+      },
+    });
+
     const user = await prisma.user.upsert({
       where: { id: DEV_USER_ID },
       update: {

@@ -75,6 +75,15 @@ export const apiEnvSchema = baseEnvSchema.extend({
   // Credentials are required together.
   RESEND_API_KEY: optionalString,
   EMAIL_FROM: optionalString,
+
+  // Client texting through Telnyx (apps/api/src/client-communication).
+  // Unset means no location can text for real: locations without a
+  // registered sender number stay in clearly labelled simulation. The public
+  // key verifies inbound webhooks, so it is required together with the API
+  // key — sending without being able to trust delivery/reply webhooks would
+  // record states Sparki cannot stand behind.
+  TELNYX_API_KEY: optionalString,
+  TELNYX_PUBLIC_KEY: optionalString,
 }).superRefine((env, ctx) => {
   const workosValues = [env.WORKOS_API_KEY, env.WORKOS_CLIENT_ID, env.WORKOS_COOKIE_PASSWORD];
   const configuredValues = workosValues.filter(Boolean).length;
@@ -111,6 +120,11 @@ export const apiEnvSchema = baseEnvSchema.extend({
   const emailConfigured = emailValues.filter(Boolean).length;
   if (emailConfigured > 0 && emailConfigured < emailValues.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'RESEND_API_KEY and EMAIL_FROM are required together', path: ['RESEND_API_KEY'] });
+  }
+  const telnyxValues = [env.TELNYX_API_KEY, env.TELNYX_PUBLIC_KEY];
+  const telnyxConfigured = telnyxValues.filter(Boolean).length;
+  if (telnyxConfigured > 0 && telnyxConfigured < telnyxValues.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'TELNYX_API_KEY and TELNYX_PUBLIC_KEY are required together', path: ['TELNYX_API_KEY'] });
   }
 });
 

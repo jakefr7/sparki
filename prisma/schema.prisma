@@ -133,6 +133,8 @@ model Organization {
   clinicalAttachmentEvents     ClinicalAttachmentEvent[]
   clientCommunicationThreads   ClientCommunicationThread[]
   clientCommunicationMessages  ClientCommunicationMessage[]
+  clientMessagingChannels      ClientMessagingChannel[]
+  clientTextingConsents        ClientTextingConsent[]
   visitTransitions             VisitTransition[]
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
@@ -173,6 +175,8 @@ model Location {
   tasks                        Task[]
   conversations                MessagingConversation[]
   clientCommunicationThreads   ClientCommunicationThread[]
+  clientMessagingChannel       ClientMessagingChannel?
+  appointmentNotificationSettings AppointmentNotificationSettings?
   visitTransitions             VisitTransition[]
   visitWorkItems               VisitWorkItem[]
   visitExceptions              VisitException[]
@@ -525,6 +529,12 @@ model Client {
   email                  String?
   phone                  String?
   alternatePhone         String?
+  // Normalized (E.164) copies of phone / alternatePhone, written by the API
+  // wherever those are written (see common/phone.ts). Null when the entered
+  // value is not a complete US/Canada number. Used only to match a texting
+  // number to client records; the entered value above stays the display truth.
+  phoneE164              String?
+  alternatePhoneE164     String?
   preferredContactMethod String?
 
   // Structured owner address (Phase 2: address autocomplete). Kept as
@@ -561,6 +571,7 @@ model Client {
   appointments         Appointment[]
   visits               Visit[]
   communicationThreads ClientCommunicationThread[]
+  communicationMessages ClientCommunicationMessage[]
   clinicalAttachments  ClinicalAttachment[]
   invoices             Invoice[]
   // Fuzzy/substring matching for Patient Search's "search by client name";
@@ -569,6 +580,8 @@ model Client {
   // CREATE INDEX this can't express in Prisma schema syntax.
 
   @@index([organizationId])
+  @@index([organizationId, phoneE164])
+  @@index([organizationId, alternatePhoneE164])
 }
 
 enum PatientStatus {
@@ -625,7 +638,7 @@ model Patient {
   medicalRecord        MedicalRecord?
   patientAlerts        PatientAlert[]
   medications          PatientMedication[]
-  communicationThreads ClientCommunicationThread[]
+  communicationMessages ClientCommunicationMessage[]
   ClinicalAttachment   ClinicalAttachment[]
   invoices             Invoice[]
 
@@ -871,6 +884,8 @@ model Appointment {
   createdBy              User?                   @relation("AppointmentCreatedBy", fields: [createdById], references: [id])
   visit                  Visit?
   changes                AppointmentChange[]
+  communicationMessages  ClientCommunicationMessage[]
+  clientNotifications    AppointmentNotification[]
 
   @@index([organizationId])
   @@index([locationId, scheduledAt])
@@ -890,6 +905,11 @@ model AppointmentChange {
   before         Json
   after          Json
   createdAt      DateTime @default(now())
+  // When the client-notification planner finished with this change (see
+  // AppointmentNotification). An operational marker, not audit content: this
+  // log is written in the same transaction as the appointment change, which
+  // is what makes it a reliable trigger for confirmations and reminders.
+  clientNotificationsPlannedAt DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id])
   location     Location     @relation(fields: [locationId], references: [id])
@@ -899,6 +919,7 @@ model AppointmentChange {
   @@index([organizationId, createdAt])
   @@index([locationId, createdAt])
   @@index([appointmentId, createdAt])
+  @@index([clientNotificationsPlannedAt])
 }
 
 model SchedulerConfigChange {
@@ -1226,61 +1247,415 @@ model MessagingMessageEdit {
   @@index([organizationId, messageId, createdAt])
 }
 
+// --- Client communication (clinic <-> client texting) ---------------------
+// docs/engineering/client-communication-backend.md is the contract for this
+// section. Rules the model exists to keep true:
+// - A text goes to a phone, not a person: one thread per clinic location and
+//   client phone number, so an inbound reply always has exactly one home and
+//   Sparki never guesses which of two clients sharing a number sent it.
+// - Patient/appointment context lives on the message, not the thread — a
+//   client can have several patients.
+// - Every delivery state is a recorded fact. SIMULATED never becomes SENT;
+//   SENT (provider accepted) is not DELIVERED; nothing here means "the
+//   client confirmed".
+
 enum ClientCommunicationDirection {
   INBOUND
   OUTBOUND
 }
 
+// OPEN: needs the clinic's attention. WAITING: the clinic replied and is
+// waiting on the client. CLOSED: resolved. An inbound message reopens.
 enum ClientCommunicationStatus {
   OPEN
   WAITING
   CLOSED
 }
 
-model ClientCommunicationThread {
-  id             String                    @id @default(cuid())
+enum ClientCommunicationMessageSource {
+  STAFF
+  AUTOMATED
+  CLIENT
+}
+
+enum ClientCommunicationMessageStatus {
+  // Saved, waiting for the dispatcher (first attempt or a retry).
+  QUEUED
+  // Claimed by the dispatcher; a provider request is in flight.
+  SENDING
+  // The provider accepted it. Not proof the client's phone received it.
+  SENT
+  DELIVERED
+  // The provider finished without a carrier delivery receipt.
+  DELIVERY_UNCONFIRMED
+  FAILED
+  // The request to the provider ended without an answer (timeout, crash
+  // mid-send). It may or may not have gone out, so it is never auto-retried.
+  OUTCOME_UNKNOWN
+  // An inbound message from a real provider.
+  RECEIVED
+  // Saved for workflow testing only; never left Sparki (either direction).
+  SIMULATED
+  // Withdrawn by Sparki before it reached the provider: an opt-out, a changed
+  // or cancelled appointment, or texting becoming unavailable. Never sent.
+  CANCELLED
+}
+
+enum ClientCommunicationProvider {
+  SIMULATED
+  TELNYX
+}
+
+enum ClientCommunicationAttachmentStatus {
+  PENDING
+  STORED
+  FAILED
+}
+
+enum ClientCommunicationThreadEventType {
+  ASSIGNMENT_CHANGED
+  STATUS_CHANGED
+  CLIENT_LINK_CHANGED
+}
+
+enum ClientMessagingChannelStatus {
+  // Carrier registration not finished: sending is blocked, not simulated.
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum ClientTextingConsentStatus {
+  GRANTED
+  OPTED_OUT
+}
+
+enum ClientTextingConsentBasis {
+  // A staff member recorded that the client agreed (or asked not) to be texted.
+  STAFF_RECORDED
+  // The client texted the clinic first.
+  CLIENT_INITIATED
+  // The client texted STOP / START (or an equivalent keyword).
+  KEYWORD
+  // The provider refused a send because of its own opt-out block.
+  PROVIDER_BLOCK
+}
+
+// A clinic location's texting identity. No row means texting is not set up:
+// the Communication tab stays hidden and nothing can be sent (founder
+// decision 2026-10-02). A SIMULATED row marks a demo or test clinic, where
+// messages are saved and labelled but never sent. A TELNYX row is a real
+// number: PENDING until the carriers approve it, then ACTIVE.
+model ClientMessagingChannel {
+  id                 String                       @id @default(cuid())
+  organizationId     String
+  locationId         String                       @unique
+  provider           ClientCommunicationProvider
+  // The number clients text; null only for SIMULATED. Unique across Sparki:
+  // an inbound message's destination number is what identifies the tenant
+  // (never the sender).
+  senderPhoneE164    String?                      @unique
+  providerProfileId  String?
+  // Reserved for a per-clinic provider sub-account. Null = Sparki's account.
+  providerAccountRef String?
+  status             ClientMessagingChannelStatus @default(PENDING)
+  statusReason       String?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  location     Location     @relation(fields: [locationId], references: [id])
+
+  @@index([organizationId])
+}
+
+// Current texting permission for one phone number at one clinic
+// organization. No row means "unknown": the clinic may not start texting it.
+model ClientTextingConsent {
+  id             String                     @id @default(cuid())
   organizationId String
-  locationId     String
-  clientId       String
-  patientId      String?
-  assignedToId   String?
-  phone          String
-  status         ClientCommunicationStatus @default(OPEN)
-  isUnread       Boolean                   @default(false)
-  lastMessageAt  DateTime                  @default(now())
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
+  phoneE164      String
+  status         ClientTextingConsentStatus
+  basis          ClientTextingConsentBasis
+  // How a staff-recorded consent was obtained (e.g. VERBAL, WRITTEN_FORM).
+  method         String?
+  note           String?
+  clientId       String?
+  recordedById   String?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
-  organization Organization                 @relation(fields: [organizationId], references: [id])
-  location     Location                     @relation(fields: [locationId], references: [id])
-  client       Client                       @relation(fields: [clientId], references: [id])
-  patient      Patient?                     @relation(fields: [patientId], references: [id])
-  assignedTo   User?                        @relation(fields: [assignedToId], references: [id])
-  messages     ClientCommunicationMessage[]
+  organization Organization @relation(fields: [organizationId], references: [id])
 
+  @@unique([organizationId, phoneE164])
+}
+
+// Append-only history behind ClientTextingConsent.
+model ClientTextingConsentEvent {
+  id             String                     @id @default(cuid())
+  organizationId String
+  phoneE164      String
+  status         ClientTextingConsentStatus
+  basis          ClientTextingConsentBasis
+  method         String?
+  note           String?
+  clientId       String?
+  actorUserId    String?
+  // The inbound message that carried the keyword, when there was one.
+  messageId      String?
+  createdAt      DateTime                   @default(now())
+
+  @@index([organizationId, phoneE164, createdAt])
+}
+
+model ClientCommunicationThread {
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  locationId           String
+  contactPhoneE164     String
+  // Null until a number is matched to a client record.
+  clientId             String?
+  assignedToId         String?
+  status               ClientCommunicationStatus @default(OPEN)
+  // Shared across the team: inbound messages nobody has opened yet.
+  unreadCount          Int                       @default(0)
+  markedUnread         Boolean                   @default(false)
+  lastReadAt           DateTime?
+  lastReadById         String?
+  // Bumped on every status/assignment/client-link change so two people
+  // cannot silently overwrite each other's handoff.
+  version              Int                       @default(1)
+  lastMessageId        String?                   @unique
+  lastMessageAt        DateTime                  @default(now())
+  lastInboundAt        DateTime?
+  // Set when the newest outbound message failed or has an unknown outcome;
+  // cleared by the next accepted send.
+  deliveryProblemSince DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  organization Organization                     @relation(fields: [organizationId], references: [id])
+  location     Location                         @relation(fields: [locationId], references: [id])
+  client       Client?                          @relation(fields: [clientId], references: [id])
+  assignedTo   User?                            @relation(fields: [assignedToId], references: [id])
+  messages     ClientCommunicationMessage[]     @relation("ClientCommunicationThreadMessages")
+  lastMessage  ClientCommunicationMessage?      @relation("ClientCommunicationThreadLastMessage", fields: [lastMessageId], references: [id], onDelete: SetNull)
+  events       ClientCommunicationThreadEvent[]
+
+  @@unique([locationId, contactPhoneE164])
   @@index([organizationId, locationId, lastMessageAt])
+  @@index([organizationId, locationId, status, lastMessageAt])
   @@index([organizationId, clientId])
 }
 
 model ClientCommunicationMessage {
-  id             String                       @id @default(cuid())
+  id                String                           @id @default(cuid())
+  organizationId    String
+  locationId        String
+  threadId          String
+  direction         ClientCommunicationDirection
+  source            ClientCommunicationMessageSource
+  status            ClientCommunicationMessageStatus
+  body              String
+  senderUserId      String?
+  // Who and what the message was about, when known.
+  clientId          String?
+  patientId         String?
+  appointmentId     String?
+  // Supplied by the caller so a retried request never creates a second text.
+  idempotencyKey    String?
+  provider          ClientCommunicationProvider
+  providerMessageId String?
+  fromE164          String?
+  toE164            String?
+  segments          Int?
+  attemptCount      Int                              @default(0)
+  nextAttemptAt     DateTime?
+  claimedAt         DateTime?
+  failureCode       String?
+  failureDetail     String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
+
+  organization  Organization                    @relation(fields: [organizationId], references: [id])
+  thread        ClientCommunicationThread       @relation("ClientCommunicationThreadMessages", fields: [threadId], references: [id], onDelete: Cascade)
+  lastMessageOf ClientCommunicationThread?      @relation("ClientCommunicationThreadLastMessage")
+  senderUser    User?                           @relation(fields: [senderUserId], references: [id])
+  client        Client?                         @relation(fields: [clientId], references: [id])
+  patient       Patient?                        @relation(fields: [patientId], references: [id])
+  appointment   Appointment?                    @relation(fields: [appointmentId], references: [id])
+  attachments   ClientCommunicationAttachment[]
+  appointmentNotification AppointmentNotification?
+
+  @@unique([threadId, idempotencyKey])
+  @@unique([provider, providerMessageId])
+  @@index([organizationId, threadId, createdAt])
+  @@index([organizationId, threadId, updatedAt])
+  @@index([organizationId, patientId, createdAt])
+  @@index([appointmentId])
+  @@index([status, nextAttemptAt])
+}
+
+// A file a client sent (photo of a wound, a document). The provider's link
+// expires, so the dispatcher copies it into private storage.
+model ClientCommunicationAttachment {
+  id             String                              @id @default(cuid())
+  organizationId String
+  locationId     String
+  messageId      String
+  status         ClientCommunicationAttachmentStatus @default(PENDING)
+  providerUrl    String?
+  mimeType       String?
+  sizeBytes      Int?
+  storageKey     String?
+  attemptCount   Int                                 @default(0)
+  failureDetail  String?
+  createdAt      DateTime                            @default(now())
+  updatedAt      DateTime                            @updatedAt
+
+  message ClientCommunicationMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, messageId])
+  @@index([status, createdAt])
+}
+
+// Who changed a conversation's owner, status, or linked client, and when.
+model ClientCommunicationThreadEvent {
+  id             String                             @id @default(cuid())
   organizationId String
   threadId       String
-  senderUserId   String?
-  direction      ClientCommunicationDirection
-  body           String
-  providerId     String?
-  deliveredAt    DateTime?
-  readAt         DateTime?
-  failedAt       DateTime?
-  createdAt      DateTime                     @default(now())
+  type           ClientCommunicationThreadEventType
+  // Null when the system made the change (an inbound message reopened it).
+  actorUserId    String?
+  before         Json
+  after          Json
+  createdAt      DateTime                           @default(now())
 
-  organization Organization              @relation(fields: [organizationId], references: [id])
-  thread       ClientCommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  senderUser   User?                     @relation(fields: [senderUserId], references: [id])
+  thread ClientCommunicationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
 
-  @@unique([threadId, providerId])
   @@index([organizationId, threadId, createdAt])
+}
+
+// Provider webhook deliveries, recorded by the provider's own event id
+// before handling so a retried or duplicated delivery is applied once.
+// Same shape and purpose as BillingWebhookEvent.
+model ClientCommunicationWebhookEvent {
+  // "<provider>:<provider event id>"
+  id                String    @id
+  type              String
+  organizationId    String?
+  providerMessageId String?
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+  // Why a verified event changed nothing (unknown number, no matching
+  // message) or the last processing error.
+  note              String?
+}
+
+// --- Automated appointment texts (confirmations and reminders) ------------
+// Founder direction 2026-10-02: every clinic decides which messages send,
+// when, and with what wording; only an owner or practice manager changes
+// them. Nothing is enabled until the clinic turns it on. An automated text
+// goes only to a client whose agreement a staff member recorded.
+
+enum AppointmentNotificationKind {
+  // Sent when an appointment is booked.
+  CONFIRMATION
+  // Sent a clinic-chosen time before the appointment. A clinic may have several.
+  REMINDER
+  // Sent when the appointment's time changes.
+  RESCHEDULED
+  CANCELLED
+}
+
+enum AppointmentNotificationStatus {
+  SCHEDULED
+  // A message was created in the client's conversation. Whether it was
+  // delivered is that message's own status, never implied here.
+  DISPATCHED
+  // Deliberately not sent; skipReason says why.
+  SKIPPED
+  // Superseded before it was due (the appointment moved or was cancelled).
+  CANCELLED
+}
+
+model AppointmentNotificationSettings {
+  id                        String    @id @default(cuid())
+  organizationId            String
+  locationId                String    @unique
+  // Automated texts are only sent between these clinic-local times
+  // (minutes after midnight). One due outside them waits for the next start.
+  sendWindowStartMinute     Int       @default(480)
+  sendWindowEndMinute       Int       @default(1200)
+  // Explicit per-appointment-type choices, { [AppointmentTypeSetting.id]:
+  // boolean }. A type with no entry sends, except euthanasia appointments,
+  // which never do unless the clinic says so.
+  appointmentTypeChoices    Json      @default("{}")
+  // Set when rules change; the dispatcher re-plans reminders for the
+  // location's future appointments, then clears it.
+  reminderResyncRequestedAt DateTime?
+  updatedById               String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  location Location                      @relation(fields: [locationId], references: [id])
+  rules    AppointmentNotificationRule[]
+
+  @@index([organizationId])
+}
+
+model AppointmentNotificationRule {
+  id             String                      @id @default(cuid())
+  organizationId String
+  locationId     String
+  settingsId     String
+  kind           AppointmentNotificationKind
+  enabled        Boolean                     @default(false)
+  // REMINDER only: how long before the appointment starts.
+  offsetMinutes  Int?
+  // The clinic's wording, with {placeholders}.
+  template       String
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+
+  settings      AppointmentNotificationSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  notifications AppointmentNotification[]
+
+  @@index([organizationId, locationId, kind])
+}
+
+// One planned automated text for one appointment.
+model AppointmentNotification {
+  id              String                        @id @default(cuid())
+  organizationId  String
+  locationId      String
+  appointmentId   String
+  ruleId          String?
+  kind            AppointmentNotificationKind
+  status          AppointmentNotificationStatus @default(SCHEDULED)
+  dueAt           DateTime
+  // The appointment start this was planned for. If the appointment no longer
+  // starts then when the text is due, it is not sent.
+  plannedForStart DateTime
+  // RESCHEDULED only: the start time the appointment moved from.
+  previousStart   DateTime?
+  // The AppointmentChange that caused a booking/reschedule/cancel notice;
+  // unique so one change can never produce two notices.
+  sourceChangeId  String?                       @unique
+  skipReason      String?
+  messageId       String?                       @unique
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  appointment Appointment                  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  rule        AppointmentNotificationRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  message     ClientCommunicationMessage?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([organizationId, appointmentId])
 }
 
 model SchedulerSettings {

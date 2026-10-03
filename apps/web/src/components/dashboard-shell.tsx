@@ -59,10 +59,12 @@ export function SidebarNav({
   activeHref,
   collapsed,
   onToggleCollapsed,
+  communicationVisible,
 }: {
   activeHref: DashboardRoute;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  communicationVisible: boolean;
 }) {
   return (
     <aside className="dashboard-sidebar">
@@ -82,7 +84,7 @@ export function SidebarNav({
         </button>
       </div>
       <nav className="dashboard-sidebar__nav" aria-label="Primary">
-        {SIDEBAR_ITEMS.map((item) => {
+        {SIDEBAR_ITEMS.filter((item) => item.href !== '/communication' || communicationVisible).map((item) => {
           const isActive = item.href === activeHref;
 
           if (!item.href) {
@@ -266,6 +268,14 @@ export function DashboardShell({
   workspace?: boolean;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [communicationVisible, setCommunicationVisible] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    const load = () => void fetch('/api/client-communication/readiness', { cache: 'no-store', signal: controller.signal }).then((response) => response.ok ? response.json() : null).then((body: { visible: boolean } | null) => { if (!controller.signal.aborted) setCommunicationVisible(body?.visible === true); }).catch(() => undefined);
+    load();
+    const timer = window.setInterval(load, 10000);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, []);
   const bootstrap = useAuthBootstrap();
   const [billing, setBilling] = useState<BillingStatus | null>(bootstrap.billing);
   const [billingError, setBillingError] = useState(false);
@@ -298,6 +308,7 @@ export function DashboardShell({
       <SidebarNav
         activeHref={activeHref}
         collapsed={sidebarCollapsed}
+        communicationVisible={communicationVisible}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
       <main className={workspace ? 'dashboard-main dashboard-main--workspace' : 'dashboard-main'}>

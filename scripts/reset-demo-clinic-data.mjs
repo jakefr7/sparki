@@ -126,6 +126,14 @@ async function ensureDevClinic() {
     },
   });
 
+  // A demo clinic texts in labelled simulation. A real clinic has no channel
+  // (and no Communication tab) until its number is registered and approved.
+  await prisma.clientMessagingChannel.upsert({
+    where: { locationId: location.id },
+    update: {},
+    create: { organizationId: organization.id, locationId: location.id, provider: 'SIMULATED', status: 'ACTIVE' },
+  });
+
   for (const member of STAFF) {
     await prisma.user.upsert({
       where: { id: member.id },
@@ -1111,6 +1119,17 @@ async function seedMessaging() {
   ] });
 }
 
+// Demo clients carry 7-digit fictional numbers; a texting conversation is
+// keyed by a complete number, so give the demo clients one (555-01xx style
+// numbers are reserved for fiction and can never reach a real phone).
+function demoTextingPhone(phone) {
+  const digits = String(phone ?? '').replace(/[^0-9]/g, '');
+  if (digits.length !== 7) return null;
+  return { display: `(312) ${digits.slice(0, 3)}-${digits.slice(3)}`, e164: `+1312${digits}` };
+}
+
+// Simulation data only: every message is stored as SIMULATED, exactly as the
+// API stores a message at a location with no registered texting number.
 async function seedClientCommunication() {
   const clients = await prisma.client.findMany({ where: { organizationId: DEV_ORGANIZATION_ID, phone: { not: null } }, include: { patients: { include: { patient: true }, take: 1 } }, orderBy: { createdAt: 'asc' }, take: 5 });
   const staff = await prisma.user.findFirst({ where: { organizationId: DEV_ORGANIZATION_ID, role: 'RECEPTIONIST', isActive: true } });
@@ -1122,11 +1141,27 @@ async function seedClientCommunication() {
     ['How is Daisy doing after yesterday’s visit?', 'Much better today. She ate breakfast and seems comfortable.', 'That’s wonderful to hear. Please call us if anything changes.'],
   ];
   for (const [index, client] of clients.entries()) {
+    const phone = demoTextingPhone(client.phone);
+    if (!phone) continue;
     const patient = client.patients[0]?.patient;
     const threadId = `demo-client-communication-${index + 1}`;
     const messages = scripts[index] ?? scripts[0];
-    const thread = await prisma.clientCommunicationThread.upsert({ where: { id: threadId }, update: { clientId: client.id, patientId: patient?.id ?? null, phone: client.phone, assignedToId: staff?.id ?? null, lastMessageAt: minutesAgo(6 + index * 11), isUnread: index === 2 }, create: { id: threadId, organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID, clientId: client.id, patientId: patient?.id ?? null, phone: client.phone, assignedToId: staff?.id ?? null, status: index === 1 ? 'OPEN' : 'WAITING', isUnread: index === 2, lastMessageAt: minutesAgo(6 + index * 11) } });
-    for (const [messageIndex, body] of messages.entries()) await prisma.clientCommunicationMessage.upsert({ where: { threadId_providerId: { threadId, providerId: `${threadId}-${messageIndex + 1}` } }, update: { body }, create: { organizationId: DEV_ORGANIZATION_ID, threadId: thread.id, senderUserId: messageIndex % 2 === 0 ? staff?.id ?? null : null, direction: messageIndex % 2 === 0 ? 'OUTBOUND' : 'INBOUND', body, providerId: `${threadId}-${messageIndex + 1}`, deliveredAt: messageIndex % 2 === 0 ? minutesAgo(30 - messageIndex * 4 + index * 10) : null, createdAt: minutesAgo(30 - messageIndex * 4 + index * 10) } });
+    await prisma.clientCommunicationThread.deleteMany({ where: { OR: [{ id: threadId }, { locationId: DEV_LOCATION_ID, contactPhoneE164: phone.e164 }] } });
+    await prisma.client.update({ where: { id: client.id }, data: { phone: phone.display, phoneE164: phone.e164 } });
+    const consent = { status: 'GRANTED', basis: 'STAFF_RECORDED', method: 'VERBAL', clientId: client.id };
+    await prisma.clientTextingConsent.upsert({ where: { organizationId_phoneE164: { organizationId: DEV_ORGANIZATION_ID, phoneE164: phone.e164 } }, update: { ...consent, recordedById: staff?.id ?? null }, create: { organizationId: DEV_ORGANIZATION_ID, phoneE164: phone.e164, ...consent, recordedById: staff?.id ?? null } });
+    await prisma.clientTextingConsentEvent.create({ data: { organizationId: DEV_ORGANIZATION_ID, phoneE164: phone.e164, ...consent, actorUserId: staff?.id ?? null } });
+    await prisma.clientCommunicationThread.create({ data: { id: threadId, organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID, contactPhoneE164: phone.e164, clientId: client.id, assignedToId: staff?.id ?? null, status: index === 2 ? 'OPEN' : 'WAITING', unreadCount: index === 2 ? 1 : 0 } });
+    let last;
+    for (const [messageIndex, body] of messages.entries()) {
+      const outbound = messageIndex % 2 === 0;
+      last = await prisma.clientCommunicationMessage.create({ data: { organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID, threadId, direction: outbound ? 'OUTBOUND' : 'INBOUND', source: outbound ? 'STAFF' : 'CLIENT', status: 'SIMULATED', provider: 'SIMULATED', body, senderUserId: outbound ? staff?.id ?? null : null, clientId: client.id, patientId: patient?.id ?? null, fromE164: outbound ? null : phone.e164, toE164: outbound ? phone.e164 : null, segments: 1, createdAt: minutesAgo(30 - messageIndex * 4 + index * 10) } });
+    }
+    // The unread conversation ends on the client's question, not the reply.
+    if (index === 2) await prisma.clientCommunicationMessage.delete({ where: { id: last.id } });
+    const newest = await prisma.clientCommunicationMessage.findFirst({ where: { threadId }, orderBy: { createdAt: 'desc' } });
+    const newestInbound = await prisma.clientCommunicationMessage.findFirst({ where: { threadId, direction: 'INBOUND' }, orderBy: { createdAt: 'desc' } });
+    await prisma.clientCommunicationThread.update({ where: { id: threadId }, data: { lastMessageId: newest.id, lastMessageAt: newest.createdAt, lastInboundAt: newestInbound?.createdAt ?? null } });
   }
 }
 

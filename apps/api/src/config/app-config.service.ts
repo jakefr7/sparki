@@ -68,6 +68,13 @@ export class AppConfigService {
     };
   }
 
+  get telnyx(): { apiKey: string | undefined; publicKey: string | undefined } {
+    return {
+      apiKey: this.env.TELNYX_API_KEY,
+      publicKey: this.env.TELNYX_PUBLIC_KEY,
+    };
+  }
+
   /** Web app origin — also used to build activation/invitation links
    *  (`${webOrigin}/invite/:token`). Reuses CORS_ORIGIN rather than adding a
    *  second "what is the frontend's URL" variable: it is already exactly

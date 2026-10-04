@@ -1,5 +1,6 @@
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
+import { liveExternalServiceVariables } from '../../scripts/lib/isolated-test-environment.mjs';
 
 const isolatedDatabase = process.env.SPARKI_ISOLATED_TEST_DATABASE;
 const configuredDatabase = process.env.DATABASE_URL
@@ -12,6 +13,16 @@ if (
   !/^sparki_test_integration_[a-f0-9]{32}$/.test(isolatedDatabase)
 ) {
   throw new Error('Integration tests require an isolated DATABASE_URL. Run pnpm test:integration.');
+}
+
+// The same rule for everything else a test could reach. A developer's .env
+// names real services (the staging attachment bucket among them); these
+// suites upload and delete files, accept invitations and send messages.
+const liveServices = liveExternalServiceVariables(process.env);
+if (liveServices.length > 0 || !process.env.ATTACHMENT_LOCAL_DIRECTORY) {
+  throw new Error(
+    `Integration tests must not reach live services (${liveServices.join(', ') || 'no isolated attachment folder'}). Run pnpm test:integration.`,
+  );
 }
 
 process.env.NODE_ENV = 'test';

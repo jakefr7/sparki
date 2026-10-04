@@ -33,13 +33,6 @@ describe('Patient photo upload/content lifecycle (e2e)', () => {
     app.useBodyParser('json', { limit: '12mb' });
     await app.init();
 
-    // Create the foreign-tenant fixtures *before* any authenticated request.
-    // TenantContextGuard binds the dev organization to an AsyncLocalStorage
-    // context that the tenant-scoping Prisma extension (packages/db/src/
-    // tenant-scoping.ts) then uses to force organizationId on every
-    // `create` — including these raw prisma fixture calls, since they run
-    // in the same continuation as the request below. Creating them first
-    // (context not entered yet) keeps the explicit organizationId.
     const otherOrganization = await prisma.organization.create({ data: { name: 'Patient Photo Other Organization' } });
     otherOrganizationId = otherOrganization.id;
     const otherOrgPatient = await prisma.patient.create({ data: { organizationId: otherOrganizationId, name: 'Other Tenant Patient', species: 'Feline', sourceSystem: SOURCE } });
@@ -54,11 +47,9 @@ describe('Patient photo upload/content lifecycle (e2e)', () => {
   afterAll(async () => {
     const patients = await prisma.patient.findMany({ where: { sourceSystem: SOURCE }, select: { imageStorageKey: true } });
     storedKeys.push(...patients.map(({ imageStorageKey }) => imageStorageKey).filter((key): key is string => Boolean(key)));
-    // Raw SQL, not prisma.patient.deleteMany: by now a dev-organization
-    // tenant context is active (see the beforeAll comment above), and the
-    // tenant-scoping extension would silently AND an organizationId filter
-    // onto a scoped deleteMany, leaving the other-organization fixture row
-    // behind and failing the Organization delete below on its FK.
+    // Raw SQL removes both organizations' fixture rows whatever tenant
+    // scoping applies; a row left behind would fail the Organization delete
+    // below on its FK.
     await prisma.$executeRaw`DELETE FROM "Patient" WHERE "sourceSystem" = ${SOURCE}`;
     await prisma.$executeRaw`DELETE FROM "Organization" WHERE "id" = ${otherOrganizationId}`;
     const storage = app.get(AttachmentStorageService);

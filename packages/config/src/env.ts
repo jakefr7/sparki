@@ -49,6 +49,10 @@ export const apiEnvSchema = baseEnvSchema.extend({
   ATTACHMENT_S3_BUCKET: optionalString,
   ATTACHMENT_S3_ACCESS_KEY_ID: optionalString,
   ATTACHMENT_S3_SECRET_ACCESS_KEY: optionalString,
+  // Where the local filesystem store keeps files when the S3 set above is
+  // not configured. Defaults to .tmp/messaging-attachments under the API's
+  // working directory; isolated test runs point it at a folder of their own.
+  ATTACHMENT_LOCAL_DIRECTORY: optionalString,
 
   // Stripe billing (docs/adr/ADR-007-clinic-provisioning-and-billing.md).
   // Optional so the app still boots without live billing configured —

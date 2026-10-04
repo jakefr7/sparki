@@ -50,6 +50,7 @@ export class AppConfigService {
       bucket: this.env.ATTACHMENT_S3_BUCKET,
       accessKeyId: this.env.ATTACHMENT_S3_ACCESS_KEY_ID,
       secretAccessKey: this.env.ATTACHMENT_S3_SECRET_ACCESS_KEY,
+      localDirectory: this.env.ATTACHMENT_LOCAL_DIRECTORY,
     };
   }
 

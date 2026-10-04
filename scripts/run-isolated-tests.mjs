@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createConnection, createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import process from 'node:process';
 
 import {
@@ -10,6 +13,7 @@ import {
   parseAdminDatabaseUrl,
   quoteIdentifier,
 } from './lib/isolated-test-database.mjs';
+import { isolatedTestEnvironment } from './lib/isolated-test-environment.mjs';
 
 const requireFromDbPackage = createRequire(new URL('../packages/db/package.json', import.meta.url));
 const pg = requireFromDbPackage('pg');
@@ -36,6 +40,10 @@ let activeChild;
 let cleanupPromise;
 let clientConnected = false;
 let databaseCreated = false;
+// Uploaded files go to a folder that exists only for this run, never to the
+// object storage a developer's .env names.
+const ATTACHMENT_DIRECTORY_PREFIX = 'sparki-test-attachments-';
+let attachmentDirectory;
 
 async function findAvailablePort(preferredPort) {
   for (let port = preferredPort; port < preferredPort + 100; port += 1) {
@@ -80,6 +88,13 @@ async function cleanup() {
         await client.end();
         clientConnected = false;
       }
+      if (attachmentDirectory) {
+        if (!path.basename(attachmentDirectory).startsWith(ATTACHMENT_DIRECTORY_PREFIX)) {
+          throw new Error(`Refusing to remove unsafe attachment folder: ${attachmentDirectory}`);
+        }
+        await rm(attachmentDirectory, { recursive: true, force: true });
+        attachmentDirectory = undefined;
+      }
     })();
   }
   return cleanupPromise;
@@ -122,27 +137,15 @@ try {
   } finally {
     await isolatedClient.end();
   }
-  let env = {
-    ...process.env,
-    NODE_ENV: 'test',
-    DATABASE_URL: isolatedUrl,
-    API_PORT: String(apiPort),
-    API_URL: `http://127.0.0.1:${apiPort}`,
-    WEB_PORT: String(webPort),
-    CORS_ORIGIN: `http://127.0.0.1:${webPort}`,
-    SPARKI_ISOLATED_TEST_DATABASE: databaseName,
-    SPARKI_DEVELOPMENT_AUTH: 'fixed',
-  };
-  if (mode === 'integration') {
-    // Billing webhook fixtures sign with this fixed secret. Never use a
-    // developer's real Stripe sandbox credentials in an isolated test run.
-    env = {
-      ...env,
-      STRIPE_SECRET_KEY: 'sk_test_local_isolated_placeholder',
-      STRIPE_WEBHOOK_SECRET: 'whsec_local_placeholder_not_a_real_secret',
-      STRIPE_PRICE_STANDARD: 'price_test_standard',
-    };
-  }
+  attachmentDirectory = await mkdtemp(path.join(tmpdir(), ATTACHMENT_DIRECTORY_PREFIX));
+  const env = isolatedTestEnvironment(process.env, {
+    mode,
+    databaseUrl: isolatedUrl,
+    databaseName,
+    apiPort,
+    webPort,
+    attachmentDirectory,
+  });
   exitCode = await run(
     'pnpm',
     [
@@ -163,21 +166,12 @@ try {
       // suite relies on the three role-specific development login accounts
       // and a small, stable inventory catalog, so establish those fixtures
       // inside the isolated database before either application server boots.
-      // Omit WorkOS configuration so env validation accepts the optional
-      // values and auth selection uses the local development guard, even
-      // when the developer's .env configures WorkOS.
-      const fixtureEnv = { ...env };
-      delete fixtureEnv.WORKOS_API_KEY;
-      delete fixtureEnv.WORKOS_CLIENT_ID;
-      delete fixtureEnv.WORKOS_COOKIE_PASSWORD;
-      delete fixtureEnv.WORKOS_REDIRECT_URI;
       // The seeded accounts and their `dev:<user-id>` sessions are local
-      // development-auth fixtures. Keep the API and web servers on those
-      // same semantics even when the developer's .env configures WorkOS.
-      env = fixtureEnv;
-      exitCode = await run('node', ['scripts/seed-auth-users.mjs'], fixtureEnv);
+      // development-auth fixtures; the isolated environment keeps WorkOS
+      // unconfigured so the API and web servers honor them.
+      exitCode = await run('node', ['scripts/seed-auth-users.mjs'], env);
       if (exitCode === 0) {
-        exitCode = await run('node', ['scripts/seed-inventory-pass-1.mjs'], fixtureEnv);
+        exitCode = await run('node', ['scripts/seed-inventory-pass-1.mjs'], env);
       }
     }
   }

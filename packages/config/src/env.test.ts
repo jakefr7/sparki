@@ -77,6 +77,21 @@ describe('loadApiEnv', () => {
     expect(env.ATTACHMENT_S3_ENDPOINT).toBeUndefined();
   });
 
+  it('accepts a local attachment directory, and reads an empty one as unset', () => {
+    const env = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      ATTACHMENT_LOCAL_DIRECTORY: '/var/lib/sparki/attachments',
+    } as NodeJS.ProcessEnv);
+    expect(env.ATTACHMENT_LOCAL_DIRECTORY).toBe('/var/lib/sparki/attachments');
+
+    resetEnvCacheForTests();
+    const unset = loadApiEnv({
+      DATABASE_URL: 'postgresql://localhost:5432/db',
+      ATTACHMENT_LOCAL_DIRECTORY: '',
+    } as NodeJS.ProcessEnv);
+    expect(unset.ATTACHMENT_LOCAL_DIRECTORY).toBeUndefined();
+  });
+
   it('rejects partially configured attachment storage regardless of environment', () => {
     expect(() => loadApiEnv({
       DATABASE_URL: 'postgresql://localhost:5432/db',

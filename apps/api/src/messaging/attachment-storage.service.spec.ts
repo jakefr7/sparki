@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,6 +58,15 @@ describe('AttachmentStorageService development storage', () => {
 
     await storage.remove(key);
     await expect(storage.get(key)).rejects.toThrow();
+  });
+
+  it('keeps files in the configured local directory when one is set', async () => {
+    const configured = new AttachmentStorageService({ attachmentStorage: { localDirectory: root } } as never);
+    const key = configured.key('org-a', 'location-a');
+    await configured.put(key, Buffer.from('patient result'), 'text/plain', 'result.txt');
+
+    await expect(readFile(path.join(root, key), 'utf8')).resolves.toBe('patient result');
+    await expect(configured.get(key)).resolves.toMatchObject({ fileName: 'result.txt' });
   });
 });
 

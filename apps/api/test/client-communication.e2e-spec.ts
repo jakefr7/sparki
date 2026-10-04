@@ -2,12 +2,10 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { resetEnvCacheForTests } from '@sparki/config';
-// Fixtures and assertions use the unscoped client on purpose. In this
-// harness the server and the test share a process, and the tenant context a
-// signed-in request enters carries over into later test code (Node 20's
-// AsyncLocalStorage.enterWith). The scoped client would then silently
-// rewrite another clinic's fixture into the development clinic — hiding
-// exactly the cross-tenant behavior these tests exist to prove.
+// Fixtures and assertions use the unscoped client on purpose: they write and
+// read rows for several clinics and must see exactly what is stored,
+// whatever tenant context is bound. tenant-isolation.e2e-spec.ts covers the
+// harness itself.
 import { prismaUnscoped as prisma } from '@sparki/db';
 import { json, raw } from 'express';
 import request from 'supertest';

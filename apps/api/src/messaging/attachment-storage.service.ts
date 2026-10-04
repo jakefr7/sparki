@@ -11,8 +11,11 @@ export interface StoredAttachment { body: Buffer; contentType: string; sizeBytes
 @Injectable()
 export class AttachmentStorageService {
   private readonly config;
-  private readonly temporaryRoot = path.join(process.cwd(), '.tmp', 'messaging-attachments');
-  constructor(config: AppConfigService) { this.config = config.attachmentStorage; }
+  private readonly temporaryRoot: string;
+  constructor(config: AppConfigService) {
+    this.config = config.attachmentStorage;
+    this.temporaryRoot = this.config.localDirectory ?? path.join(process.cwd(), '.tmp', 'messaging-attachments');
+  }
 
   key(organizationId: string, locationId: string): string {
     return `organizations/${organizationId}/locations/${locationId}/messaging/${randomUUID()}`;

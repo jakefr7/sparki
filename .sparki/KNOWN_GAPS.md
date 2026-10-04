@@ -21,6 +21,8 @@
   - Earlier integration runs accepted invitations through the WorkOS sandbox named in `.env`, leaving `@example.test` users there. Not cleaned up.
   - Integration tests load `packages/db` and `packages/config` from their built `dist/`; a source change there is not tested until that package is rebuilt.
   - Tenant context still binds with `AsyncLocalStorage.enterWith`. It is correct now because tracking starts when `@sparki/db` loads (`tenant-context.ts`, covered by `tenant-context.spec.ts`); wrapping each request in `run` would not depend on that and is worth an ADR.
+  - Local development and tests run Node 20 (`.nvmrc`); staging runs Node 24. The two track async context differently — the tenant-context leak above existed only on Node 20 — so a runtime-sensitive change should be checked on both (`fnm exec --using=24 -- pnpm test:integration`).
+  - The documented staging deploy checks health immediately after restart, about nine seconds before the API listens, so a healthy deploy prints neither "API healthy" nor "Web healthy". Confirm health separately until the command waits.
   - Browser specs `inventory-item-workflows` (stale `development-e2e` session cookie; fails the same way on the previous runner) and `phase-6-remediation` (`loginAs` matches two "Sign in" buttons) fail at sign-in.
 - GitHub PR preparation, deployment, and automated merge are not part of the local workflow.
 - Historical closeout and run artifacts may describe older product behavior. Use current code, current tests, [PROJECT_STATE.md](./PROJECT_STATE.md), and [CURRENT_WORK.md](./CURRENT_WORK.md) for present-tense decisions.

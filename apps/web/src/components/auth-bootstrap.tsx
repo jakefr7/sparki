@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import type { CurrentUser } from '../lib/use-current-user';
 import type { BillingStatus } from '../lib/clinic-contracts';
 import { installSubscriptionFetchHandler } from '../lib/subscription-fetch';
+import { CommunicationNavigationProvider } from './communication-navigation';
 
 installSubscriptionFetchHandler();
 
@@ -34,7 +35,13 @@ interface AuthBootstrapValue {
 const AuthBootstrapContext = createContext<AuthBootstrapValue>({ user: null, profile: null, weather: null, billing: null });
 
 export function AuthBootstrapProvider({ value, children }: { value: AuthBootstrapValue; children: ReactNode }) {
-  return <AuthBootstrapContext.Provider value={value}>{children}</AuthBootstrapContext.Provider>;
+  return (
+    <AuthBootstrapContext.Provider value={value}>
+      <CommunicationNavigationProvider key={value.user?.id ?? 'anonymous'} authenticated={!!value.user}>
+        {children}
+      </CommunicationNavigationProvider>
+    </AuthBootstrapContext.Provider>
+  );
 }
 
 export function useAuthBootstrap() {

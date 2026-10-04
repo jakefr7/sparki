@@ -37,6 +37,39 @@ test.beforeEach(async ({ request }) => {
   });
 });
 
+test('Communication navigation stays visible between pages and temporary readiness failures', async ({ page }) => {
+  await page.clock.install();
+  let status = 200;
+  let visible = true;
+  await page.route('**/api/client-communication/readiness', (route) =>
+    route.fulfill({ status, json: { visible } }),
+  );
+  await page.goto('/patients');
+  const communication = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Client Communication', exact: true });
+  await expect(communication).toBeVisible();
+  status = 503;
+  await page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('link', { name: 'Inventory', exact: true }).click();
+  await expect(page).toHaveURL(/\/inventory$/);
+  await expect(communication).toBeVisible();
+  // Exercise the next poll without waiting ten seconds in real time.
+  const failedPoll = page.waitForResponse((response) =>
+    response.url().endsWith('/api/client-communication/readiness') && response.status() === 503,
+  );
+  await page.clock.fastForward(10000);
+  await failedPoll;
+  await expect(communication).toBeVisible();
+  status = 200;
+  visible = false;
+  const disabledPoll = page.waitForResponse((response) =>
+    response.url().endsWith('/api/client-communication/readiness') && response.status() === 200,
+  );
+  await page.clock.fastForward(10000);
+  await disabledPoll;
+  await expect(communication).toHaveCount(0);
+});
+
 test('busy inbox keeps recipient drafts, updates incoming replies, and separates reply permission from automated consent', async ({
   page,
   request,

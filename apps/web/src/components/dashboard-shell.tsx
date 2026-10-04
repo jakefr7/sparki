@@ -8,6 +8,7 @@ import { ClinicApiError, clinicRequest } from '../lib/clinic-api';
 import { recoverFromInvalidSession } from '../lib/session-recovery';
 import { SparkiLogo } from './sparki-logo';
 import type { BillingStatus } from '../lib/clinic-contracts';
+import { useCommunicationNavigation } from './communication-navigation';
 
 const PROFILE_CACHE_KEY = 'sparki:user-profile';
 
@@ -268,14 +269,7 @@ export function DashboardShell({
   workspace?: boolean;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [communicationVisible, setCommunicationVisible] = useState(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = () => void fetch('/api/client-communication/readiness', { cache: 'no-store', signal: controller.signal }).then((response) => response.ok ? response.json() : null).then((body: { visible: boolean } | null) => { if (!controller.signal.aborted) setCommunicationVisible(body?.visible === true); }).catch(() => undefined);
-    load();
-    const timer = window.setInterval(load, 10000);
-    return () => { controller.abort(); window.clearInterval(timer); };
-  }, []);
+  const communicationVisible = useCommunicationNavigation();
   const bootstrap = useAuthBootstrap();
   const [billing, setBilling] = useState<BillingStatus | null>(bootstrap.billing);
   const [billingError, setBillingError] = useState(false);

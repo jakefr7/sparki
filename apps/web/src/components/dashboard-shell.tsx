@@ -148,21 +148,24 @@ export function DashboardHeader({
   refreshing?: boolean | undefined;
   onRefresh?: (() => void) | undefined;
 }) {
-  const [now, setNow] = useState(() => new Date());
+  // The server's clock and time zone are not the browser's, so the date and
+  // time stay empty in server HTML and are filled in before the first paint.
+  const [now, setNow] = useState<Date | null>(null);
   const [weather, setWeather] = useState<HeaderWeather | null>(() => cachedHeaderWeather ?? initialWeather ?? null);
   const todayLabel = useMemo(
     () =>
-      now.toLocaleDateString([], {
+      now?.toLocaleDateString([], {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
-      }),
+      }) ?? '',
     [now],
   );
-  const timeLabel = useMemo(() => now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), [now]);
+  const timeLabel = useMemo(() => now?.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) ?? '', [now]);
   const weatherView = weather ? weatherPresentation(weather.code, weather.isDay) : null;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
@@ -211,7 +214,7 @@ export function DashboardHeader({
       <div className="dashboard-header__tools">
         <div className="dashboard-header__context">
           {weatherView ? <div className="dashboard-header__weather" title={`${weatherView.label} in ${weather?.areaLabel}`}><span aria-hidden="true">{weatherView.icon}</span><div><strong>{weather?.temperature}°</strong><small>{weather?.areaLabel}</small></div></div> : null}
-          <div className="dashboard-header__meta" aria-label={`Current date and time: ${todayLabel}, ${timeLabel}`}>
+          <div className="dashboard-header__meta" aria-label={now ? `Current date and time: ${todayLabel}, ${timeLabel}` : undefined}>
             <strong>{todayLabel}</strong><span>{timeLabel}</span>
           </div>
           <div className="dashboard-header__user">

@@ -12,6 +12,7 @@ import {
   useScrollRail,
   useViewportAtLeast,
 } from './landing-motion';
+import { PublicHeader } from './public-header';
 import { SparkiCanvas, type SparkiJourney, type SparkiScene } from './sparki-surfaces';
 import { SparkiLogo } from '../sparki-logo';
 
@@ -75,8 +76,6 @@ function sceneForStep(step: number): SparkiScene {
 
 export function LandingPage() {
   const [step, setStep] = useState(0);
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const reducedMotion = useReducedMotion();
   // The scroll-driven journey is a desktop refinement, not a requirement —
@@ -88,15 +87,7 @@ export function LandingPage() {
   const previewRef = useRef<HTMLDivElement>(null);
   const areaGridRef = useRef<HTMLDivElement>(null);
   const finalCtaRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    setReady(true);
-    const onScroll = () => {
-      setScrolled(window.scrollY > 24);
-
-    };
-    onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); window.addEventListener('resize', onScroll);
-    return () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
-  }, []);
+  useEffect(() => { setReady(true); }, []);
   useScrollRail(railRef, { enabled: railActive, steps: STEPS.length, onStep: setStep });
   useAmbientDrift(heroRef, { enabled: !reducedMotion, period: 14000 });
   usePointerDepth(previewRef, { enabled: !reducedMotion });
@@ -118,27 +109,10 @@ export function LandingPage() {
       setStep(index);
     }
   };
-  useEffect(() => {
-    if (!menuOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-        document.querySelector<HTMLButtonElement>('[aria-controls="landing-navigation"]')?.focus();
-      }
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
-  }, [menuOpen]);
   const current = journey(step);
   return <div className={s.landing} id="top" data-ready={ready ? 'true' : undefined}>
     <a className={s.skip} href="#main">Skip to content</a>
-    <header className={`${s.header} ${scrolled ? s.headerScrolled : ''}`}>
-      <div className={s.headerInner}>
-        <Link href="#top" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
-        <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} id="landing-navigation" aria-label="Main navigation"><a href="#product" onClick={() => setMenuOpen(false)}>How it works</a><a href="#solutions" onClick={() => setMenuOpen(false)}>Solutions</a><Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link></nav>
-        <div className={s.headerActions}><Link href="/login" className={s.signIn}>Sign In</Link><Link href="/pricing" className={s.buttonSmall}>Get Started <Arrow /></Link><button className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="landing-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button></div>
-      </div>
-    </header>
+    <PublicHeader landing />
     <main id="main">
       <section ref={heroRef} className={s.hero} aria-labelledby="hero-heading"><div className={s.heroCopy}><p className={s.eyebrow}>The veterinary practice operating system</p><h1 id="hero-heading">Your clinic.<br /><span>Finally in sync.</span></h1><p className={s.lede}>From the first appointment to the final record. Bring your patients, people, and daily work together in one calm, connected workspace.</p><div className={s.actions}><Link href="/pricing" className={s.button}>Get Started <Arrow /></Link><a href="#product" className={s.textLink}>Explore Sparki <span>↓</span></a></div></div><div className={s.heroProduct} aria-label="Sparki product preview"><div className={s.previewLabel}><span><span className={s.contextDot} /> THE CONNECTED CLINIC</span><span>One workspace. A clearer day.</span></div><div ref={previewRef} className={s.preview}><SparkiCanvas scene="dashboard" role="veterinarian" journey={journey(0)} className={s.canvas} /></div><div className={s.productContext}><span className={s.contextDot} />Today at a glance <strong>Appointments · Patients · Clinic flow</strong><small>Illustrative product preview</small></div></div></section>
       <div className={s.continuity}><p>Less chasing. More caring.</p><span>Patient context, always close</span><span>Clear ownership at each handoff</span><span>One connected clinic day</span></div>

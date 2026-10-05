@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { ClinicApiError, clinicRequest } from '../../lib/clinic-api';
+import { PublicHeader } from '../../components/landing/public-header';
 import { SparkiLogo } from '../../components/sparki-logo';
 import s from './pricing.module.css';
 
@@ -38,7 +39,6 @@ export default function PricingPage() {
   const [form, setForm] = useState({ ownerFirstName: '', ownerLastName: '', email: '', businessName: '', businessPhone: '', businessEmail: '', teamSize: '', addressLine1: '', city: '', state: '', postalCode: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [signupStep, setSignupStep] = useState(0);
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const signupIntro = useRef<HTMLDivElement>(null);
@@ -113,18 +113,7 @@ export default function PricingPage() {
 
   return <div className={s.page}>
     <a className={s.skip} href="#main">Skip to content</a>
-    <header className={s.header}>
-      <Link href="/" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link>
-      <nav className={`${s.nav} ${menuOpen ? s.navOpen : ''}`} aria-label="Main navigation">
-        <Link href="/#product" onClick={() => setMenuOpen(false)}>Product</Link>
-        <Link href="/#solutions" onClick={() => setMenuOpen(false)}>Solutions</Link>
-        <Link href="/pricing" onClick={() => setMenuOpen(false)}>Pricing</Link>
-      </nav>
-      <div className={s.headerActions}>
-        <Link href="/login" className={s.signIn}>Sign In</Link>
-        <button type="button" className={s.menuToggle} aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? '×' : '☰'}</button>
-      </div>
-    </header>
+    <PublicHeader onGetStarted={() => { setStep('checkout'); window.scrollTo({ top: 0, behavior: 'instant' }); }} />
 
     {step === 'checkout' && showCompactHeading && <div className={s.compactHeading}>
       <button type="button" onClick={() => { setStep('plan'); setError(null); }}>← Back to pricing</button>

@@ -9,6 +9,7 @@ The founder’s landing-page request authorizes this bounded public UI work inde
 - Product scenes are expressly illustrative, contain no real patient data, and are not interactive clinical workflows. The journey preserves distinct departure and record-finalization steps.
 - The compact patient journey uses native buttons on every viewport, including keyboard and reduced-motion use. It spans appointment through record review without a pinned scroll section. Fixed-width illustrative product scenes scale inside responsive preview frames.
 - Typography uses the existing system stack. No runtime dependencies, external assets, tracking, booking services, or remote fonts were added.
+- `public-header.tsx` is the one header row for every public page (`/` and `/pricing`), with its own stylesheet. Pages must not carry their own copy; `public-e2e/public-header.spec.ts` fails if the two pages' headers differ.
 
 ## Demo integration
 

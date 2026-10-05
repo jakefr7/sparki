@@ -162,6 +162,7 @@ export class VisitBillingService {
         followUp: { required: Boolean(visit.discharge?.followUpRequired), plan: visit.discharge?.followUpPlan ?? null },
         checkoutCompletion: {
           completed: Boolean(visit.checkout),
+          clientContactConfirmed: visit.checkout?.clientContactConfirmed ?? false,
           completedAt: visit.checkout?.completedAt ?? null,
           completedById: visit.checkout?.completedById ?? null,
           balanceStatus: visit.checkout?.balanceStatus ?? null,

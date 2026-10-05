@@ -1274,10 +1274,16 @@ describe('Visits (e2e)', () => {
 
       const discharge = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({
         instructions: 'Rest and monitor breathing.',
+        clientGuidance: { visitSummary: 'Reviewed visit summary', urgentSigns: 'Reviewed urgent guidance', emergencyContact: 'Example ER 312-555-0198', recheckDate: '2026-10-12', medications: [{ name: 'Example medication', dose: 'Reviewed dose', route: 'Reviewed route', frequency: 'Reviewed frequency', duration: 'Reviewed duration' }] },
         followUpRequired: true,
         followUpPlan: 'Reception to call tomorrow morning.',
       });
       expect(discharge.status).toBe(200);
+      expect(discharge.body.clientGuidance.visitSummary).toBe('Reviewed visit summary');
+      expect(discharge.body.completedBy).toBeDefined();
+      const legacyUpdate = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({ instructions: 'Rest and monitor breathing.', followUpRequired: true, followUpPlan: 'Reception to call tomorrow morning.' });
+      expect(legacyUpdate.status).toBe(200);
+      expect(legacyUpdate.body.clientGuidance).toEqual(discharge.body.clientGuidance);
       const checkout = await request(app.getHttpServer()).post(`/visits/${visit.id}/checkout/complete`).send({ clientContactConfirmed: true, balanceDisposition: 'NoBalanceReported' });
       expect(checkout.status).toBe(201);
       expect(checkout.body).toMatchObject({
@@ -1287,6 +1293,8 @@ describe('Visits (e2e)', () => {
         nextAction: 'Finalize medical record',
       });
 
+      const blockedGuidanceChange = await request(app.getHttpServer()).put(`/visits/${visit.id}/discharge`).send({ instructions: 'Changed after checkout', clientGuidance: { visitSummary: 'Changed' } });
+      expect(blockedGuidanceChange.status).toBe(409);
       const visitAfterCheckout = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
       expect(visitAfterCheckout.status).toBe(200);
       expect(visitAfterCheckout.body).toMatchObject({

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type Prisma, type UserRole } from '@sparki/db';
 import type { AmendVisitRecordInput, SaveVisitRecordDraftInput } from './dto/visit-record.schema';
+import { readableExam } from './visit-documents.service';
 import { resolveWorkflowStepId } from './visit-lifecycle.service';
 
 const OPEN_RECORD_STATUSES = ['Draft', 'ReadyForReview'] as const;
@@ -21,7 +22,7 @@ export class VisitRecordsService {
   ) {
       const visit = await tx.visit.findFirst({
         where: { id: visitId, organizationId, locationId },
-        include: { examFindings: true },
+        include: { examFindings: true, intake: true },
       });
       if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
       const record = await tx.medicalRecord.upsert({
@@ -42,8 +43,8 @@ export class VisitRecordsService {
           visitId,
           authorId,
           veterinarianId: visit.primaryVeterinarianId,
-          subjective: visit.examFindings?.subjective ?? null,
-          objective: visit.examFindings?.objective ?? null,
+          subjective: visit.examFindings?.subjective || [visit.intake?.chiefComplaint && `Presenting concern: ${visit.intake.chiefComplaint}`, visit.intake?.historyNotes && `Intake history: ${visit.intake.historyNotes}`].filter(Boolean).join('\n') || null,
+          objective: visit.intake ? [readableExam(visit.examFindings?.objective ?? null), intakeVitals(visit.intake)].filter(Boolean).join('\n\n') || null : visit.examFindings?.objective ?? null,
           assessment: visit.examFindings?.assessment ?? null,
           plan: visit.examFindings?.plan ?? null,
           status: 'Draft',
@@ -327,4 +328,17 @@ function hashSoap(value: { subjective?: string | null | undefined; objective?: s
   return createHash('sha256')
     .update(JSON.stringify({ subjective: value.subjective ?? null, objective: value.objective ?? null, assessment: value.assessment ?? null, plan: value.plan ?? null }))
     .digest('hex');
+}
+
+function intakeVitals(intake: { weight: unknown; weightUnit: string; temperature: unknown; heartRate: unknown; respiratoryRate: unknown; crtSeconds: unknown; gumColor: string | null; painScore: unknown; painScale: string | null }) {
+  const lines = [
+    intake.weight != null ? `Weight: ${intake.weight} ${intake.weightUnit === 'KG' ? 'kg' : 'lb'}` : null,
+    intake.temperature != null ? `Temperature: ${intake.temperature} F` : null,
+    intake.heartRate != null ? `Heart rate: ${intake.heartRate} bpm` : null,
+    intake.respiratoryRate != null ? `Respiratory rate: ${intake.respiratoryRate} rpm` : null,
+    intake.crtSeconds != null ? `CRT: ${intake.crtSeconds} sec` : null,
+    intake.gumColor ? `Gum color: ${intake.gumColor}` : null,
+    intake.painScore != null ? `Pain score: ${intake.painScore}${intake.painScale ? ` (${intake.painScale})` : ''}` : null,
+  ].filter(Boolean);
+  return lines.length ? `Intake vitals (staff recorded)\n${lines.join('\n')}` : '';
 }

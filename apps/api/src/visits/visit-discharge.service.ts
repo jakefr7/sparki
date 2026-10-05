@@ -45,9 +45,11 @@ export class VisitDischargeService {
       assertVisitTransitionRequirements(visit, 'CheckoutReady');
       const discharge = await tx.visitDischarge.upsert({
         where: { visitId },
+        include: { completedBy: { select: { displayName: true, firstName: true, lastName: true } } },
         create: {
           visitId,
           instructions: input.instructions,
+          ...(input.clientGuidance !== undefined ? { clientGuidance: input.clientGuidance } : {}),
           medicationInstructions: input.medicationInstructions ?? null,
           warningSigns: input.warningSigns ?? null,
           followUpPlan: input.followUpPlan ?? null,
@@ -56,6 +58,7 @@ export class VisitDischargeService {
         },
         update: {
           instructions: input.instructions,
+          ...(input.clientGuidance !== undefined ? { clientGuidance: input.clientGuidance } : {}),
           medicationInstructions: input.medicationInstructions ?? null,
           warningSigns: input.warningSigns ?? null,
           followUpPlan: input.followUpPlan ?? null,
@@ -93,11 +96,11 @@ export class VisitDischargeService {
         }
       } else {
         const cancelled = await tx.visitWorkItem.findMany({
-          where: { visitId, type: 'FollowUp', status: { in: ['Pending', 'InProgress'] } },
+          where: { id: `followup-${visitId}`, visitId, type: 'FollowUp', status: { in: ['Pending', 'InProgress'] } },
           select: { id: true, status: true },
         });
         await tx.visitWorkItem.updateMany({
-          where: { visitId, type: 'FollowUp', status: { in: ['Pending', 'InProgress'] } },
+          where: { id: `followup-${visitId}`, visitId, type: 'FollowUp', status: { in: ['Pending', 'InProgress'] } },
           data: { status: 'Cancelled', completedAt: new Date(), completedById: userId, result: { reason: 'Follow-up no longer required' } },
         });
         for (const item of cancelled) {

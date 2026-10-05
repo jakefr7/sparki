@@ -253,11 +253,13 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
         <div>
           <h2 id="visit-record-heading">Medical record</h2>
           {signed && signedOn ? (
-            <p className="visit-record-panel__signed">Signed {new Date(signedOn).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} · {new Date(signedOn).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}{signerName ? ` · ${signerName}` : ''}</p>
+            <p className="visit-record-panel__signed">Signed {new Date(signedOn).toLocaleDateString('en-US', { timeZone: visit.location?.timeZone ?? 'UTC', month: 'short', day: 'numeric', year: 'numeric' })} · {new Date(signedOn).toLocaleTimeString('en-US', { timeZone: visit.location?.timeZone ?? 'UTC', hour: 'numeric', minute: '2-digit' })}{signerName ? ` · ${signerName}` : ''}</p>
           ) : null}
         </div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{RECORD_STATUS_LABELS[note.status] ?? note.status}</span>
       </div>
+      {!signed && (!visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))) ? <p role="status">The visit still needs completed care and saved discharge instructions. You can review the medical record here.</p> : null}
+      {!canEdit && !signed ? <p role="status">Only the assigned clinician or a recorded signoff delegate can edit and sign this record. Ask the assigned clinician to finish it or arrange authorized delegation.</p> : null}
       {lockedNote ? <VisitDocumentDownload visitId={visit.id} kind="record">Download medical record PDF</VisitDocumentDownload> : null}
       {canEdit ? (
         <form id={`visit-record-form-${visit.id}`} ref={recordForm} onChange={scheduleSave} onSubmit={(event) => event.preventDefault()} className="visit-record-form visit-record-form--review">

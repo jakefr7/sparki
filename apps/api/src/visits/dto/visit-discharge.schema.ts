@@ -2,9 +2,28 @@ import { z } from 'zod';
 
 const optionalText = z.string().trim().max(10000).optional().nullable();
 
+const direction = z.string().trim().min(1).max(1000);
+export const dischargeGuidanceSchema = z.object({
+  visitSummary: optionalText,
+  diet: optionalText,
+  activity: optionalText,
+  urgentSigns: optionalText,
+  emergencyContact: z.string().trim().max(1000).optional().nullable(),
+  recheckDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+    const date = new Date(`${value}T12:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, 'Enter a valid recheck date').optional().nullable(),
+  medications: z.array(z.object({
+    name: direction, dose: direction, route: direction, frequency: direction,
+    duration: direction, nextDose: z.string().trim().max(1000).optional().nullable(),
+    specialInstructions: optionalText,
+  }).strict()).max(30).default([]),
+}).strict();
+
 export const saveVisitDischargeSchema = z.object({
   instructions: z.string().trim().min(1).max(10000),
   medicationInstructions: optionalText,
+  clientGuidance: dischargeGuidanceSchema.optional(),
   warningSigns: optionalText,
   followUpPlan: optionalText,
   followUpRequired: z.boolean().default(false),

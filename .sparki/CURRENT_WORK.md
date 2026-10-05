@@ -1,6 +1,6 @@
 # Current Work
 
-Last updated: 2026-10-01
+Last updated: 2026-10-04
 
 Sparki no longer uses active development phases. Work is driven by the user's current request, the Product Constitution, and the live product state.
 
@@ -67,3 +67,28 @@ Verification: API/web typechecks and focused lint passed; six document unit test
 October 3 navigation fix: Communication readiness now lives in the persistent authenticated layout instead of resetting on each page change. Temporary readiness errors preserve the last confirmed visibility; confirmed unavailability or denied access hides the link. Focused navigation browser regression, web typecheck and focused lint passed (existing image/CSS warnings remain). Committed and pushed at the founder's request; not deployed to staging.
 
 Founder authorized implementation. The local inbox now uses the rebuilt API: readiness-based navigation, queue/search/paging, transcript polling, separate recipient drafts, idempotent send recovery, explicit read/unread, concurrent-safe assignment/status, consent and patient context. Added owner/practice-manager appointment text settings and read-only status on booking success/appointment details. Desktop/tablet sizing verified. Eight focused simulated browser scenarios, web typecheck, focused lint and production build passed; existing warnings remain. Backend and product policies are unchanged. No push/deployment. Details and remaining acceptance coverage: [frontend implementation notes](../docs/research/client-communication-frontend-2026-10-02.md).
+
+## SPA-7 local remediation — October 4
+
+Implemented visit Start Exam handoff with existing role authorization; explicit client-facing discharge fields, saved hydration/preview and closed-visit read-only behavior; honest unexamined defaults; record resume/signoff explanations; intake history/vitals in new SOAP drafts; persisted checkout contact confirmation; clinic-local care/signature timestamps; stale checkout catalog response cancellation; and readable paginated PDFs. Existing signed records and prepared discharges were not rewritten.
+
+Both typechecks, focused lint, 24 unit tests, 86 isolated visit/billing integration tests, and the real Chromium UI regression pass. Native discharge download, saved-field/internal-marker checks, desktop/tablet previews, UTC-server/Central-browser hydration checks, and short/missing/long PDF renders verified. No commit, push or deployment. Full staging booking-to-signoff acceptance and booking retry/draft coverage remain pending. The passing UI run still logged a separate dashboard workflow-defaults initialization upsert race; this remains unresolved. Details: [SPA-7 implementation and limits](../docs/research/spa7-local-remediation-2026-10-04.md).
+
+## SPA-7 discharge strengthening — October 4
+
+Founder approved the comparison recommendations. Added staff-authored visit summary, diet/activity, urgent-care guidance and emergency contact, structured medication schedules, date-only recheck, and separate responsible-veterinarian/preparer attribution in the editor, saved preview, and PDF. Old discharges remain unchanged; old API updates preserve new guidance. Short medication schedules stay together; empty optional sections are omitted.
+
+19 focused unit tests, 58 isolated visit integration tests, API/web typechecks, focused lint, and the Chromium journey passed. Browser role handoff includes technician discharge updates, another veterinarian reopening, receptionist checkout, and assigned owner/clinician signoff using development test sessions. Native download and synthetic two-page layout verified. Uncommitted/undeployed; nullable guidance migration tested in disposable databases only. The known dashboard initialization race still appears in browser server logs; real-login staging acceptance remains pending. Details: [discharge strengthening](../docs/research/spa7-discharge-strengthening-2026-10-04.md).
+
+## Real-login staging employee handoff audit — October 4–5
+
+User requested employee handoff testing with billing treated as unfinished. Five password logins verified in the existing test clinic. Assistant intake → technician resume/completion passes; assigned-clinician discovery/Start Exam fails on deployed staging. Arrival-to-intake queue discoverability, clinic/browser/server day consistency, profile appointment type/time, and owner clinical actions need follow-up. Audit stops before care/discharge/checkout; no bypass or deployment. Billing has partial ledger foundations but its complete review/invoice/payment/receipt workflow is not accepted. Retained fixture and full evidence: [staging handoff audit](../docs/research/staging-employee-handoff-audit-2026-10-04.md).
+
+
+## Anna responses: first FAS increment — October 5
+
+Founder asked to begin implementation from Anna's SPA-24 responses. Added staff-recorded 0–5 FAS assessments during active visits, optional handling notes, server-derived author/name/role and timestamps, append-only reassessment history, and read-only history under patient Alerts. No invented score descriptors or default score. History is scoped to the authenticated organization/location and paginated. Retry IDs recover successful saves after a lost response; optimistic Visit.version updates serialize against record signoff/closure. Existing clinical intake roles may record; receptionist/manager roles do not gain clinical capture authority. Signed/closed/checked-out visits reject new entries.
+
+Verified: 11 focused unit checks, 3 isolated database/API scenarios (migration replay, persistence, pagination, clinic/location isolation and closure), Chromium UI capture/reassessment/reload/profile-history and lost-response retry recovery, API/web typechecks and focused lint. Tablet profile screenshot inspected. Migration applied only to disposable test databases; local development migration and staging rollout remain pending. No commit, push or deployment.
+
+This is the first increment, not completion of SPA-30 or all Anna workflows. Discharge work already exists in the current tree; it was preserved. Pricing calculation, medication permission/reporting policy and export access remain in SPA-36; booking/reminder/refill/label improvements remain separate work. FAS observations are attached to visits and patient history; automatic inclusion in SOAP/PDF and cross-location history are outside this increment.

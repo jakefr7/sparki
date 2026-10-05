@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma } from '@sparki/db';
+import { dischargeGuidanceSchema } from './dto/visit-discharge.schema';
 import type { AuthenticatedUser } from '../auth/types';
 import { requireRole } from '../auth/require-role';
 import { VisitBillingService } from './visit-billing.service';
@@ -27,7 +28,7 @@ export class VisitDocumentsService {
     requireRole(user, kind === 'receipt' ? ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST'] : ['OWNER', 'PRACTICE_MANAGER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'RECEPTIONIST']);
     const visit = await prisma.visit.findFirst({
       where: { id: visitId, organizationId: user.organizationId, locationId: user.locationId },
-      include: { organization: true, location: true, patient: true, client: true, appointment: true, discharge: true, soapNotes: { where: { voidedAt: null }, include: { author: true, veterinarian: true }, orderBy: { createdAt: 'asc' } } },
+      include: { organization: true, location: true, patient: true, client: true, appointment: true, primaryVeterinarian: true, discharge: { include: { completedBy: true } }, soapNotes: { where: { voidedAt: null }, include: { author: true, veterinarian: true }, orderBy: { createdAt: 'asc' } } },
     });
     if (!visit) throw new NotFoundException('Visit not found.');
     const date = (value: Date) => value.toLocaleString('en-US', { timeZone: visit.location.timeZone, dateStyle: 'medium', timeStyle: 'short' });
@@ -36,7 +37,8 @@ export class VisitDocumentsService {
       clinic: visit.organization.name,
       contact: [visit.organization.addressLine1, visit.organization.addressLine2, [visit.organization.city, visit.organization.state, visit.organization.postalCode].filter(Boolean).join(' '), visit.organization.phone, visit.organization.email].filter(Boolean).join(' | '),
       patient: visit.patient.name,
-      identifiers: [visit.patient.species, visit.patient.breed, visit.client && `Client: ${visit.client.firstName} ${visit.client.lastName}`, `Visit: ${date(visit.appointment?.scheduledAt ?? visit.createdAt)}`, `Visit ID: ${visit.id}`].filter(Boolean).join(' | '),
+      identifiers: [visit.patient.species, visit.patient.breed, visit.client && `Client: ${visit.client.firstName} ${visit.client.lastName}`, `Visit: ${date(visit.appointment?.scheduledAt ?? visit.createdAt)}`, kind !== 'discharge' && `Visit ID: ${visit.id}`].filter(Boolean).join(' | '),
+      ...(kind === 'discharge' ? { metadata: [ ['Patient', visit.patient.name], ['Species / breed', [visit.patient.species, visit.patient.breed].filter(Boolean).join(' / ')], ['Client', visit.client ? `${visit.client.firstName} ${visit.client.lastName}` : 'Not recorded'], ['Visit date', date(visit.appointment?.scheduledAt ?? visit.createdAt)] ] as Array<[string, string]>, reference: visit.id } : {}),
       generatedAt: `${date(new Date())} (${visit.location.timeZone})`,
       sections: [],
     };
@@ -53,12 +55,31 @@ export class VisitDocumentsService {
       }
     } else if (kind === 'discharge') {
       if (!visit.discharge) throw new ConflictException('Prepare discharge instructions before downloading them.');
-      document.sections = [
-        { title: 'Home care', text: visit.discharge.instructions },
-        { title: 'Medication directions', text: visit.discharge.medicationInstructions || 'No medication directions recorded.' },
-        { title: 'Warning signs', text: visit.discharge.warningSigns || 'No warning signs recorded.' },
-        { title: 'Follow-up', text: visit.discharge.followUpPlan || 'No follow-up plan recorded.' },
-      ];
+      const parsed = dischargeGuidanceSchema.safeParse(visit.discharge.clientGuidance);
+      const guidance = parsed.success ? parsed.data : null;
+      document.metadata!.push(['Responsible veterinarian', person(visit.primaryVeterinarian)], ['Prepared by', person(visit.discharge.completedBy)]);
+      document.sections = [];
+      const add = (title: string, text: string | null | undefined, emphasis = false, keepTogether = false) => {
+        if (text) document.sections.push({ title, text, ...(emphasis ? { emphasis: true } : {}), ...(keepTogether ? { keepTogether: true } : {}) });
+      };
+      add('Visit summary', guidance?.visitSummary);
+      add('Seek urgent veterinary care', guidance?.urgentSigns, true);
+      add('Emergency / after-hours contact', guidance?.emergencyContact, true);
+      add('Home care', visit.discharge.instructions);
+      add('Diet / feeding', guidance?.diet);
+      add('Activity / restrictions', guidance?.activity);
+      for (const medication of guidance?.medications ?? []) {
+        add(`Medication: ${medication.name}`, [
+          `Dose: ${medication.dose}`, `Route: ${medication.route}`, `Frequency: ${medication.frequency}`,
+          `Duration: ${medication.duration}`, `Next dose: ${medication.nextDose || 'Not recorded'}`,
+          medication.specialInstructions && `Special instructions: ${medication.specialInstructions}`,
+        ].filter(Boolean).join('\n'), false, true);
+      }
+      add('Medication directions', visit.discharge.medicationInstructions);
+      add('When to call the clinic', visit.discharge.warningSigns);
+      const recheck = guidance?.recheckDate ? `Recheck date: ${new Date(`${guidance.recheckDate}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', dateStyle: 'medium' })}` : '';
+      add('Follow-up', [recheck, visit.discharge.followUpPlan].filter(Boolean).join('\n'));
+      add('About these instructions', 'These instructions contain only recorded client guidance. An omitted section does not mean no instructions are needed. Contact the clinic if any direction is unclear.');
     } else {
       const receipt = await this.billing.getReceipt(visitId, user.organizationId, user.locationId);
       document.sections = [

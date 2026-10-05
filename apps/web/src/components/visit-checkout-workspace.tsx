@@ -37,12 +37,12 @@ interface Invoice {
 }
 
 interface CheckoutState {
-  client: { firstName: string; lastName: string } | null;
+  client: { firstName: string; lastName: string; phone?: string | null; email?: string | null } | null;
   patient: { id: string; name: string; species: string; breed: string | null; sex: string | null; imageUrl: string | null };
   readiness: { ready: boolean; blockers: string[] };
   invoice: Invoice;
   followUp: { required: boolean; plan: string | null };
-  checkoutCompletion: { completed: boolean; completedAt: string | null; balanceStatus: string | null };
+  checkoutCompletion: { clientContactConfirmed: boolean; completed: boolean; completedAt: string | null; balanceStatus: string | null };
   allowCheckoutWithOutstandingBalance: boolean;
 }
 
@@ -58,7 +58,7 @@ interface Receipt {
   organization: { name: string };
   location: { name: string };
   patient: { name: string };
-  client: { firstName: string; lastName: string } | null;
+  client: { firstName: string; lastName: string; phone?: string | null; email?: string | null } | null;
   lines: InvoiceLine[];
   payments: Payment[];
   totalCents: Money;
@@ -114,7 +114,7 @@ export function VisitCheckoutWorkspace({ visitId }: { visitId: string }) {
       const payload = await response.json() as CheckoutState & { message?: string };
       if (!response.ok) throw new Error(readError(payload, 'Could not load checkout.'));
       setState(payload);
-      if (payload.checkoutCompletion.completed) setStep('done');
+      if (payload.checkoutCompletion.completed) { setStep('done'); setContactConfirmed(payload.checkoutCompletion.clientContactConfirmed); }
       else if (payload.invoice.remainingBalanceCents === 0 && !payload.invoice.editable) setStep('done');
       setPaymentAmount((current) => current || (payload.invoice.remainingBalanceCents / 100).toFixed(2));
     } catch (caught) {
@@ -125,13 +125,15 @@ export function VisitCheckoutWorkspace({ visitId }: { visitId: string }) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!state?.invoice.editable) return;
+    let active = true;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      fetch(`/api/inventory/items?search=${encodeURIComponent(catalogQuery)}`, { cache: 'no-store' })
+      fetch(`/api/inventory/items?search=${encodeURIComponent(catalogQuery)}`, { cache: 'no-store', signal: controller.signal })
         .then(async (response) => response.ok ? await response.json() as CatalogItem[] : [])
-        .then((items) => setCatalog(items.filter((item) => item.billable && item.status === 'ACTIVE' && item.retailPrice != null).slice(0, 8)))
-        .catch(() => setCatalog([]));
+        .then((items) => { if (active) setCatalog(items.filter((item) => item.billable && item.status === 'ACTIVE' && item.retailPrice != null).slice(0, 8)); })
+        .catch(() => { if (active) setCatalog([]); });
     }, 180);
-    return () => window.clearTimeout(timer);
+    return () => { active = false; controller.abort(); window.clearTimeout(timer); };
   }, [catalogQuery, state?.invoice.editable]);
 
   const { openNewAppointment, newAppointmentModal } = useNewAppointmentModal((appointment) => {
@@ -267,7 +269,7 @@ export function VisitCheckoutWorkspace({ visitId }: { visitId: string }) {
 
       {step === 'payment' ? <form id="checkout-payment" className="checkout-payment" onSubmit={recordPayment}><div className="checkout-amount"><span>Amount due</span><strong>{dollars(state.invoice.remainingBalanceCents)}</strong><p>Process this amount using the clinic’s payment system, then record the payment below.</p></div><fieldset><legend>Payment method</legend><div className="checkout-methods">{(['CARD', 'CASH', 'CHECK', 'OTHER'] as PaymentMethod[]).map((method) => <button type="button" key={method} aria-pressed={paymentMethod === method} onClick={() => setPaymentMethod(method)}>{paymentMethodLabel(method)}</button>)}</div></fieldset><label className="checkout-amount-input"><span>Amount</span><span className="checkout-money-input"><b>$</b><input inputMode="decimal" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} aria-label="Payment amount" /></span></label>{paymentMethod === 'CASH' ? <label className="checkout-cash-input"><span>Cash tendered <small>Optional</small></span><span className="checkout-money-input"><b>$</b><input inputMode="decimal" value={cashTendered} onChange={(event) => setCashTendered(event.target.value)} /></span>{changeCents != null ? <small>Change due: {dollars(changeCents)}</small> : null}</label> : null}{state.invoice.amountPaidCents > 0 ? <p className="checkout-payment-summary">Paid {dollars(state.invoice.amountPaidCents)} · Remaining {dollars(state.invoice.remainingBalanceCents)}</p> : null}</form> : null}
 
-      {step === 'done' ? <div className="checkout-done"><div><span className="checkout-done__mark" aria-hidden="true">✓</span><h3>{state.checkoutCompletion.completed ? 'Visit checkout is complete' : 'Payment recorded'}</h3><p>{state.invoice.payments.length ? state.invoice.payments.map((payment) => `${dollars(payment.amountCents)} · ${paymentMethodLabel(payment.method)}`).join(' · ') : 'No payment was needed for this visit.'}</p></div>{!state.invoice.editable ? <div className="checkout-receipt-actions"><button type="button" className="button-secondary" onClick={() => void showReceipt()}>View receipt</button>{receipt ? <VisitDocumentDownload visitId={visitId} kind="receipt">Download receipt PDF</VisitDocumentDownload> : null}</div> : null}{receipt ? <div className="checkout-receipt"><h4>{receipt.organization.name}</h4><p>{receipt.patient.name}{receipt.client ? ` · ${receipt.client.firstName} ${receipt.client.lastName}` : ''}</p>{receipt.lines.map((line) => <p key={line.id}><span>{line.description}</span><strong>{dollars(line.totalAmountCents)}</strong></p>)}<p className="checkout-receipt__total"><span>Total</span><strong>{dollars(receipt.totalCents)}</strong></p></div> : null}{receiptError ? <p className="form-error" role="alert">{receiptError}</p> : null}<label className="checkout-contact-confirmation"><input type="checkbox" checked={contactConfirmed} onChange={(event) => setContactConfirmed(event.target.checked)} disabled={state.checkoutCompletion.completed} /> Client contact details confirmed</label></div> : null}
+      {step === 'done' ? <div className="checkout-done"><div><span className="checkout-done__mark" aria-hidden="true">✓</span><h3>{state.checkoutCompletion.completed ? 'Visit checkout is complete' : 'Payment recorded'}</h3><p>{state.invoice.payments.length ? state.invoice.payments.map((payment) => `${dollars(payment.amountCents)} · ${paymentMethodLabel(payment.method)}`).join(' · ') : 'No payment was needed for this visit.'}</p></div>{!state.invoice.editable ? <div className="checkout-receipt-actions"><button type="button" className="button-secondary" onClick={() => void showReceipt()}>View receipt</button>{receipt ? <VisitDocumentDownload visitId={visitId} kind="receipt">Download receipt PDF</VisitDocumentDownload> : null}</div> : null}{receipt ? <div className="checkout-receipt"><h4>{receipt.organization.name}</h4><p>{receipt.patient.name}{receipt.client ? ` · ${receipt.client.firstName} ${receipt.client.lastName}` : ''}</p>{receipt.lines.map((line) => <p key={line.id}><span>{line.description}</span><strong>{dollars(line.totalAmountCents)}</strong></p>)}<p className="checkout-receipt__total"><span>Total</span><strong>{dollars(receipt.totalCents)}</strong></p></div> : null}{receiptError ? <p className="form-error" role="alert">{receiptError}</p> : null}<label className="checkout-contact-confirmation"><input type="checkbox" checked={contactConfirmed} onChange={(event) => setContactConfirmed(event.target.checked)} disabled={state.checkoutCompletion.completed} /> Client contact details confirmed</label><p>{state.client ? [`${state.client.firstName} ${state.client.lastName}`, state.client.phone || 'Phone not recorded', state.client.email || 'Email not recorded'].join(' · ') : 'Client not recorded'}</p></div> : null}
       {error ? <p className="form-error checkout-error" role="alert">{error}</p> : null}
     </section>
     {!state.checkoutCompletion.completed ? <footer className="visit-step-actions checkout-actions"><span>{step === 'payment' ? <button type="button" className="visit-stage-navigation__link" onClick={() => setStep('review')} disabled={recordingPayment}>← Back to review</button> : null}</span>{step === 'review' ? <button type="button" className="button-primary" onClick={() => void continueToPayment()} disabled={!state.readiness.ready || finalizing}>{finalizing ? 'Preparing payment…' : state.invoice.totalCents === 0 ? 'Continue to checkout →' : 'Continue to payment →'}</button> : step === 'payment' ? <button type="submit" form="checkout-payment" className="button-primary" disabled={recordingPayment}>{recordingPayment ? 'Recording…' : 'Record payment'}</button> : <button type="button" className="button-primary" onClick={() => void finishCheckout()} disabled={!canFinish || !contactConfirmed || completing}>{completing ? 'Finishing…' : 'Finish checkout'}</button>}</footer> : null}

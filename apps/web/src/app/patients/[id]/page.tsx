@@ -4,6 +4,7 @@ import './patient-profile.css';
 import { PatientMedicalHistory } from '../../../components/patient-medical-history';
 import { notFound } from 'next/navigation';
 import { ActiveVisitDetailsButton } from '../../../components/active-visit-details-button';
+import { PatientFasPanel } from '../../../components/patient-fas-panel';
 import { PatientAlertsPanel } from '../../../components/patient-alerts-panel';
 import { PatientMedicationsPanel } from '../../../components/patient-medications-panel';
 import { PatientNewAppointmentButton } from '../../../components/patient-new-appointment-button';
@@ -368,11 +369,10 @@ export default async function PatientWorkspacePage({
             id: 'alerts',
             label: 'Alerts',
             panel: (
-              <PatientAlertsPanel
-                patientId={patient.id}
-                alerts={patient.patientAlerts}
-                legacyAlert={patient.alerts}
-              />
+              <div className="patient-profile-section-stack">
+                <PatientFasPanel key={patient.id} patientId={patient.id} />
+                <PatientAlertsPanel patientId={patient.id} alerts={patient.patientAlerts} legacyAlert={patient.alerts} />
+              </div>
             ),
           },
           {

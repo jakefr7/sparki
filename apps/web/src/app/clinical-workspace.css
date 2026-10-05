@@ -842,3 +842,17 @@ body:has(.visit-workspace) {
 .visit-discharge-check .visit-discharge-field__label { color: #52616d; font-size: .82rem; font-weight: 500; }
 .visit-care-sections .visit-discharge-field textarea { min-height: 4.5rem; }
 .visit-discharge-panel__header .eyebrow { display: none; }
+
+.visit-discharge-editor { border: 0; margin: 0; padding: 0; display: grid; gap: 1.25rem; min-width: 0; }
+.visit-discharge-summary p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.visit-discharge-field textarea { overflow-wrap: anywhere; }
+
+.visit-discharge-hint { display: block; margin: .3rem 0 .5rem; color: #526575; font-size: .85rem; }
+.visit-discharge-medication { border: 1px solid #dce7e8; border-radius: .5rem; padding: 1rem; min-width: 0; margin: 1rem 0; }
+.visit-discharge-medication-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.visit-discharge-medication-grid input, .visit-discharge-editor input[type="date"] { width: 100%; box-sizing: border-box; min-width: 0; padding: .65rem; border: 1px solid #b7c8ce; border-radius: .35rem; font: inherit; }
+.visit-discharge-field--urgent { border-left: 3px solid #334954; padding-left: 1rem; }
+.visit-discharge-summary { grid-template-columns: 1fr; }
+.visit-discharge-summary section + section { border-top: 1px solid #dce7e8; border-left: 0; }
+.visit-discharge-summary .visit-discharge-summary__urgent { border-left: 3px solid #334954; background: #f1f5f6; }
+@media (max-width: 640px) { .visit-discharge-medication-grid { grid-template-columns: 1fr; } }

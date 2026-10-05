@@ -18,6 +18,7 @@ export const VISIT_LIFECYCLE_INCLUDE = {
     },
   },
   client: true,
+  location: { select: { name: true, timeZone: true } },
   appointment: true,
   primaryVeterinarian: true,
   assignedTechnician: true,
@@ -29,7 +30,7 @@ export const VISIT_LIFECYCLE_INCLUDE = {
   handoffs: { orderBy: { createdAt: 'desc' as const }, take: 10 },
   signoffDelegates: { include: { delegate: true } },
   soapNotes: { orderBy: { createdAt: 'desc' as const } },
-  discharge: true,
+  discharge: { include: { completedBy: { select: { displayName: true, firstName: true, lastName: true } } } },
   checkout: true,
   clinicalAttachments: {
     where: { removedAt: null },

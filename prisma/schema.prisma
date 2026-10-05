@@ -593,6 +593,7 @@ enum PatientStatus {
 }
 
 model Patient {
+  fasAssessments PatientFasAssessment[]
   prescriptions PatientPrescription[]
   id             String        @id @default(cuid())
   organizationId String
@@ -1830,6 +1831,7 @@ enum VisitExceptionSeverity {
 }
 
 model Visit {
+  fasAssessments PatientFasAssessment[]
   id             String  @id @default(cuid())
   organizationId String
   locationId     String
@@ -1960,6 +1962,7 @@ model VisitDischarge {
   visitId                String   @unique
   instructions           String
   medicationInstructions String?
+  clientGuidance         Json?
   warningSigns           String?
   followUpPlan           String?
   followUpRequired       Boolean  @default(false)
@@ -4180,4 +4183,25 @@ model PatientPrescriptionEvent {
   organization Organization @relation(fields: [organizationId], references: [id])
   actor User @relation(fields: [actorId], references: [id])
   @@index([organizationId, prescriptionId, createdAt])
+}
+
+// Staff observations are append-only; reassessment preserves earlier scores.
+model PatientFasAssessment {
+  id String @id @default(cuid())
+  organizationId String
+  locationId String
+  patientId String
+  visitId String
+  requestId String
+  score Int
+  handlingNotes String?
+  authorId String
+  authorName String
+  authorRole UserRole
+  createdAt DateTime @default(now())
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+
+  @@unique([visitId, requestId])
+  @@index([organizationId, locationId, patientId, createdAt, id], map: "PatientFasAssessment_org_location_patient_created_id_idx")
 }

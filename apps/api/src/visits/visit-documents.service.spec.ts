@@ -51,3 +51,23 @@ describe('visit document access and readiness', () => {
     expect(readableExam(JSON.stringify({ kind: 'sparki-small-animal-exam', systems: { eyes: { documented: true, status: 'Abnormal', notes: 'Recorded finding' }, ears: { documented: false, status: 'Normal' } } }))).toBe('Eyes: Abnormal - Recorded finding');
   });
 });
+
+describe('structured client discharge document', () => {
+  it('exports staff-authored guidance, urgent sections and separate clinician/preparer attribution', async () => {
+    const clinician = { displayName: 'Dr. Responsible', firstName: 'Responsible', lastName: 'Doctor' };
+    const preparer = { displayName: 'Test Technician', firstName: 'Test', lastName: 'Technician' };
+    vi.mocked(prisma.visit.findFirst).mockResolvedValue({ ...visit, primaryVeterinarian: clinician,
+      examFindings: { plan: 'INTERNAL_ONLY' }, discharge: { instructions: 'Reviewed home care', completedBy: preparer,
+        clientGuidance: { visitSummary: 'Reviewed summary', urgentSigns: 'Reviewed urgent signs', emergencyContact: 'Example ER 312-555-0198', recheckDate: '2026-10-12', medications: [{ name: 'Example', dose: 'Reviewed dose', route: 'Reviewed route', frequency: 'Reviewed frequency', duration: 'Reviewed duration', nextDose: 'Reviewed next dose' }] } },
+    } as never);
+    await service.generate(user, 'visit', 'discharge');
+    const document = vi.mocked(renderPatientDocument).mock.calls[0]![0];
+    expect(document.metadata).toContainEqual(['Responsible veterinarian', 'Dr. Responsible']);
+    expect(document.metadata).toContainEqual(['Prepared by', 'Test Technician']);
+    expect(document.sections).toContainEqual({ title: 'Seek urgent veterinary care', text: 'Reviewed urgent signs', emphasis: true });
+    expect(document.sections.find((section) => section.title === 'Medication: Example')?.text).toContain('Next dose: Reviewed next dose');
+    expect(document.sections.find((section) => section.title === 'Follow-up')?.text).toBe('Recheck date: Oct 12, 2026');
+    expect(JSON.stringify(document)).not.toContain('INTERNAL_ONLY');
+    expect(document.sections.some((section) => section.text === 'Not recorded.')).toBe(false);
+  });
+});

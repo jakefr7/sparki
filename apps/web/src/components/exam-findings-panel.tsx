@@ -59,7 +59,7 @@ interface ExamFindingsPayload {
 }
 
 function emptySystems(): Record<SystemKey, SystemFinding> {
-  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Normal', notes: '', documented: true }])) as Record<SystemKey, SystemFinding>;
+  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Not examined', notes: '', documented: false }])) as Record<SystemKey, SystemFinding>;
 }
 
 const WHATS_NEXT_HEADING = "\n\nWhat's Next\n";
@@ -95,8 +95,7 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
       ...fallback,
       ...parsed,
       general: { ...fallback.general, ...parsed.general },
-      // New exams begin at the clinic-confirmed Normal default. Explicitly
-      // documented historical findings still replace those defaults.
+      // Preserve explicit historical findings; untouched systems remain unexamined.
       systems: {
         ...fallback.systems,
         ...Object.fromEntries(Object.entries(parsed.systems ?? {}).filter(([, finding]) => finding?.documented === true)),
@@ -260,7 +259,7 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake, return
 
   return (
     <div className="exam-workspace-body">
-      <p className="visit-step-caption">Step 1 of 4 · Exam</p>
+      <p className="visit-step-caption">Step 1 of 5 · Exam</p>
       {editable ? <IntakeRecap intake={intake} /> : null}
       <section className="exam-findings-card" aria-labelledby="exam-findings-heading">
         <div className="exam-findings-card__header"><div><p className="eyebrow">Veterinarian exam</p><h2 id="exam-findings-heading">Physical examination</h2><p>{editable ? 'Record the patient’s general assessment and head-to-tail findings.' : 'Completed exam findings'}</p></div></div>

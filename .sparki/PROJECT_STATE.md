@@ -21,7 +21,7 @@ For user-authorized staging testing, Codex and Claude should read [shared stagin
 - Billing records clinic-managed invoice and external-payment state; Sparki does not process or verify card/bank payments.
 - Client texting has a real backend (2026-10-02, local only) but no provider account or clinic number, so every location remains in simulation and is represented as simulated rather than externally delivered.
 - Patient-profile invoices currently require an active visit for new charges.
-- Behavior/FAS has an at-a-glance profile location, but FAS capture is not modeled yet.
+- Behavior/FAS: 0–5 capture with staff attribution and append-only visit/patient history is implemented locally (October 5). Migration verified in disposable test databases only; rollout and automatic SOAP/PDF inclusion remain pending.
 - Service markup is stored as metadata but does not alter price until its calculation policy is defined.
 
 ## Operating model

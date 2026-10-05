@@ -1,3 +1,13 @@
+export type DischargeMedication = {
+  name: string; dose: string; route: string; frequency: string; duration: string;
+  nextDose?: string | null; specialInstructions?: string | null;
+};
+export type DischargeGuidance = {
+  visitSummary?: string | null; diet?: string | null; activity?: string | null;
+  urgentSigns?: string | null; emergencyContact?: string | null; recheckDate?: string | null;
+  medications: DischargeMedication[];
+};
+
 export interface PrimaryClientSummary {
   id: string;
   firstName: string;
@@ -407,6 +417,7 @@ export function appointmentTypeLabel(type: string): string {
 }
 
 export interface VisitDetail {
+  location?: { name: string; timeZone: string };
   id: string;
   visitType: string;
   reason: string;
@@ -522,6 +533,8 @@ export interface VisitDetail {
   }>;
   clinicalAttachments: ClinicalAttachmentSummary[];
   discharge: {
+    clientGuidance?: DischargeGuidance | null;
+    completedBy?: { displayName: string | null; firstName: string; lastName: string } | null;
     instructions: string;
     medicationInstructions: string | null;
     warningSigns: string | null;

@@ -1,3 +1,5 @@
+import { PatientFasPanel } from '../../../components/patient-fas-panel';
+import { VisitExamHandoff } from '../../../components/visit-exam-handoff';
 import { VisitCareSections } from '../../../components/visit-care-sections';
 import { notFound } from 'next/navigation';
 import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
@@ -57,10 +59,11 @@ export default async function VisitWorkspacePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; view?: string }>;
+  searchParams: Promise<{ from?: string; view?: string; resume?: string }>;
 }) {
   const { id } = await params;
-  const { from, view } = await searchParams;
+  const { from, view: requestedView, resume } = await searchParams;
+  const view = requestedView ?? (resume === 'visit-record' ? 'record' : resume === 'visit-discharge' ? 'discharge' : undefined);
   const visit = await getVisit(id);
   if (!visit) {
     notFound();
@@ -80,7 +83,7 @@ export default async function VisitWorkspacePage({
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
   const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
-  const showingCheckout = view === 'checkout' || ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state);
+  const showingCheckout = view === 'checkout' || (!['record', 'discharge'].includes(view ?? '') && ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state));
   const openClinicalWork = visit.workItems.some((item) => {
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
     return ['Pending', 'InProgress'].includes(item.status);
@@ -121,7 +124,11 @@ export default async function VisitWorkspacePage({
           headerOnly={Boolean(visit.examFindings?.completedAt)}
         />
 
-        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
+        <PatientFasPanel key={visit.id} patientId={visit.patient.id} visitId={visit.id} timeZone={visit.location?.timeZone} readOnly={recordSigned || Boolean(visit.checkout) || ['Archived', 'ArchivedWithExceptions', 'RecordComplete', 'VisitClosing', 'VisitClosingWithExceptions', 'Cancelled', 'CancelledAfterArrival', 'NoShow', 'Rescheduled', 'Referred', 'Deferred'].includes(visit.state)} />
+
+        {visit.state === 'VeterinarianExamReady' ? <VisitExamHandoff visitId={visit.id} clinician={personLabel(visit.primaryVeterinarian)} /> : null}
+        {view === 'record' && !examComplete ? <p role="status">Complete the exam to prepare the medical record. Intake and exam remain available here.</p> : null}
+        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
 
         {showingCheckout ? <VisitCheckoutWorkspace visitId={visit.id} /> : null}
         {showClinicalWork && !recordSigned && !showingCheckout ? <VisitCareSections
@@ -141,7 +148,7 @@ export default async function VisitWorkspacePage({
                 : 'Clinical work is done. Front-desk checkout is the only step left.'}
             </p>
             <VisitRecordPanel visit={visit} />
-            {!visit.checkout ? <VisitDischargePanel visit={visit} /> : null}
+            {!visit.checkout || view === 'discharge' ? <VisitDischargePanel visit={visit} /> : null}
           </div>
         ) : null}
       </div>

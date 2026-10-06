@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
 import type { PatientAlertSummary, PatientMedicationSummary, VisitDetail } from '../lib/patient-types';
 import {
@@ -107,6 +107,7 @@ export function VisitIntakeWorkspace({
   backHref,
   examStatusNote: _examStatusNote,
   headerOnly = false,
+  handlingAssessment,
 }: {
   visitId: string;
   visitType: string;
@@ -132,6 +133,7 @@ export function VisitIntakeWorkspace({
   backHref: string;
   examStatusNote?: string | null;
   headerOnly?: boolean;
+  handlingAssessment?: ReactNode;
 }) {
   const router = useRouter();
   const { user } = useCurrentUser();
@@ -343,10 +345,11 @@ export function VisitIntakeWorkspace({
                 <label><span>Capillary refill</span><div className="intake-simple-unit"><input id="crtSeconds" type="number" min="0" max="20" step="0.1" value={payload.crtSeconds ?? ''} onChange={(e) => updateField({ crtSeconds: numberValue(e) })}/><span>sec</span></div></label>
                 <label><span>Gum color</span><select id="gumColor" value={payload.gumColor ?? ''} onChange={(e) => updateField({ gumColor: e.target.value || null })}><option value="">Select color</option>{GUM_COLOR_OPTIONS.map((color) => <option key={color}>{color}</option>)}</select></label>
               </div>
+              {handlingAssessment}
             </section>
             <section className="intake-simple-section" aria-labelledby="history-heading">
               <header><h2 id="history-heading">Medical History</h2><p>Capture the clinically relevant story for the veterinarian.</p></header>
-              <textarea id="historyNotes" className="intake-simple-history" rows={8} placeholder="Document the client’s concerns, relevant history, symptoms, medication changes, and anything the veterinarian should know." value={payload.historyNotes ?? ''} onChange={(e) => { updateField({ historyNotes: e.target.value }); e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}/>
+              <textarea id="historyNotes" className="intake-simple-history" rows={8} placeholder="Enter relevant history" value={payload.historyNotes ?? ''} onChange={(e) => { updateField({ historyNotes: e.target.value }); e.currentTarget.style.height = 'auto'; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}/>
               {attemptedHandoff && missing.length ? <p className="form-error" role="alert">Complete {missing.map((field) => field === 'crtSeconds' ? 'capillary refill' : field === 'historyNotes' ? 'medical history' : field.replace(/([A-Z])/g, ' $1').toLowerCase()).join(', ')} before handoff.</p> : null}
               {error ? <p className="form-error" role="alert">{error}</p> : null}
               <div className="intake-history-actions">

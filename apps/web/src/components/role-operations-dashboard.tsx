@@ -28,12 +28,12 @@ const ROLE_COPY: Record<DashboardRole, { kicker: string; title: string; descript
   receptionist: {
     kicker: 'Front desk command',
     title: 'Keep arrivals and departures moving',
-    description: 'The patients that need a front-desk action now, ordered by urgency.',
+    description: 'The patients that need a front-desk action now, newest first.',
   },
   technician: {
     kicker: 'Clinical support command',
     title: 'Own the next patient handoff',
-    description: 'Intake, treatment, and discharge work in one calm, prioritized queue.',
+    description: 'Intake, treatment, and discharge work in one calm queue, newest first.',
   },
   veterinarian: {
     kicker: 'Medical command',
@@ -170,16 +170,6 @@ function visitHref(visit: DashboardVisitSummary, role: DashboardRole) {
   return `/visits/${visit.id}?${query}`;
 }
 
-function priorityFor(visit: DashboardVisitSummary) {
-  let score = visit.elapsedMinutes;
-  if (exceptionsFor(visit).some((exception) => exception.severity === 'Critical')) score += 240;
-  if (!visit.currentOwner) score += 100;
-  if (workItemsFor(visit).some((item) => item.dueAt && new Date(item.dueAt).getTime() < Date.now()))
-    score += 120;
-  if (CHECKOUT_STATES.has(visit.state)) score += 40;
-  return score;
-}
-
 function roleVisits(role: DashboardRole, visits: DashboardVisitSummary[], userId?: string) {
   const relevant = visits.filter((visit) => {
     if (role === 'receptionist')
@@ -206,7 +196,7 @@ function roleVisits(role: DashboardRole, visits: DashboardVisitSummary[], userId
     }
     return visit.elapsedMinutes >= 30 || !visit.currentOwner || exceptionsFor(visit).length > 0;
   });
-  return [...relevant].sort((a, b) => priorityFor(b) - priorityFor(a));
+  return [...relevant].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id));
 }
 
 function metricData(
@@ -530,13 +520,13 @@ export function RoleOperationsDashboard({ role }: { role: DashboardRole }) {
         <DashboardCard className="role-primary-queue" aria-labelledby="role-primary-queue-heading">
           <div className="role-primary-queue__header">
             <div>
-              <p className="eyebrow">Priority order</p>
+              <p className="eyebrow">Most recent first</p>
               <h2 id="role-primary-queue-heading">
                 {role === 'manager' ? 'Attention queue' : 'Your next actions'}
               </h2>
               <p>
                 {queue.length
-                  ? 'Highest-impact work is automatically brought to the top.'
+                  ? 'Most recent visits appear first.'
                   : 'There is nothing waiting for this role right now.'}
               </p>
             </div>

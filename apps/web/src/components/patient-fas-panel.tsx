@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
 
 interface Assessment {
@@ -16,36 +16,23 @@ interface AssessmentPage {
   nextCursor: string | null;
   timeZone?: string;
 }
+interface PendingAssessment {
+  requestId: string;
+  score: number;
+  handlingNotes: string;
+}
 
-export function PatientFasPanel({
-  patientId,
-  visitId,
-  readOnly = false,
-  timeZone,
-}: {
-  patientId: string;
-  visitId?: string;
-  readOnly?: boolean;
-  timeZone?: string | undefined;
-}) {
-  const { user } = useCurrentUser();
+const FAS_SCORES = [0, 1, 2, 3, 4, 5] as const;
+// Same clinical roles the API accepts; it remains the authority.
+const RECORDING_ROLES = ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'];
+
+function useFasHistory(patientId: string, timeZone?: string) {
   const [historyTimeZone, setHistoryTimeZone] = useState(timeZone);
   const [items, setItems] = useState<Assessment[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [score, setScore] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const pending = useRef<{ requestId: string; score: number; handlingNotes: string } | null>(null);
   const generation = useRef(0);
-  const canRecord = Boolean(
-    visitId &&
-    !readOnly &&
-    ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? ''),
-  );
   const load = useCallback(
     async (cursor?: string) => {
       const current = ++generation.current;
@@ -85,48 +72,84 @@ export function PatientFasPanel({
       generation.current += 1;
     };
   }, [load]);
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    if (!canRecord || saving || score === '') return;
-    const payload = pending.current ?? {
-      requestId: crypto.randomUUID(),
-      score: Number(score),
-      handlingNotes: notes.trim(),
-    };
-    pending.current = payload;
-    setSaving(true);
-    setSaveError(null);
-    setSaved(false);
-    try {
-      const response = await fetch(`/api/visits/${encodeURIComponent(visitId!)}/fas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        // A definite validation/conflict rejection can be corrected and resubmitted.
-        if (response.status < 500) pending.current = null;
-        throw new Error(body.message ?? 'Could not save the assessment.');
-      }
-      const assessment = (await response.json()) as Assessment;
-      generation.current += 1;
-      setLoading(false);
-      setItems((previous) => [assessment, ...previous.filter((item) => item.id !== assessment.id)]);
-      pending.current = null;
-      setScore('');
-      setNotes('');
-      setSaved(true);
-    } catch (error) {
-      setSaveError(
-        error instanceof Error
-          ? error.message
-          : 'Could not save. Try again to recover this assessment.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
+  // A saved assessment supersedes any history request still in flight.
+  const prepend = useCallback((assessment: Assessment) => {
+    generation.current += 1;
+    setLoading(false);
+    setItems((previous) => [assessment, ...previous.filter((item) => item.id !== assessment.id)]);
+  }, []);
+  return { items, nextCursor, loading, loadError, historyTimeZone, load, prepend };
+}
+
+type FasHistory = ReturnType<typeof useFasHistory>;
+
+function FasTime({ value, timeZone }: { value: string; timeZone: string | undefined }) {
+  return (
+    <time dateTime={value}>
+      {new Date(value).toLocaleString([], {
+        ...(timeZone ? { timeZone } : {}),
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })}
+    </time>
+  );
+}
+
+function FasHistoryList({ history, visitId }: { history: FasHistory; visitId?: string }) {
+  const { items, nextCursor, loading, historyTimeZone, load } = history;
+  return (
+    <details>
+      <summary>
+        Handling history ({items.length}
+        {nextCursor ? '+' : ''})
+      </summary>
+      <ol>
+        {items.map((item) => (
+          <li key={item.id}>
+            <strong>{item.score}/5</strong> — {item.authorName} ·{' '}
+            <FasTime value={item.createdAt} timeZone={historyTimeZone} />
+            {visitId && item.visitId === visitId ? ' · This visit' : ''}
+            {item.handlingNotes ? (
+              <p style={{ whiteSpace: 'pre-wrap' }}>{item.handlingNotes}</p>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+      {nextCursor ? (
+        <button
+          type="button"
+          className="button-secondary"
+          disabled={loading}
+          onClick={() => void load(nextCursor)}
+        >
+          {loading ? 'Loading…' : 'Load older assessments'}
+        </button>
+      ) : null}
+    </details>
+  );
+}
+
+function FasLoadError({ history }: { history: FasHistory }) {
+  const { items, nextCursor, loading, loadError, load } = history;
+  if (!loadError) return null;
+  return (
+    <p role="alert">
+      {loadError}{' '}
+      <button
+        type="button"
+        disabled={loading}
+        onClick={() => void load(items.length ? (nextCursor ?? undefined) : undefined)}
+      >
+        Retry history
+      </button>
+    </p>
+  );
+}
+
+/** Read-only handling history for the patient profile. */
+export function PatientFasPanel({ patientId }: { patientId: string }) {
+  const history = useFasHistory(patientId);
+  const { items, loading, loadError, historyTimeZone } = history;
   const latest = items[0];
   return (
     <section className="profile-card profile-card--wide" aria-label="Fear, anxiety and stress">
@@ -144,116 +167,196 @@ export function PatientFasPanel({
         <p>
           <small>
             Recorded by {latest.authorName} ·{' '}
-            <time dateTime={latest.createdAt}>
-              {new Date(latest.createdAt).toLocaleString([], {
-                ...(historyTimeZone ? { timeZone: historyTimeZone } : {}),
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })}
-            </time>
-            {visitId && latest.visitId !== visitId ? ' · Earlier visit' : ''}
+            <FasTime value={latest.createdAt} timeZone={historyTimeZone} />
           </small>
         </p>
       ) : null}
       {latest?.handlingNotes ? (
         <p style={{ whiteSpace: 'pre-wrap' }}>{latest.handlingNotes}</p>
       ) : null}
-      {canRecord ? (
-        <form className="patient-inline-form" onSubmit={(event) => void save(event)}>
-          <p>
-            Record a score from this visit. Add another assessment when behavior changes; earlier
-            observations stay in the history.
+      {items.length ? <FasHistoryList history={history} /> : null}
+      <FasLoadError history={history} />
+    </section>
+  );
+}
+
+/**
+ * The latest handling observation as one line inside a visit form, with the
+ * score entry opened on request. Each save appends an attributed assessment.
+ */
+export function VisitFasAssessment({
+  patientId,
+  visitId,
+  readOnly = false,
+  timeZone,
+}: {
+  patientId: string;
+  visitId: string;
+  readOnly?: boolean;
+  timeZone?: string | undefined;
+}) {
+  const { user } = useCurrentUser();
+  const history = useFasHistory(patientId, timeZone);
+  const { items, loading, loadError, historyTimeZone } = history;
+  const headingId = useId();
+  const [editing, setEditing] = useState(false);
+  const [score, setScore] = useState<number | null>(null);
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState('');
+  // Kept after an unconfirmed save so the retry resends the identical request.
+  const [pending, setPending] = useState<PendingAssessment | null>(null);
+  const canRecord = !readOnly && RECORDING_ROLES.includes(user?.role ?? '');
+  const latest = items[0];
+
+  function closeEditor() {
+    setPending(null);
+    setEditing(false);
+    setScore(null);
+    setNotes('');
+    setSaveError(null);
+  }
+
+  function cancel() {
+    // An unconfirmed save may already be stored; show what the server kept.
+    if (pending) void history.load();
+    closeEditor();
+  }
+
+  async function save() {
+    if (!canRecord || saving || score === null) return;
+    const payload = pending ?? {
+      requestId: crypto.randomUUID(),
+      score,
+      handlingNotes: notes.trim(),
+    };
+    setPending(payload);
+    setSaving(true);
+    setSaveError(null);
+    setSavedMessage('');
+    try {
+      const response = await fetch(`/api/visits/${encodeURIComponent(visitId)}/fas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        if (response.status < 500) {
+          // A definite validation/conflict rejection can be corrected and resubmitted.
+          setPending(null);
+          setSaveError(body.message ?? 'Could not save the score.');
+        } else {
+          setSaveError('Could not confirm the save. Retry to finish recording this score.');
+        }
+        return;
+      }
+      const assessment = (await response.json()) as Assessment;
+      history.prepend(assessment);
+      closeEditor();
+      setSavedMessage(`FAS score ${assessment.score}/5 recorded.`);
+    } catch {
+      setSaveError('Could not confirm the save. Retry to finish recording this score.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="visit-fas" role="group" aria-labelledby={headingId}>
+      <div className="visit-fas__summary">
+        <div>
+          <span className="visit-fas__label" id={headingId}>
+            Fear, anxiety and stress
+          </span>
+          <p className="visit-fas__latest">
+            {latest ? (
+              <>
+                <strong>{latest.score}/5</strong>
+                {latest.visitId !== visitId ? ' · Earlier visit' : ''} · Recorded by{' '}
+                {latest.authorName} ·{' '}
+                <FasTime value={latest.createdAt} timeZone={historyTimeZone} />
+              </>
+            ) : loading ? (
+              'Loading…'
+            ) : loadError ? (
+              'Handling history unavailable'
+            ) : (
+              'No FAS score recorded'
+            )}
           </p>
-          <label>
-            FAS score (0–5)
-            <select
-              value={score}
-              required
-              disabled={saving || Boolean(pending.current)}
-              onChange={(event) => {
-                setScore(event.target.value);
-                setSaved(false);
-              }}
-            >
-              <option value="">Choose a score</option>
-              {[0, 1, 2, 3, 4, 5].map((value) => (
-                <option key={value} value={value}>
+          {latest?.handlingNotes ? (
+            <p className="visit-fas__notes">{latest.handlingNotes}</p>
+          ) : null}
+        </div>
+        {canRecord && !editing && !(loading && !items.length) ? (
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => {
+              setSavedMessage('');
+              setEditing(true);
+            }}
+          >
+            {latest ? 'Reassess' : 'Add score'}
+          </button>
+        ) : null}
+      </div>
+      {editing ? (
+        <div className="visit-fas__editor">
+          <fieldset className="physical-exam-pill-field" disabled={saving || Boolean(pending)}>
+            <legend>FAS score (0–5)</legend>
+            <div className="physical-exam-pills physical-exam-pills--score">
+              {FAS_SCORES.map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={score === value}
+                  className={score === value ? 'is-selected' : ''}
+                  onClick={() => setScore(value)}
+                >
                   {value}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
-          <label>
-            Handling notes (optional)
+            </div>
+          </fieldset>
+          <label className="visit-fas__field">
+            <span>Handling notes (optional)</span>
             <textarea
               value={notes}
               maxLength={2000}
-              rows={3}
-              disabled={saving || Boolean(pending.current)}
-              onChange={(event) => {
-                setNotes(event.target.value);
-                setSaved(false);
-              }}
+              rows={2}
+              disabled={saving || Boolean(pending)}
+              onChange={(event) => setNotes(event.target.value)}
               placeholder="Observed behavior and handling that helped"
             />
           </label>
-          <button className="button-primary" type="submit" disabled={saving || score === ''}>
-            {saving ? 'Saving…' : pending.current ? 'Retry assessment save' : 'Record assessment'}
-          </button>
-          {saveError ? <p role="alert">{saveError}</p> : null}
-          {saved ? <p role="status">Assessment recorded.</p> : null}
-        </form>
-      ) : visitId && readOnly ? (
-        <p>This visit is read-only. Record new observations during an active visit.</p>
-      ) : null}
-      {items.length ? (
-        <details>
-          <summary>
-            Handling history ({items.length}
-            {nextCursor ? '+' : ''})
-          </summary>
-          <ol>
-            {items.map((item) => (
-              <li key={item.id}>
-                <strong>{item.score}/5</strong> — {item.authorName} ·{' '}
-                <time dateTime={item.createdAt}>
-                  {new Date(item.createdAt).toLocaleString([], {
-                    ...(historyTimeZone ? { timeZone: historyTimeZone } : {}),
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                </time>
-                {visitId && item.visitId === visitId ? ' · This visit' : ''}
-                {item.handlingNotes ? (
-                  <p style={{ whiteSpace: 'pre-wrap' }}>{item.handlingNotes}</p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-          {nextCursor ? (
+          {saveError ? (
+            <p className="form-error" role="alert">
+              {saveError}
+            </p>
+          ) : null}
+          <div className="visit-fas__editor-actions">
+            <button type="button" className="button-secondary" disabled={saving} onClick={cancel}>
+              Cancel
+            </button>
             <button
               type="button"
-              className="button-secondary"
-              disabled={loading}
-              onClick={() => void load(nextCursor)}
+              className="button-primary"
+              disabled={saving || score === null}
+              onClick={() => void save()}
             >
-              {loading ? 'Loading…' : 'Load older assessments'}
+              {saving ? 'Saving…' : pending ? 'Retry save' : 'Save score'}
             </button>
-          ) : null}
-        </details>
+          </div>
+        </div>
       ) : null}
-      {loadError ? (
-        <p role="alert">
-          {loadError}{' '}
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void load(items.length ? (nextCursor ?? undefined) : undefined)}
-          >
-            Retry history
-          </button>
-        </p>
-      ) : null}
-    </section>
+      <span className="sr-only" role="status">
+        {savedMessage}
+      </span>
+      {items.length > 1 ? <FasHistoryList history={history} visitId={visitId} /> : null}
+      <FasLoadError history={history} />
+    </div>
   );
 }

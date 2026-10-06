@@ -1,4 +1,4 @@
-import { PatientFasPanel } from '../../../components/patient-fas-panel';
+import { VisitFasAssessment } from '../../../components/patient-fas-panel';
 import { VisitExamHandoff } from '../../../components/visit-exam-handoff';
 import { VisitCareSections } from '../../../components/visit-care-sections';
 import { notFound } from 'next/navigation';
@@ -88,6 +88,8 @@ export default async function VisitWorkspacePage({
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
     return ['Pending', 'InProgress'].includes(item.status);
   });
+  // Asked with intake vitals and shown in the exam's general assessment.
+  const handlingAssessment = <VisitFasAssessment key={visit.id} patientId={visit.patient.id} visitId={visit.id} timeZone={visit.location?.timeZone} readOnly={recordSigned || Boolean(visit.checkout) || ['Archived', 'ArchivedWithExceptions', 'RecordComplete', 'VisitClosing', 'VisitClosingWithExceptions', 'Cancelled', 'CancelledAfterArrival', 'NoShow', 'Rescheduled', 'Referred', 'Deferred'].includes(visit.state)} />;
   return (
     <DashboardShell
       activeHref="/today"
@@ -122,13 +124,12 @@ export default async function VisitWorkspacePage({
           backHref={backHref}
           examStatusNote={examStatus?.label ?? null}
           headerOnly={Boolean(visit.examFindings?.completedAt)}
+          handlingAssessment={handlingAssessment}
         />
-
-        <PatientFasPanel key={visit.id} patientId={visit.patient.id} visitId={visit.id} timeZone={visit.location?.timeZone} readOnly={recordSigned || Boolean(visit.checkout) || ['Archived', 'ArchivedWithExceptions', 'RecordComplete', 'VisitClosing', 'VisitClosingWithExceptions', 'Cancelled', 'CancelledAfterArrival', 'NoShow', 'Rescheduled', 'Referred', 'Deferred'].includes(visit.state)} />
 
         {visit.state === 'VeterinarianExamReady' ? <VisitExamHandoff visitId={visit.id} clinician={personLabel(visit.primaryVeterinarian)} /> : null}
         {view === 'record' && !examComplete ? <p role="status">Complete the exam to prepare the medical record. Intake and exam remain available here.</p> : null}
-        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} /> : null}
+        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} handlingAssessment={handlingAssessment} /> : null}
 
         {showingCheckout ? <VisitCheckoutWorkspace visitId={visit.id} /> : null}
         {showClinicalWork && !recordSigned && !showingCheckout ? <VisitCareSections

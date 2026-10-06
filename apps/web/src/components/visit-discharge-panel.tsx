@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { DischargeMedicationName } from './discharge-medication-name';
+import { VisitDocumentPreview } from './visit-document-preview';
 import { VisitDocumentDownload } from './visit-document-download';
 import { useVisitStep } from './visit-care-sections';
 import type { VisitDetail, DischargeGuidance, DischargeMedication } from '../lib/patient-types';
@@ -14,7 +16,7 @@ function savedDraft(discharge: VisitDetail['discharge']): Draft {
 }
 const guidanceFields = [['visitSummary', 'Visit summary', 'Reason for the visit, diagnosis, and treatment or tests performed.'], ['diet', 'Diet / feeding', 'Food, amount, and feeding instructions when relevant.'], ['activity', 'Activity / restrictions', 'Activity limits and how long they apply.'], ['urgentSigns', 'Seek urgent veterinary care', 'Signs that require immediate care and what the client should do.'], ['emergencyContact', 'Emergency / after-hours contact', 'Hospital name, phone number, and any access instructions.']] as const;
 const medicationFields = [['name', 'Medication'], ['dose', 'Dose'], ['route', 'Route'], ['frequency', 'Frequency'], ['duration', 'Duration'], ['nextDose', 'Next dose'], ['specialInstructions', 'Special instructions']] as const;
-const fields = [['instructions', 'Home care'], ['medicationInstructions', 'Medication directions'], ['warningSigns', 'When to call the clinic'], ['followUpPlan', 'Follow-up']] as const;
+const fields = [['warningSigns', 'When to call the clinic']] as const;
 
 export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   const router = useRouter();
@@ -22,6 +24,15 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   const { user } = useCurrentUser();
   const [draft, setDraft] = useState(() => savedDraft(visit.discharge));
   const [saved, setSaved] = useState(visit.discharge);
+  const [editingMedication, setEditingMedication] = useState<number | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (previewOpen) previewDialog.current?.showModal();
+    else previewDialog.current?.close();
+  }, [previewOpen]);
+  const showMedicationDirections = draft.clientGuidance.medications.length > 0 || Boolean(draft.medicationInstructions.trim());
+  const requiredFieldsComplete = Boolean(draft.instructions.trim()) && (!draft.followUpRequired || Boolean(draft.followUpPlan.trim())) && draft.clientGuidance.medications.every((medication) => ['name', 'dose', 'route', 'frequency', 'duration'].every((key) => Boolean(medication[key as keyof DischargeMedication]?.trim())));
   const lastSource = useRef(visit.discharge);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -64,59 +75,57 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   function updateMedication(index: number, key: keyof DischargeMedication, value: string) {
     setDraft((current) => ({ ...current, clientGuidance: { ...current.clientGuidance, medications: current.clientGuidance.medications.map((medication, i) => i === index ? { ...medication, [key]: value } : medication) } })); setDirty(true);
   }
-  const clinician = visit.primaryVeterinarian;
-  const clinicianName = clinician ? clinician.displayName || `${clinician.firstName} ${clinician.lastName}` : 'Not assigned';
-  const savedSections: Array<{ title: string; text: string; urgent?: boolean }> = [];
-  function preview(title: string, text: string | null | undefined, urgent = false) { if (text) savedSections.push({ title, text, urgent }); }
-  if (saved) {
-    const guidance = saved.clientGuidance;
-    preview('Visit summary', guidance?.visitSummary);
-    preview('Seek urgent veterinary care', guidance?.urgentSigns, true);
-    preview('Emergency / after-hours contact', guidance?.emergencyContact, true);
-    preview('Home care', saved.instructions);
-    preview('Diet / feeding', guidance?.diet);
-    preview('Activity / restrictions', guidance?.activity);
-    for (const medication of guidance?.medications ?? []) preview(`Medication: ${medication.name}`, [
-      `Dose: ${medication.dose}`, `Route: ${medication.route}`, `Frequency: ${medication.frequency}`, `Duration: ${medication.duration}`,
-      `Next dose: ${medication.nextDose || 'Not recorded'}`, medication.specialInstructions && `Special instructions: ${medication.specialInstructions}`,
-    ].filter(Boolean).join('\n'));
-    preview('Medication directions', saved.medicationInstructions);
-    preview('When to call the clinic', saved.warningSigns);
-    const recheck = guidance?.recheckDate ? `Recheck date: ${new Date(`${guidance.recheckDate}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', dateStyle: 'medium' })}` : '';
-    preview('Follow-up', [recheck, saved.followUpPlan].filter(Boolean).join('\n'));
-  }
   return <>
     <section id="visit-discharge" className="visit-discharge-panel" aria-labelledby="visit-discharge-heading">
-      <div className="visit-discharge-panel__header"><div><h2 id="visit-discharge-heading">Discharge</h2><p>Write and review instructions for the client. Internal exam and care notes are not copied into this document.</p></div><span className={saved ? 'is-complete' : ''}>{dirty ? 'Unsaved changes' : saved ? 'Prepared' : 'Draft'}</span></div>
+      <div className="visit-discharge-panel__header"><div><h2 id="visit-discharge-heading">Discharge</h2></div><button type="button" className="button-secondary" aria-haspopup="dialog" aria-expanded={previewOpen} aria-controls="discharge-document-preview" onClick={() => setPreviewOpen(!previewOpen)}>Preview / PDF</button></div>
+      <dialog ref={previewDialog} id="discharge-document-preview" className="discharge-pdf-dialog" aria-label="Discharge PDF" onCancel={() => setPreviewOpen(false)} onClose={() => setPreviewOpen(false)} onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) setPreviewOpen(false);
+      }}>
+        <div className="discharge-pdf-toolbar"><strong>Discharge PDF</strong><div>{saved && !dirty ? <VisitDocumentDownload visitId={visit.id} kind="discharge">Download PDF</VisitDocumentDownload> : null}<button type="button" className="discharge-pdf-close" aria-label="Close" title="Close" onClick={() => setPreviewOpen(false)}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button></div></div>
+        {previewOpen ? saved && !dirty ? <>
+          <VisitDocumentPreview visitId={visit.id} />
+        </> : <p className="discharge-pdf-notice">{dirty ? 'Save your changes to preview the updated PDF.' : 'Save discharge instructions to preview the PDF.'}</p> : null}
+      </dialog>
       {canDischarge ? <form id={`discharge-form-${visit.id}`} onSubmit={saveDischarge} className="visit-discharge-form" noValidate>
         <fieldset disabled={saving} className="visit-discharge-editor">
-          <p>Responsible veterinarian: <strong>{clinicianName}</strong></p>
+          <label className="visit-discharge-field visit-discharge-field--wide"><span className="visit-discharge-field__label">Home care <em aria-hidden="true">*</em></span><textarea name="instructions" required aria-required="true" rows={4} maxLength={10000} value={draft.instructions} onChange={(event) => { setDraft((current) => ({ ...current, instructions: event.target.value })); setDirty(true); }} /></label>
+          <details className="visit-discharge-followup-panel">
+            <summary>Follow-up <span>{[draft.clientGuidance.recheckDate ? new Date(`${draft.clientGuidance.recheckDate}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '', draft.followUpPlan.trim()].filter(Boolean).join(' · ') || 'Add follow-up'}</span></summary>
+            <div className="visit-discharge-guidance-grid">
+            <label className="visit-discharge-field"><span className="visit-discharge-field__label">Follow-up plan {draft.followUpRequired ? <em aria-hidden="true">*</em> : <small>Optional</small>}</span><textarea name="followUpPlan" rows={2} required={draft.followUpRequired} aria-required={draft.followUpRequired} value={draft.followUpPlan} maxLength={10000} onChange={(event) => { setDraft((current) => ({ ...current, followUpPlan: event.target.value })); setDirty(true); }} /></label>
+          <label className="visit-discharge-field"><span className="visit-discharge-field__label">Recheck date (optional)</span><input type="date" name="recheckDate" value={draft.clientGuidance.recheckDate ?? ''} onChange={(event) => updateGuidance('recheckDate', event.target.value)} /><span className="visit-discharge-hint">Requested date · not booked</span></label>
+          <label className="visit-discharge-follow-up"><input type="checkbox" checked={draft.followUpRequired} onChange={(event) => { setDraft((current) => ({ ...current, followUpRequired: event.target.checked })); setDirty(true); }} /> Ask reception to schedule</label>
+            </div>
+          </details>
+          <details className="visit-discharge-guidance">
+            <summary>More instructions</summary>
+            <div className="visit-discharge-guidance-grid">
           {guidanceFields.map(([key, label, hint]) => <label className={`visit-discharge-field${key === 'urgentSigns' || key === 'emergencyContact' ? ' visit-discharge-field--urgent' : ''}`} key={key}><span className="visit-discharge-field__label">{label} <small>Optional</small></span><span className="visit-discharge-hint">{hint}</span><textarea name={key} rows={key === 'visitSummary' ? 3 : 2} maxLength={key === 'emergencyContact' ? 1000 : 10000} value={draft.clientGuidance[key] ?? ''} onChange={(event) => updateGuidance(key, event.target.value)} /></label>)}
+              {fields.map(([key, label]) => <label className="visit-discharge-field" key={key}><span className="visit-discharge-field__label">{label} <small>Optional</small></span><textarea name={key} rows={2} maxLength={10000} value={draft[key]} onChange={(event) => { setDraft((current) => ({ ...current, [key]: event.target.value })); setDirty(true); }} /></label>)}
+            </div>
+          </details>
           <section className="visit-discharge-medications" aria-labelledby="discharge-medications-heading">
-            <h3 id="discharge-medications-heading">Medication schedule</h3><p>Enter the prescribed directions. This schedule does not authorize or dispense medication.</p>
-            {draft.clientGuidance.medications.map((medication, index) => <fieldset key={index} className="visit-discharge-medication"><legend>Medication {index + 1}</legend><div className="visit-discharge-medication-grid">
-              {medicationFields.map(([key, label]) => <label key={key}><span className="visit-discharge-field__label">{label}{key === 'nextDose' || key === 'specialInstructions' ? ' (optional)' : ''}</span><input name={`medications.${index}.${key}`} value={medication[key] ?? ''} maxLength={key === 'specialInstructions' ? 10000 : 1000} onChange={(event) => updateMedication(index, key, event.target.value)} /></label>)}
-            </div><button type="button" className="button-secondary" onClick={() => { setDraft((current) => ({ ...current, clientGuidance: { ...current.clientGuidance, medications: current.clientGuidance.medications.filter((_, i) => i !== index) } })); setDirty(true); }}>Remove medication {index + 1}</button></fieldset>)}
-            <button type="button" className="button-secondary" disabled={draft.clientGuidance.medications.length >= 30} onClick={() => { setDraft((current) => ({ ...current, clientGuidance: { ...current.clientGuidance, medications: [...current.clientGuidance.medications, { name: '', dose: '', route: '', frequency: '', duration: '', nextDose: '', specialInstructions: '' }] } })); setDirty(true); }}>Add medication</button>
+            <div className="visit-discharge-section-heading"><h3 id="discharge-medications-heading">Medications</h3></div>
+            {draft.clientGuidance.medications.map((medication, index) => <div key={index} role="group" aria-label={medication.name.trim() || "New medication"} className="visit-discharge-medication"><div className="visit-discharge-medication-heading"><div><h4>{medication.name.trim() || "New medication"}</h4>{editingMedication !== index ? <p className="visit-discharge-medication-summary">{[medication.dose, medication.route, medication.frequency, medication.duration].filter(Boolean).join(' · ') || 'Directions needed'}</p> : null}</div><div className="visit-discharge-medication-actions">{editingMedication !== index ? <button type="button" className="visit-stage-navigation__link" onClick={() => setEditingMedication(index)}>Edit</button> : null}<button type="button" className="visit-discharge-remove" aria-label={`Remove ${medication.name.trim() || "new medication"}`} onClick={() => { setDraft((current) => ({ ...current, clientGuidance: { ...current.clientGuidance, medications: current.clientGuidance.medications.filter((_, i) => i !== index) } })); setEditingMedication((current) => current === null || current === index ? null : current > index ? current - 1 : current); setDirty(true); }}>Remove</button></div></div><div hidden={editingMedication !== index}><div className="visit-discharge-medication-grid">
+              {medicationFields.map(([key, label]) => <label key={key} className={`visit-discharge-medication-field visit-discharge-medication-field--${key}`}><span className="visit-discharge-field__label">{label}{key === 'nextDose' || key === 'specialInstructions' ? ' (optional)' : <em aria-hidden="true"> *</em>}</span>{key === 'name' ? <DischargeMedicationName name={`medications.${index}.${key}`} value={medication.name} onChange={(value) => updateMedication(index, 'name', value)} /> : <input name={`medications.${index}.${key}`} required={key !== 'nextDose' && key !== 'specialInstructions'} aria-required={key !== 'nextDose' && key !== 'specialInstructions'} value={medication[key] ?? ''} maxLength={key === 'specialInstructions' ? 10000 : 1000} onChange={(event) => updateMedication(index, key, event.target.value)} />}</label>)}
+            </div><button type="button" className="button-secondary" disabled={['name', 'dose', 'route', 'frequency', 'duration'].some((key) => !medication[key as keyof DischargeMedication]?.trim())} onClick={() => setEditingMedication(null)}>Add</button></div></div>)}
+            {editingMedication === null ? <button type="button" className="button-secondary" disabled={draft.clientGuidance.medications.length >= 30} onClick={() => { setEditingMedication(draft.clientGuidance.medications.length); setDraft((current) => ({ ...current, clientGuidance: { ...current.clientGuidance, medications: [...current.clientGuidance.medications, { name: '', dose: '', route: '', frequency: '', duration: '', nextDose: '', specialInstructions: '' }] } })); setDirty(true); }}>Add medication</button> : null}
+            {showMedicationDirections ? <details className="visit-discharge-extra-directions"><summary>Additional medication directions{draft.medicationInstructions.trim() ? ' · recorded' : ' (optional)'}</summary><label className="visit-discharge-field visit-discharge-medication-directions"><span className="visit-discharge-field__label">Medication directions <small>Optional</small></span><textarea name="medicationInstructions" rows={3} maxLength={10000} value={draft.medicationInstructions} onChange={(event) => { setDraft((current) => ({ ...current, medicationInstructions: event.target.value })); setDirty(true); }} /></label></details> : null}
           </section>
-          {fields.map(([key, label]) => <label className="visit-discharge-field visit-discharge-field--wide" key={key}><span className="visit-discharge-field__label">{label}{key !== 'instructions' ? <small>Optional</small> : null}</span><textarea name={key} rows={key === 'instructions' ? 5 : 3} maxLength={10000} value={draft[key]} onChange={(event) => { setDraft((current) => ({ ...current, [key]: event.target.value })); setDirty(true); }} /></label>)}
-          <label className="visit-discharge-field"><span className="visit-discharge-field__label">Recheck date (optional)</span><span className="visit-discharge-hint">Requested date; saving this does not book an appointment.</span><input type="date" name="recheckDate" value={draft.clientGuidance.recheckDate ?? ''} onChange={(event) => updateGuidance('recheckDate', event.target.value)} /></label>
-          <label><input type="checkbox" checked={draft.followUpRequired} onChange={(event) => { setDraft((current) => ({ ...current, followUpRequired: event.target.checked })); setDirty(true); }} /> Reception must arrange follow-up</label>
         </fieldset>
-        {draft.followUpRequired ? <p>A front-desk follow-up task will be created when saved.</p> : null}
-        <p role="status">{saving ? 'Saving…' : error ? 'Changes not saved' : dirty ? 'Unsaved changes — save to update the client preview and PDF.' : saved ? 'All changes saved' : 'Draft — instructions have not been prepared.'}</p>
-        {error ? <p className="visit-discharge-validation" role="alert">{error}</p> : null}
-        <div className="visit-discharge-form__footer"><button type="submit" className="button-primary" disabled={saving}>{saving ? 'Saving…' : step ? 'Save and continue to review →' : saved ? 'Update discharge' : 'Prepare discharge'}</button></div>
       </form> : null}
-      {saved ? <div className="visit-discharge-form">
-        <h3>Saved client preview</h3><p>Responsible veterinarian: {clinicianName}<br />Prepared by: {saved.completedBy ? saved.completedBy.displayName || `${saved.completedBy.firstName} ${saved.completedBy.lastName}` : 'Not recorded'}</p><p>This is the saved content used in the discharge PDF.{dirty ? ' Your edits are not included until saved.' : ''}</p>
-        <div className="visit-discharge-summary" aria-label="Saved client discharge summary">{savedSections.map((section, index) => <section className={section.urgent ? "visit-discharge-summary__urgent" : ""} key={index}><h3>{section.title}</h3><p>{section.text}</p></section>)}</div>
-        <p>These instructions contain only recorded client guidance. An omitted section does not mean no instructions are needed. Contact the clinic if any direction is unclear.</p>
-        {!dirty ? <VisitDocumentDownload visitId={visit.id} kind="discharge">Download discharge PDF</VisitDocumentDownload> : null}
-      </div> : <p>No saved client instructions yet. Review and save the discharge before generating a PDF.</p>}
+      {canDischarge ? <div className="visit-discharge-save-status"><p className={`autosave-indicator autosave-indicator--${saving || dirty ? 'saving' : error ? 'error' : saved ? 'saved' : 'saving'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saving ? 'Saving…' : error ? 'Changes not saved' : dirty ? 'Unsaved changes' : saved ? 'Saved' : 'Required fields marked *'}</p>{error ? <p className="visit-discharge-validation" role="alert">{error}</p> : null}</div> : null}
       {readOnly ? <p>{visit.checkout ? 'Checkout is complete.' : 'This visit is closed.'} Saved discharge instructions are read-only.</p> : null}
       {canCheckout && saved && !readOnly && !dirty ? <div className="visit-discharge-form visit-discharge-reception-handoff"><div><h3>Ready for reception</h3><p>Discharge is prepared. Review charges, collect payment, and finish the visit in Checkout.</p></div><Link className="button-primary" href={`/visits/${encodeURIComponent(visit.id)}?view=checkout`}>Open checkout</Link></div> : null}
     </section>
-    {step ? <footer className="visit-step-actions"><button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to care plan</button>{!canDischarge ? <button type="button" className="button-primary" onClick={step.next}>Continue to review →</button> : null}</footer> : null}
+    {(step || canDischarge) ? <footer className="visit-discharge-final-actions">
+
+      <div className="visit-step-actions">
+        {step ? <button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to care plan</button> : null}
+        {canDischarge ? <button type="submit" form={`discharge-form-${visit.id}`} className="button-primary" disabled={saving || !requiredFieldsComplete}>{saving ? 'Saving…' : step ? 'Continue to review →' : saved ? 'Update discharge' : 'Prepare discharge'}</button> : step ? <button type="button" className="button-primary" onClick={step.next}>Continue to review →</button> : null}
+      </div>
+    </footer> : null}
   </>;
 }

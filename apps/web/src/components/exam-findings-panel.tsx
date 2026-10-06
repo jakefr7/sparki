@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import type { AutosaveState } from './patient-context-bar';
 import { DiagnosisInput } from './diagnosis-input';
@@ -59,7 +59,7 @@ interface ExamFindingsPayload {
 }
 
 function emptySystems(): Record<SystemKey, SystemFinding> {
-  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Not examined', notes: '', documented: false }])) as Record<SystemKey, SystemFinding>;
+  return Object.fromEntries(EXAM_SYSTEMS.map(([key]) => [key, { status: 'Normal', notes: '', documented: true }])) as Record<SystemKey, SystemFinding>;
 }
 
 const WHATS_NEXT_HEADING = "\n\nWhat's Next\n";
@@ -95,10 +95,10 @@ function draftFromFindings(findings: VisitDetail['examFindings']): ExamDraft {
       ...fallback,
       ...parsed,
       general: { ...fallback.general, ...parsed.general },
-      // Preserve explicit historical findings; untouched systems remain unexamined.
+      // New exams default to Normal; preserve saved statuses and documentation flags.
       systems: {
         ...fallback.systems,
-        ...Object.fromEntries(Object.entries(parsed.systems ?? {}).filter(([, finding]) => finding?.documented === true)),
+        ...Object.fromEntries(Object.entries(parsed.systems ?? {}).filter(([, finding]) => Boolean(finding))),
       },
       problemList: findings.assessment ?? '',
       recommendations: plan.treatmentPlan,
@@ -201,7 +201,7 @@ function ExamFindingsSummary({ examFindings }: { examFindings: ExamFindings }) {
   );
 }
 
-export function ExamFindingsPanel({ visitId, state, examFindings, intake, returnToCarePlan }: { returnToCarePlan?: string | undefined; visitId: string; state: string; examFindings: VisitDetail['examFindings']; intake: Intake }) {
+export function ExamFindingsPanel({ visitId, state, examFindings, intake, returnToCarePlan, handlingAssessment }: { returnToCarePlan?: string | undefined; visitId: string; state: string; examFindings: VisitDetail['examFindings']; intake: Intake; handlingAssessment?: ReactNode }) {
   const router = useRouter();
   const editable = state === EXAM_IN_PROGRESS_STATE || Boolean(returnToCarePlan);
   const [submitting, setSubmitting] = useState(false);
@@ -284,6 +284,7 @@ export function ExamFindingsPanel({ visitId, state, examFindings, intake, return
                   />
                 </label>
               ))}
+              {handlingAssessment}
             </div></fieldset>
 
             <fieldset className="physical-exam-section"><legend>Body systems</legend><div className="physical-exam-systems">

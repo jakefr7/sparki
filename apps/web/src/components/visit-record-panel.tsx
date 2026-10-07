@@ -3,7 +3,7 @@ import { VisitDocumentDownload } from './visit-document-download';
 
 import { useVisitStep } from './visit-care-sections';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import { useCurrentUser } from '../lib/use-current-user';
 
@@ -12,14 +12,6 @@ const RECORD_STATUS_LABELS: Record<string, string> = {
   ReadyForReview: 'Ready for review',
   Locked: 'Signed',
 };
-
-// The record cannot be signed until every SOAP section carries content (mirrors the API rule).
-const SOAP_FIELDS = [
-  ['subjective', 'Subjective'],
-  ['objective', 'Objective'],
-  ['assessment', 'Assessment'],
-  ['plan', 'Plan'],
-] as const;
 
 const EXAM_SYSTEM_LABELS: Record<string, string> = { eyes: 'Eyes', ears: 'Ears', noseThroat: 'Nose/throat', oralDental: 'Oral/dental', cardiovascular: 'Cardiovascular', respiratory: 'Respiratory', abdomen: 'Abdomen/GI', urogenital: 'Urogenital', musculoskeletal: 'Musculoskeletal', neurologic: 'Neurologic', skinCoat: 'Skin/coat', lymphNodes: 'Peripheral lymph nodes' };
 
@@ -89,20 +81,24 @@ function summarizeObjective(value: string | null | undefined): { normalHeadline:
 }
 
 function VisitOverview({ visit }: { visit: VisitDetail }) {
+  const note = visit.soapNotes[0];
+  const objective = summarizeObjective(note?.objective);
   const completedCare = visit.workItems.filter((item) =>
     ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && item.status === 'Completed',
   );
-  const [treatmentPlan, whatsNext = ''] = (visit.examFindings?.plan ?? '').split("\n\nWhat's Next\n");
+  const [treatmentPlan, whatsNext = ''] = (note?.plan ?? visit.examFindings?.plan ?? '').split("\n\nWhat's Next\n");
   return (
     <section className="visit-final-overview" aria-labelledby="visit-final-overview-heading">
       <div className="visit-record-panel__header">
-        <div><p className="eyebrow">Visit closeout</p><h2 id="visit-final-overview-heading">Visit overview</h2><p>Confirm the intake, diagnosis, and treatment plan before finalizing the medical record.</p></div>
+        <div><p className="eyebrow">Visit closeout</p><h2 id="visit-final-overview-heading">Review visit</h2><p>Review today’s care and discharge instructions, then finalize the visit.</p></div>
       </div>
       <div className="post-exam-review__summary-grid">
-        <article><span>Intake</span><p>{visit.intake?.chiefComplaint || visit.intake?.historyNotes || visit.reason}</p></article>
-        <article><span>Diagnosis</span><p>{visit.examFindings?.assessment || 'No diagnosis documented.'}</p></article>
+        <article><span>Intake</span><p>{note?.subjective || visit.intake?.chiefComplaint || visit.intake?.historyNotes || visit.reason}</p></article>
+        <article className="post-exam-review__findings"><span>Exam findings</span>{objective.normalHeadline ? <p>{objective.normalHeadline}</p> : objective.notable.length ? <ul>{objective.notable.map((line, index) => <li key={index}>{line}</li>)}</ul> : <p>{objective.full || 'No exam findings documented.'}</p>}{objective.normalCount > 0 && !objective.normalHeadline ? <p>{objective.normalCount} other {objective.normalCount === 1 ? 'system' : 'systems'} normal</p> : null}{objective.full ? <details><summary>View full exam</summary><p style={{ whiteSpace: 'pre-line' }}>{objective.full}</p></details> : null}</article>
+        <article><span>Diagnosis</span><p>{note?.assessment || visit.examFindings?.assessment || 'No diagnosis documented.'}</p></article>
         <article><span>Treatment plan</span><p>{treatmentPlan || 'No treatment plan documented.'}</p></article>
         <article><span>What&apos;s next</span><p>{whatsNext || visit.discharge?.followUpPlan || 'No follow-up recommendation documented.'}</p></article>
+        <article><span>Home-care instructions</span><p>{visit.discharge?.instructions || 'Discharge instructions have not been saved.'}</p></article>
         <article className="post-exam-review__findings"><span>Care completed</span>{completedCare.length ? <ul>{completedCare.map((item) => <li key={item.id}><strong>{item.title}</strong><span>{item.type}</span></li>)}</ul> : <p>No performed care documented.</p>}</article>
       </div>
     </section>
@@ -118,7 +114,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const isUnassignedClinicalCompleter = !visit.primaryVeterinarian && Boolean(user?.permissions.includes('clinical:complete'));
   const isAssignedTechnician = visit.visitType === 'TechnicianAppointment' && user?.id === visit.assignedTechnician?.id;
   const isDelegate = visit.signoffDelegates.some((entry) => entry.delegateId === user?.id);
-  const canEdit = Boolean(user && (isAssignedDoctor || isUnassignedClinicalCompleter || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
+  const canFinalize = Boolean(user && (isAssignedDoctor || isUnassignedClinicalCompleter || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
   const signed = note?.status === 'Locked';
   const signedOn = note?.lockedAt ?? note?.signedAt ?? null;
   const signingVet = visit.primaryVeterinarian;
@@ -128,98 +124,18 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [amending, setAmending] = useState(false);
-  const [missingSoap, setMissingSoap] = useState<string[]>([]);
   const lockedNote = visit.soapNotes.find((entry) => entry.status === 'Locked');
   const canAmend = Boolean(user && lockedNote && (user.id === visit.primaryVeterinarian?.id || user.id === lockedNote.veterinarianId || isAssignedTechnician));
   const objectiveText = readableObjective(note?.objective);
   const objective = summarizeObjective(note?.objective);
-  const recordForm = useRef<HTMLFormElement>(null);
-  const version = useRef(note?.version ?? 0);
-  const saveQueue = useRef<Promise<void>>(Promise.resolve());
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const revision = useRef(0);
-  const [saveStatus, setSaveStatus] = useState('All changes saved');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
-
   if (!note) return null;
 
-  function saveForm(formElement: HTMLFormElement) {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    const form = new FormData(formElement);
-    const savedRevision = revision.current;
-    const fields = {
-      subjective: form.get('subjective'), objective: form.get('objective'),
-      assessment: form.get('assessment'), plan: form.get('plan'),
-    };
-    setSaveStatus('Saving…');
-    const operation = saveQueue.current.catch(() => undefined).then(async () => {
-      const response = await fetch(`/api/visits/${visit.id}/record/draft`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...fields, version: version.current }),
-      });
-      const payload = await response.json() as { message?: string; version: number };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not save the record.');
-      version.current = payload.version;
-      if (savedRevision === revision.current) {
-        setSaveStatus('All changes saved');
-        setSaveError(null);
-        setError(null);
-      }
-    }).catch((caught: unknown) => {
-      setSaveStatus('Changes not saved');
-      setSaveError(caught instanceof Error ? caught.message : 'Could not save the record.');
-      setError(null);
-      throw caught;
-    });
-    saveQueue.current = operation;
-    return operation;
-  }
-
-  function scheduleSave() {
-    revision.current += 1;
-    setSaveStatus('Saving…');
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      if (recordForm.current) void saveForm(recordForm.current).catch(() => undefined);
-    }, 700);
-  }
-
-  function pendingSoapGaps(): string[] {
-    const form = recordForm.current;
-    if (!form) return [];
-    const data = new FormData(form);
-    return SOAP_FIELDS.filter(([name]) => !String(data.get(name) ?? '').trim()).map(([name]) => name);
-  }
-
-  function requestFinalize() {
-    if (saveError) {
-      setError(null);
-      return;
-    }
-    const gaps = pendingSoapGaps();
-    const firstGap = gaps[0];
-    if (firstGap) {
-      setMissingSoap(gaps);
-      const labels = SOAP_FIELDS.filter(([name]) => gaps.includes(name)).map(([, label]) => label);
-      setError(`Add ${labels.join(', ')} before signing. Every SOAP section must have content.`);
-      const field = recordForm.current?.elements.namedItem(firstGap);
-      if (field instanceof HTMLElement) field.focus();
-      return;
-    }
-    setMissingSoap([]);
-    setError(null);
-    void finalize();
-  }
-
   async function finalize() {
-    const form = recordForm.current;
     setSaving(true); setError(null);
     try {
-      if (form) await saveForm(form);
       const response = await fetch(`/api/visits/${visit.id}/record/finalize`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message ?? 'Could not sign the record.');
+      if (!response.ok) throw new Error(payload.message === 'Complete all SOAP sections before finalizing the medical record.' ? 'Document the history, exam findings, diagnosis, and treatment plan before finalizing the visit.' : payload.message ?? 'Could not sign the record.');
       router.push('/');
       router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not sign the record.'); }
@@ -248,7 +164,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   return (
     <>
     {!signed ? <VisitOverview visit={visit} /> : null}
-    <section id="visit-record" className={`visit-record-panel${signed ? ' visit-record-panel--signed' : ''}`} aria-labelledby="visit-record-heading">
+    {signed ? <section id="visit-record" className={`visit-record-panel${signed ? ' visit-record-panel--signed' : ''}`} aria-labelledby="visit-record-heading">
       <div className="visit-record-panel__header">
         <div>
           <h2 id="visit-record-heading">Medical record</h2>
@@ -258,30 +174,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
         </div>
         <span className={`visit-record-status visit-record-status--${note.status.toLowerCase()}`}>{RECORD_STATUS_LABELS[note.status] ?? note.status}</span>
       </div>
-      {!signed && (!visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))) ? <p role="status">The visit still needs completed care and saved discharge instructions. You can review the medical record here.</p> : null}
-      {!canEdit && !signed ? <p role="status">Only the assigned clinician or a recorded signoff delegate can edit and sign this record. Ask the assigned clinician to finish it or arrange authorized delegation.</p> : null}
       {lockedNote ? <VisitDocumentDownload visitId={visit.id} kind="record">Download medical record PDF</VisitDocumentDownload> : null}
-      {canEdit ? (
-        <form id={`visit-record-form-${visit.id}`} ref={recordForm} onChange={scheduleSave} onSubmit={(event) => event.preventDefault()} className="visit-record-form visit-record-form--review">
-          {SOAP_FIELDS.map(([name, label]) => {
-            const defaults: Record<string, string> = { subjective: note.subjective ?? '', objective: objectiveText, assessment: note.assessment ?? '', plan: note.plan ?? '' };
-            const missing = missingSoap.includes(name);
-            return (
-              <label key={name} className={missing ? 'is-missing' : undefined}>
-                <span>{label}{missing ? <em> · required</em> : null}</span>
-                <textarea
-                  name={name}
-                  aria-invalid={missing || undefined}
-                  rows={name === 'objective' ? Math.max(5, Math.min(18, objectiveText.split('\n').length + 1)) : undefined}
-                  defaultValue={defaults[name]}
-                  onChange={() => { if (missing) setMissingSoap((current) => current.filter((field) => field !== name)); }}
-                />
-              </label>
-            );
-          })}
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
-        </form>
-      ) : (
         <dl className="visit-record-soap">
           <div><dt>Subjective</dt><dd>{note.subjective || '—'}</dd></div>
           <div>
@@ -303,7 +196,6 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
           <div><dt>Assessment</dt><dd>{note.assessment || '—'}</dd></div>
           <div><dt>Plan</dt><dd>{note.plan || '—'}</dd></div>
         </dl>
-      )}
       {canAmend && amending ? (
         <div className="visit-record-amendment visit-record-amendment--open">
           <form onSubmit={amend} className="visit-record-form">
@@ -321,24 +213,21 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
           </form>
         </div>
       ) : null}
-      {error && !canEdit ? <p className="form-error" role="alert">{error}</p> : null}
+      {error && !canFinalize ? <p className="form-error" role="alert">{error}</p> : null}
       {attachments ? <div className="visit-record-panel__attachments">{attachments}</div> : null}
       {canAmend && !amending ? (
         <p className="visit-record-panel__correct">
           <button type="button" onClick={() => setAmending(true)}>Correct this record</button>
         </p>
       ) : null}
-      {canEdit ? (
-        <div className="visit-record-panel__save">
-          <span id={`visit-record-save-status-${visit.id}`} className={`autosave-indicator autosave-indicator--${saveStatus === 'Changes not saved' ? 'error' : saveStatus === 'Saving…' ? 'saving' : 'saved'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saveError ? `Not saved — ${saveError}` : saveStatus}</span>
-          {saveStatus === 'Changes not saved' ? <button type="button" className="visit-record-save-draft" onClick={() => { if (recordForm.current) void saveForm(recordForm.current).catch(() => undefined); }}>Retry</button> : null}
-        </div>
-      ) : null}
-    </section>
-    {step || canEdit ? (
+    </section> : null}
+    {!signed && !canFinalize ? <p role="status">Only the assigned clinician or a recorded signoff delegate can finalize this visit.</p> : null}
+    {!signed && (!visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))) ? <p role="status">Complete care and save discharge instructions before finalizing the visit.</p> : null}
+    {!signed && error ? <p className="form-error" role="alert">{error}</p> : null}
+    {step || canFinalize ? (
       <footer className="visit-step-actions visit-record-footer">
         {step ? <button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to discharge</button> : <span />}
-          {canEdit ? <button type="button" className="button-primary" disabled={saving || Boolean(saveError)} aria-describedby={saveError ? `visit-record-save-status-${visit.id}` : undefined} onClick={requestFinalize}>{saving ? 'Finalizing…' : 'Finalize visit'}</button> : null}
+          {canFinalize ? <button type="button" className="button-primary" disabled={saving || !visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))} onClick={() => void finalize()}>{saving ? 'Finalizing…' : 'Finalize visit'}</button> : null}
       </footer>
     ) : null}
     </>

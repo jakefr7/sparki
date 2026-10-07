@@ -79,11 +79,14 @@ test('SPA-7 UI handoff, reviewed discharge persistence, record resume and checko
   await page.locator('textarea[name="followUpPlan"]').fill('CLIENT_FOLLOWUP: arrange synthetic recheck.');
   await page.getByLabel('Ask reception to schedule').check();
   await page.getByRole('button', { name: 'Continue to review →' }).click();
-  await expect(page.getByRole('heading', { name: 'Medical record', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Subjective', exact: true })).toHaveValue(/Synthetic intake history/, { timeout: 15000 });
-  await expect(page.getByRole('textbox', { name: 'Objective', exact: true })).toHaveValue(/Weight: 22/, { timeout: 15000 });
+  await expect(page.getByRole('heading', { name: 'Review visit', exact: true })).toBeVisible();
+  await expect(page.locator('#visit-record')).toHaveCount(0);
+  for (const name of ['Subjective', 'Objective', 'Assessment', 'Plan']) {
+    await expect(page.getByRole('textbox', { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.getByRole('region', { name: 'Review visit' }).getByText('CLIENT_HOME_V1: synthetic home-care instructions.', { exact: true })).toBeVisible();
   await page.goto(`/visits/${visit.id}?resume=visit-record`);
-  await expect(page.getByRole('heading', { name: 'Medical record', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review visit', exact: true })).toBeVisible();
   await page.context().addCookies([{ name: 'sparki_session', value: 'dev:staff-test-technician', domain: '127.0.0.1', path: '/' }]);
   await page.goto(`/visits/${visit.id}?view=discharge`);
   await expect(page.locator('textarea[name="instructions"]')).toHaveValue('CLIENT_HOME_V1: synthetic home-care instructions.');
@@ -93,7 +96,7 @@ test('SPA-7 UI handoff, reviewed discharge persistence, record resume and checko
   await expect(page.locator('textarea[name="instructions"]')).toHaveValue('CLIENT_HOME_V2: revised synthetic home care.');
   await expect(page.getByRole('button', { name: 'Download PDF' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Continue to review →' }).click();
-  await expect(page.getByRole('heading', { name: 'Medical record', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review visit', exact: true })).toBeVisible();
   await page.context().addCookies([{ name: 'sparki_session', value: 'dev:staff-test-veterinarian', domain: '127.0.0.1', path: '/' }]);
   await page.goto(`/visits/${visit.id}?view=discharge`);
   await expect(page.locator('textarea[name="instructions"]')).toHaveValue('CLIENT_HOME_V2: revised synthetic home care.');
@@ -165,6 +168,10 @@ test('SPA-7 UI handoff, reviewed discharge persistence, record resume and checko
   expect(canonical.invoice?.payments[0]?.amountCents).toBe(100);
   expect(canonical.invoice?.lines[0]?.totalAmountCents).toBe(100);
   expect(canonical.soapNotes[0]?.status).toBe('Locked');
+  expect(canonical.soapNotes[0]?.subjective).toContain('Synthetic intake history');
+  expect(canonical.soapNotes[0]?.objective).toContain('Weight: 22');
+  expect(canonical.soapNotes[0]?.assessment).toContain('Synthetic assessment');
+  expect(canonical.soapNotes[0]?.plan).toContain('INTERNAL_EXAM_MARKER');
   expect(canonical.state).toBe('Archived');
   const findings = JSON.parse(canonical.examFindings?.objective ?? '{}');
   expect(findings.systems.eyes.status).toBe('Normal');

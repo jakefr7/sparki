@@ -92,7 +92,7 @@ html:has(.dashboard-shell) {
  * computed background-color (not the theme-color meta tag) to color the
  * status-bar/Dynamic-Island strip, so body needs the same override, not
  * just html — the meta tag alone stopped being sufficient there. */
-html:has(.landing),
+html:has(#top),
 html:has(.login-page),
 html:has(.clinic-access) {
   background: #f7fbfb;
@@ -102,7 +102,7 @@ body:has(.dashboard-shell) {
   background: #f7f8fb;
 }
 
-body:has(.landing),
+body:has(#top),
 body:has(.login-page),
 body:has(.clinic-access) {
   background: #f7fbfb;
@@ -120,13 +120,9 @@ body:has(.clinic-access) {
  * landing only: it clips horizontal overflow exactly like 'hidden', but
  * (per spec) is exempt from the visible/auto pairing, leaving overflow-y
  * genuinely 'visible' and sticky working again.
- * Keyed off #top (the landing root's literal id, unique in the app) rather
- * than :has(.landing) like the background overrides above — landing-page.tsx
- * now sources .landing from a CSS module, so that selector's class name is
- * hashed at build time and no longer matches here (a separate, pre-existing
- * gap worth a follow-up, left alone since fixing it also touches
- * login-page/clinic-access, outside this change's scope). */
+ * The literal landing root id survives CSS-module hashing. */
 html:has(#top) {
+  color-scheme: light;
   overflow-x: clip;
 }
 body:has(#top) {

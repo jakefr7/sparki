@@ -210,3 +210,45 @@
 @media (prefers-reduced-motion: reduce) {
   .areaGrid[data-revealed='false'] .area, .finalCta[data-revealed='false'] { opacity: 1; transform: none; }
 }
+
+
+/* Mobile composition: readable context alongside the full product illustration. */
+.mobileSnapshot { display: none; }
+@media (max-width: 700px) {
+  .landing { min-height: 100svh; }
+  .hero { padding-top: 100px; gap: 28px; }
+  .hero h1 { font-size: clamp(2.65rem, 10.8vw, 4.5rem); line-height: 1.02; letter-spacing: -.06em; }
+  .hero .eyebrow { max-width: 30em; font-size: 10px; line-height: 1.6; margin-bottom: 18px; }
+  .hero .lede { margin-top: 20px; line-height: 1.65; }
+  .actions { flex-wrap: wrap; gap: 12px 20px; }
+  .actions a { min-height: 48px; }
+  .heroProduct { padding: 14px; border-radius: 20px; }
+  .previewLabel { flex-wrap: wrap; gap: 4px; }
+  .previewLabel > span:first-child { font-size: 10px; }
+  .previewLabel > span:last-child { font-size: 11px; }
+  .mobileSnapshot { display: grid; grid-template-columns: .8fr 1.2fr; gap: 10px; margin-top: 14px; }
+  .mobileSnapshot > div { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #ffffffb3; }
+  .mobileSnapshot span { font-size: 11px; color: #596b75; }
+  .mobileSnapshot strong { font-size: 17px; font-weight: 600; line-height: 1.35; }
+  .mobileSnapshot small { display: block; margin-top: 4px; font-size: 11px; font-weight: 400; color: var(--teal); }
+  .productContext { margin-top: 12px; font-size: 12px; }
+  .productContext strong { flex-basis: 100%; padding-left: 13px; font-size: 11px; }
+  .productContext small { font-size: 11px; }
+  .continuity { padding-block: 24px; font-size: 13px; }
+  .flow, .solutions { scroll-margin-top: 88px; }
+  .flowSticky { position: relative; top: auto; gap: 24px; }
+  .flow h2, .solutions h2 { font-size: clamp(2.25rem, 9vw, 3.4rem); line-height: 1.06; }
+  .stepList { gap: 6px; border-top: 0; }
+  .stepList button { min-height: 48px; border: 1px solid #ffffff20; border-radius: 9px; }
+  .area { padding: 22px; }
+  .finalCta { padding: 40px 22px; text-align: left; }
+  .finalCta .eyebrow { margin-bottom: 18px; font-size: 10px; }
+  .finalCta h2 { font-size: clamp(2.2rem, 8.5vw, 3.4rem); line-height: 1.08; }
+  .finalCta > p:not(.eyebrow) { margin: 20px 0 24px; line-height: 1.65; }
+  .finalCta .button { width: 100%; min-height: 50px; }
+  .footer { margin-top: 24px; border-top: 1px solid var(--line); gap: 20px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+  .footer > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; font-size: 14px; }
+  .footer > div a { display: flex; align-items: center; min-height: 44px; }
+  .footer > div > span { grid-column: 1 / -1; margin-top: 12px; font-size: 12px; }
+  .footer > span { order: 0; width: 100%; }
+}

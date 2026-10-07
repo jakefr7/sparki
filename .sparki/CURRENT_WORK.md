@@ -141,3 +141,10 @@ Verified web typecheck, focused source lint, diff whitespace checks and isolated
 - Busy-vet discharge refinement: shortened labels/status, removed redundant helper paragraphs, exposed actual follow-up plan/date in summary, and restored accurate Continue to review action. PDF now opens in a native modal dialog with Download/Close and focus return, preserving a text alternative. Actual PDF visually verified; TypeScript/ESLint and isolated SPA-7 workflow passed, including dialog download/close and closed-visit viewing.
 
 - Medication entry follow-ups: name suggestions from active hospital inventory (manual entry retained); hide Add medication while editing, rename Done to Add. Typecheck/lint and SPA-7 regression passed. Empty additional medication directions now disappear when the last medication is removed; existing entered directions remain accessible.
+
+
+## Anna follow-up: remove duplicate SOAP review — October 6
+
+Founder confirmed that the veterinarian should use the existing visit review instead of a second SOAP form. The final Review step now presents saved history, readable exam findings, diagnosis, plan, completed care and home-care instructions with one Finalize visit action. Removed unsigned SOAP editing/autosave; signed records, separately attributed amendments, PDFs, underlying draft generation, server validation and signoff authorization remain intact. Existing record/resume URLs still open Review.
+
+Verified web typecheck, focused lint and the isolated SPA-7 Chromium handoff/discharge/checkout/signoff journey. The regression confirms SOAP inputs are absent and the signed record retains history, vitals, assessment and plan. The known dashboard-default initialization upsert race still appears in server logs; it is unchanged. Local only; no commit, push or deployment.

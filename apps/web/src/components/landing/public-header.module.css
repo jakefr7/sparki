@@ -28,7 +28,7 @@
   .header .navOpen { position: absolute; top: 68px; left: 12px; right: 12px; display: grid; gap: 0; padding: 12px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); box-shadow: 0 10px 20px #12323a12; }
   .header .navOpen a { padding: 12px 0; }
   .header .headerActions .buttonSmall, .header .headerActions .signIn { display: none; }
-  .header .menuToggle { display: block; }
+  .header .menuToggle { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 10px; font-size: 22px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .header, .header * { animation: none !important; transition: none !important; }

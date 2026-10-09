@@ -1,5 +1,6 @@
 'use client';
 
+import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { AppointmentTextStatus } from './appointment-text-status';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
@@ -7,7 +8,6 @@ import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import {
   SEX_OPTIONS,
   SPECIES_OPTIONS,
-  appointmentTypeLabel,
   clientDisplayName,
   type AppointmentTypeValue,
   type ClientSearchResult,
@@ -291,7 +291,6 @@ export function NewAppointmentModal({
     useState<AppointmentTypeValue>(defaultAppointmentType);
   const [appointmentTypeSettingId, setAppointmentTypeSettingId] = useState(defaultSetting?.id ?? '');
   const [visitReason, setVisitReason] = useState(initialVisitReason ?? '');
-  const [bookingSource, setBookingSource] = useState('Phone');
   const [assignedProviderId, setAssignedProviderId] = useState(initialProviderId ?? '');
   const [selectedSlotProviderId, setSelectedSlotProviderId] = useState('');
   const [selectedSlotBlockId, setSelectedSlotBlockId] = useState('');
@@ -305,6 +304,7 @@ export function NewAppointmentModal({
   const [clientState, setClientState] = useState('');
   const [clientPostalCode, setClientPostalCode] = useState('');
   const [clientCountry, setClientCountry] = useState('');
+  const [addressAutofill, setAddressAutofill] = useState<AddressAutofillResult | null>(null);
   const [clientDuplicateHint, setClientDuplicateHint] = useState<string | null>(null);
   const [patientName, setPatientName] = useState('');
   const [species, setSpecies] = useState('Dog');
@@ -316,8 +316,6 @@ export function NewAppointmentModal({
   const [weight, setWeight] = useState('');
   const [primaryCareVetName, setPrimaryCareVetName] = useState('');
   const [previousClinicName, setPreviousClinicName] = useState('');
-  const [previousRecordsSource, setPreviousRecordsSource] = useState('');
-  const [lastSeenAt, setLastSeenAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -555,6 +553,7 @@ export function NewAppointmentModal({
     if (!durationMinutes || Number(durationMinutes) <= 0) {
       nextErrors.durationMinutes = 'Choose a duration.';
     }
+    if (!editingAppointmentId && !visitReason.trim()) nextErrors.visitReason = 'Visit Notes are required.';
     if (!appointmentTypeSettingId) nextErrors.appointmentType = 'Choose an appointment type.';
 
     if (patientMode === 'existing') {
@@ -565,6 +564,7 @@ export function NewAppointmentModal({
       if (clientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim())) {
         nextErrors.clientEmail = 'Enter a valid email address.';
       }
+      if (clientPhone && clientPhone.replace(/\D/g, '').length !== 10) nextErrors.clientPhone = 'Enter a 10-digit phone number.';
       if (!patientName.trim()) nextErrors.patientName = 'Patient name is required.';
       if (!species.trim()) nextErrors.species = 'Species is required.';
       if (weight.trim() && Number(weight) <= 0) nextErrors.weight = 'Weight must be positive.';
@@ -611,6 +611,10 @@ export function NewAppointmentModal({
           state: clientState.trim() || undefined,
           postalCode: clientPostalCode.trim() || undefined,
           country: clientCountry.trim() || undefined,
+          formattedAddress: addressAutofill?.formattedAddress,
+          addressPlaceId: addressAutofill?.placeId,
+          addressLatitude: addressAutofill?.latitude ?? undefined,
+          addressLongitude: addressAutofill?.longitude ?? undefined,
         },
         patient: {
           name: patientName.trim(),
@@ -625,16 +629,13 @@ export function NewAppointmentModal({
         appointment: {
           appointmentType,
           appointmentTypeId: appointmentTypeSettingId,
-          source: bookingSource,
-          visitReason: visitReason.trim() || selectedTypeSetting?.name || appointmentTypeLabel(appointmentType),
+          visitReason: visitReason.trim(),
           startTime: startsAtDate.toISOString(),
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: selectedSlotProviderId || assignedProviderId || undefined,
           scheduleBlockId: selectedSlotBlockId || undefined,
           primaryCareVetName: primaryCareVetName.trim() || undefined,
           previousClinicName: previousClinicName.trim() || undefined,
-          previousRecordsSource: previousRecordsSource.trim() || undefined,
-          lastSeenAt: lastSeenAt || undefined,
         },
       }),
     });
@@ -683,7 +684,7 @@ export function NewAppointmentModal({
         onCreated({
           id: updated.id,
           type: selectedTypeSetting?.name ?? updated.type,
-          reason: visitReason.trim() || selectedTypeSetting?.name || appointmentTypeLabel(appointmentType),
+          reason: visitReason.trim(),
           state: updated.state,
           scheduledAt: updated.scheduledAt,
           expectedDurationMinutes: updated.expectedDurationMinutes,
@@ -743,8 +744,7 @@ export function NewAppointmentModal({
           clientId: selectedPatient.primaryClient?.id,
           appointmentType,
           appointmentTypeId: appointmentTypeSettingId,
-          source: bookingSource,
-          visitReason: visitReason.trim() || selectedTypeSetting?.name || appointmentTypeLabel(appointmentType),
+          visitReason: visitReason.trim(),
           startTime: startsAt.toISOString(),
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: selectedSlotProviderId || assignedProviderId || undefined,
@@ -839,17 +839,6 @@ export function NewAppointmentModal({
                 {eligibleProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.displayName}</option>)}
               </select>
             </FieldError>
-            {!editingAppointmentId ? (
-              <FieldError label="Booking source">
-                <select value={bookingSource} onChange={(event) => setBookingSource(event.target.value)}>
-                  <option value="Phone">Phone</option>
-                  <option value="InClinic">In clinic</option>
-                  <option value="FollowUp">Follow-up</option>
-                  <option value="Reminder">Reminder</option>
-                  <option value="Other">Other</option>
-                </select>
-              </FieldError>
-            ) : null}
           </div>
 
           <div className="new-appointment-availability" aria-live="polite">
@@ -979,7 +968,13 @@ export function NewAppointmentModal({
                   <input value={clientLastName} onChange={(event) => setClientLastName(event.target.value)} />
                 </FieldError>
                 <FieldError label="Phone number" error={fieldErrors.clientPhone}>
-                  <input value={clientPhone} onChange={(event) => setClientPhone(event.target.value)} />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    value={clientPhone.length > 6 ? `(${clientPhone.slice(0, 3)}) ${clientPhone.slice(3, 6)}-${clientPhone.slice(6)}` : clientPhone.length > 3 ? `(${clientPhone.slice(0, 3)}) ${clientPhone.slice(3)}` : clientPhone}
+                    onChange={(event) => setClientPhone(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                  />
                 </FieldError>
                 <FieldError label="Email" error={fieldErrors.clientEmail}>
                   <input
@@ -988,13 +983,21 @@ export function NewAppointmentModal({
                     onChange={(event) => setClientEmail(event.target.value)}
                   />
                 </FieldError>
-                <FieldError label="Address line 1" error={fieldErrors.clientAddressLine1}>
-                  <input
-                    value={clientAddressLine1}
-                    onChange={(event) => setClientAddressLine1(event.target.value)}
-                    placeholder="Street address"
-                  />
-                </FieldError>
+                <AddressAutocompleteField
+                  id="appointment-client-address"
+                  label="Address line 1"
+                  value={clientAddressLine1}
+                  placeholder="Search address..."
+                  onChange={(value) => { setClientAddressLine1(value); setAddressAutofill(null); }}
+                  onAddressSelected={(result) => {
+                    setClientAddressLine1(result.addressLine1);
+                    setClientCity(result.city);
+                    setClientState(result.state);
+                    setClientPostalCode(result.postalCode);
+                    setClientCountry(result.country);
+                    setAddressAutofill(result);
+                  }}
+                />
                 <FieldError label="Address line 2" error={fieldErrors.clientAddressLine2}>
                   <input
                     value={clientAddressLine2}
@@ -1003,19 +1006,19 @@ export function NewAppointmentModal({
                   />
                 </FieldError>
                 <FieldError label="City" error={fieldErrors.clientCity}>
-                  <input value={clientCity} onChange={(event) => setClientCity(event.target.value)} />
+                  <input value={clientCity} onChange={(event) => { setClientCity(event.target.value); setAddressAutofill(null); }} />
                 </FieldError>
                 <FieldError label="State" error={fieldErrors.clientState}>
-                  <input value={clientState} onChange={(event) => setClientState(event.target.value)} />
+                  <input value={clientState} onChange={(event) => { setClientState(event.target.value); setAddressAutofill(null); }} />
                 </FieldError>
                 <FieldError label="ZIP/postal code" error={fieldErrors.clientPostalCode}>
                   <input
                     value={clientPostalCode}
-                    onChange={(event) => setClientPostalCode(event.target.value)}
+                    onChange={(event) => { setClientPostalCode(event.target.value); setAddressAutofill(null); }}
                   />
                 </FieldError>
                 <FieldError label="Country" error={fieldErrors.clientCountry}>
-                  <input value={clientCountry} onChange={(event) => setClientCountry(event.target.value)} />
+                  <input value={clientCountry} onChange={(event) => { setClientCountry(event.target.value); setAddressAutofill(null); }} />
                 </FieldError>
               </div>
               {clientDuplicateHint ? (
@@ -1079,9 +1082,9 @@ export function NewAppointmentModal({
                 </FieldError>
               </div>
 
-              <h4 className="new-appointment-subheading">Records Request</h4>
+              <h4 className="new-appointment-subheading">Referral information</h4>
               <p className="new-appointment-subheading__helper">
-                Optional — only needed if this clinic hasn&apos;t seen this pet before.
+                Optional — saved with this appointment. This does not request or send records.
               </p>
               <div className="new-appointment-inline-form">
                 <FieldError label="Primary care vet" error={fieldErrors.primaryCareVetName}>
@@ -1098,33 +1101,21 @@ export function NewAppointmentModal({
                     placeholder="Optional"
                   />
                 </FieldError>
-                <FieldError label="Records source" error={fieldErrors.previousRecordsSource}>
-                  <input
-                    value={previousRecordsSource}
-                    onChange={(event) => setPreviousRecordsSource(event.target.value)}
-                    placeholder="e.g. will fax records"
-                  />
-                </FieldError>
-                <FieldError label="Date/time last seen" error={fieldErrors.lastSeenAt}>
-                  <input
-                    type="datetime-local"
-                    value={lastSeenAt}
-                    onChange={(event) => setLastSeenAt(event.target.value)}
-                  />
-                </FieldError>
+
               </div>
             </div>
           )}
         </section>
 
         <section className={`new-appointment-section new-appointment-notes${editingAppointmentId ? ' new-appointment-section--locked' : ''}`} aria-labelledby="appointment-notes-heading">
-          <h3 id="appointment-notes-heading">Notes</h3>
-          <FieldError label="Scheduling note (optional)" error={fieldErrors.visitReason}>
+          <h3 id="appointment-notes-heading">Visit Notes</h3>
+          <FieldError label="Visit Notes" error={fieldErrors.visitReason}>
             <textarea
               value={visitReason}
               onChange={(event) => setVisitReason(event.target.value)}
               maxLength={500}
-              placeholder="Reason for visit or scheduling notes"
+              required={!editingAppointmentId}
+              placeholder="Reason for visit and details the care team needs"
             />
           </FieldError>
         </section>

@@ -3,6 +3,8 @@
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { AppointmentTextStatus } from './appointment-text-status';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCurrentUser } from '../lib/use-current-user';
+import { MANAGE_ADMIN_SETTINGS } from '../lib/permissions';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import {
@@ -234,6 +236,8 @@ export function NewAppointmentModal({
   editingAppointmentId?: string | null;
   initialVisitReason?: string | null;
 }) {
+  const { user } = useCurrentUser();
+  const canManageSetup = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
   const settings = useMemo(() => appointmentTypes ?? [], [appointmentTypes]);
   const activeAppointmentTypes = useMemo(
     () =>
@@ -811,8 +815,25 @@ export function NewAppointmentModal({
     }
   }
 
+  if (setupStatus === 'ready' && activeAppointmentTypes.length === 0) {
+    return (
+      <ModalFrame key="setup-needed" title="Let’s set up appointment types" onClose={onClose}>
+        <div className="new-appointment-setup-message">
+          <p>Your clinic needs an active appointment type before you can book an appointment.</p>
+          <p>Create an appointment type in <strong>Settings → Admin → Scheduling</strong>, then assign a provider and add their available hours.</p>
+          {!canManageSetup ? <p>Ask your clinic owner or someone with Admin settings access to finish this setup.</p> : null}
+          <div className="scheduler-modal__actions">
+            <button type="button" className="scheduler-secondary-action" onClick={onClose}>Close</button>
+            {canManageSetup ? <a className="scheduler-primary-action" href="/settings?tab=admin">Open Admin settings</a> : null}
+          </div>
+        </div>
+      </ModalFrame>
+    );
+  }
+
   return (
     <ModalFrame
+      key="booking"
       title={editingAppointmentId ? 'Edit Appointment' : 'New Appointment'}
       subtitle={editingAppointmentId ? 'Choose a corrected date, time, or provider.' : 'Book an appointment for an existing patient, or start a New Patient visit without leaving the flow.'}
       onClose={onClose}

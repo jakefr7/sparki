@@ -17,17 +17,12 @@ export function requireSchedulerSettingsManager(user: AuthenticatedUser): void {
   }
 }
 
-/**
- * Gates the Settings page's "Admin" tab (scheduler settings + dashboard
- * status colors). Deliberately a standalone per-user grant
- * (User.canManageAdminSettings), NOT derived from Role — any team member can
- * be granted it individually (e.g. a receptionist lead) without a role change
- * pulling in that role's other capabilities.
- */
+/** Owners always manage Admin settings. Other roles need the standalone
+ * User.canManageAdminSettings grant, without gaining Owner capabilities. */
 export const MANAGE_ADMIN_SETTINGS = 'MANAGE_ADMIN_SETTINGS';
 
-export function canManageAdminSettings(user: Pick<AuthenticatedUser, 'canManageAdminSettings'>): boolean {
-  return user.canManageAdminSettings;
+export function canManageAdminSettings(user: Pick<AuthenticatedUser, 'role' | 'canManageAdminSettings'>): boolean {
+  return user.role === 'OWNER' || user.canManageAdminSettings;
 }
 
 export function requireAdminSettingsManager(user: AuthenticatedUser): void {

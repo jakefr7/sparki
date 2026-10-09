@@ -9,7 +9,7 @@ import { requestEmailCodeSchema, type RequestEmailCodeInput } from './dto/reques
 import { updateProfileSchema, type UpdateProfileInput } from './dto/update-profile.schema';
 import { verifyEmailCodeSchema, type VerifyEmailCodeInput } from './dto/verify-email-code.schema';
 import { AllowInactiveClinic } from './allow-inactive-clinic.decorator';
-import { MANAGE_ADMIN_SETTINGS } from './permissions';
+import { canManageAdminSettings, MANAGE_ADMIN_SETTINGS } from './permissions';
 import { Public } from './public.decorator';
 import { ROLE_PERMISSIONS } from './role-permissions';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from './session-cookie';
@@ -23,11 +23,10 @@ function toMeResponse(user: AuthenticatedUser) {
     email: user.email,
     name: user.name,
     role: user.role,
-    // MANAGE_ADMIN_SETTINGS is a per-user grant, not role-derived — appended
-    // here rather than living in ROLE_PERMISSIONS (see role-permissions.ts).
+    // Use the same effective permission as the Admin API checks.
     permissions: [
       ...ROLE_PERMISSIONS[user.role],
-      ...(user.canManageAdminSettings ? [MANAGE_ADMIN_SETTINGS] : []),
+      ...(canManageAdminSettings(user) ? [MANAGE_ADMIN_SETTINGS] : []),
       ...(user.canManageMedications || ['OWNER', 'VETERINARIAN', 'TECHNICIAN'].includes(user.role) ? [MANAGE_MEDICATIONS] : []),
     ],
   };

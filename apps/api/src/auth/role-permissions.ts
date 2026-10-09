@@ -7,10 +7,8 @@ import { MANAGE_SCHEDULER_SETTINGS } from './permissions';
  * enforcement that matters happens server-side per-endpoint (see
  * requireRole in require-role.ts), not by trusting this list.
  *
- * MANAGE_ADMIN_SETTINGS is deliberately absent here — unlike everything
- * else in this map, it's not implied by Role at all. It's appended
- * per-user from User.canManageAdminSettings in auth.controller.ts's
- * toMeResponse instead (see permissions.ts).
+ * MANAGE_ADMIN_SETTINGS is appended by auth.controller.ts using the shared
+ * effective permission check: Owner role or explicit per-user grant.
  */
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   OWNER: [

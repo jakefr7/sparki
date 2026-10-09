@@ -24,6 +24,13 @@ export default function SettingsPage() {
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isAdmin && new URLSearchParams(window.location.search).get('tab') === 'admin') {
+      setActiveTab('admin');
+    }
+  }, [isAdmin]);
+
+
+  useEffect(() => {
     if (!confirmingSignOut) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !signingOut) setConfirmingSignOut(false);

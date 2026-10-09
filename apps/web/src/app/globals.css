@@ -14191,3 +14191,7 @@ button.settings-nav__sign-out:hover {
   .settings-page--admin > nav { min-width: 0; }
   .settings-page--admin .settings-nav { width: 100%; box-sizing: border-box; }
 }
+
+.new-appointment-setup-message { padding: 1.25rem; color: var(--text-primary); line-height: 1.6; }
+.new-appointment-setup-message p { margin: 0 0 1rem; }
+.new-appointment-setup-message .scheduler-primary-action { text-decoration: none; text-align: center; }

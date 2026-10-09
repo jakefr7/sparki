@@ -430,6 +430,7 @@ export class InvitationsService {
             firstName: input.firstName,
             lastName: input.lastName,
             role: invitation.role,
+            canManageAdminSettings: invitation.role === 'OWNER',
             isActive: true,
             workosUserId,
             staffProfile: { create: staffProfileDefaults(invitation.role) },

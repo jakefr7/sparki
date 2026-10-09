@@ -495,6 +495,7 @@ export function SchedulerPage() {
   const scheduleRequest = useRef(0);
   const [schedulerConfig, setSchedulerConfig] =
     useState<SchedulerConfig>(FALLBACK_SCHEDULER_CONFIG);
+  const [bookingSetupStatus, setBookingSetupStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingAppointmentMove | null>(null);
@@ -510,7 +511,7 @@ export function SchedulerPage() {
   const loadSchedulerData = useCallback(
     async (rangeStart: Date, rangeEnd: Date, signal?: AbortSignal, background = false) => {
       const requestId = ++scheduleRequest.current;
-      if (!background) setLoading(true);
+      if (!background) { setLoading(true); setBookingSetupStatus('loading'); }
       try {
         const requestInit: RequestInit = signal
           ? { cache: 'no-store', signal }
@@ -536,6 +537,7 @@ export function SchedulerPage() {
             fetch('/api/staff?canReceiveAppointments=true', requestInit),
             fetch('/api/scheduler-config', requestInit),
           ]);
+          if (!staffResponse.ok || !configResponse.ok) throw new Error('Could not load booking setup.');
           const staff = staffResponse.ok ? ((await staffResponse.json()) as StaffMember[]) : [];
           const config = configResponse.ok
             ? ((await configResponse.json()) as SchedulerConfig)
@@ -543,6 +545,7 @@ export function SchedulerPage() {
           if (requestId !== scheduleRequest.current || signal?.aborted) return;
           setProviders(staff);
           setSchedulerConfig(config);
+          setBookingSetupStatus('ready');
         }
 
         if (requestId !== scheduleRequest.current || signal?.aborted) return;
@@ -553,6 +556,7 @@ export function SchedulerPage() {
         if (requestId !== scheduleRequest.current || signal?.aborted) return;
         if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
           if (!background) {
+            setBookingSetupStatus('error');
             setAppointments([]);
             setGeneratedAt(null);
           }
@@ -930,6 +934,8 @@ export function SchedulerPage() {
           initialAppointmentTypeSettingId={editingAppointment?.appointmentTypeSettingId ?? null}
           providers={providers}
           appointmentTypes={schedulerConfig.appointmentTypes}
+          setupStatus={bookingSetupStatus}
+          onRetrySetup={() => { void loadSchedulerData(startOfDay(days[0]!), addDays(startOfDay(days[days.length - 1]!), 1)); }}
           onClose={() => { setSelectedSlot(null); setEditingAppointment(null); }}
           onCreated={(appointment) => {
             setSelectedSlot(null);

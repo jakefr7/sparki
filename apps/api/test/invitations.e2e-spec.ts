@@ -122,6 +122,11 @@ describe('Invitations (e2e)', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.user).toMatchObject({ email, role: 'RECEPTIONIST' });
+      expect((await prisma.user.findUniqueOrThrow({ where: { email } })).canManageAdminSettings).toBe(false);
+      const me = await request(app.getHttpServer()).get('/auth/me').set('Cookie', response.headers['set-cookie']);
+      expect(me.status).toBe(200);
+      expect(me.body.user.permissions).not.toContain('MANAGE_ADMIN_SETTINGS');
+
       expect(response.headers['set-cookie']).toBeDefined();
 
       const membership = await prisma.organizationMembership.findFirstOrThrow({
@@ -206,7 +211,7 @@ describe('Invitations (e2e)', () => {
     });
 
     it('activates a system-generated owner-founding invitation into an OWNER membership', async () => {
-      const freshOrg = await prisma.organization.create({ data: { name: 'New Clinic' } });
+      const freshOrg = await prisma.organization.create({ data: { name: 'New Clinic', subscriptionStatus: 'ACTIVE' } });
       await prisma.location.create({ data: { organizationId: freshOrg.id, name: 'Main Location' } });
       const email = `owner-activate-${Date.now()}@example.test`;
       createdUserEmails.push(email);
@@ -219,6 +224,26 @@ describe('Invitations (e2e)', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.user).toMatchObject({ email, role: 'OWNER' });
+      const owner = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(owner.canManageAdminSettings).toBe(true);
+      const cookie = response.headers['set-cookie'];
+      const me = await request(app.getHttpServer()).get('/auth/me').set('Cookie', cookie);
+      expect(me.status).toBe(200);
+      expect(me.body.user.permissions).toContain('MANAGE_ADMIN_SETTINGS');
+      const setup = await request(app.getHttpServer()).get('/scheduler-config').set('Cookie', cookie);
+      expect(setup.status).toBe(200);
+      expect(setup.body.canManage).toBe(true);
+
+      // Existing Owners affected by the signup bug receive the same effective
+      // access without a broad database backfill or a new session.
+      await prisma.user.update({ where: { id: owner.id }, data: { canManageAdminSettings: false } });
+      const legacyMe = await request(app.getHttpServer()).get('/auth/me').set('Cookie', cookie);
+      expect(legacyMe.status).toBe(200);
+      expect(legacyMe.body.user.permissions).toContain('MANAGE_ADMIN_SETTINGS');
+      const legacySetup = await request(app.getHttpServer()).get('/scheduler-config').set('Cookie', cookie);
+      expect(legacySetup.status).toBe(200);
+      expect(legacySetup.body.canManage).toBe(true);
+
 
       const membership = await prisma.organizationMembership.findFirstOrThrow({
         where: { organizationId: freshOrg.id, user: { email } },

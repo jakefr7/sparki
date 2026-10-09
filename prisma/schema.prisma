@@ -235,11 +235,9 @@ model User {
   // prevents a single account from triggering unlimited code sends. See
   // AuthService.requestEmailCode.
   lastEmailCodeRequestedAt    DateTime?
-  // Explicit per-user grant, independent of Role — Settings > Admin (scheduler
-  // settings + dashboard status colors) is deliberately not tied to any
-  // Role so any team member can be granted it individually without a role
-  // change pulling in that role's other capabilities. See
-  // apps/api/src/auth/permissions.ts.
+  // Explicit Admin settings grant for non-owners. Owners always have
+  // effective access via their role; new Owner accounts also set this true.
+  // See apps/api/src/auth/permissions.ts.
   canManageAdminSettings      Boolean  @default(false)
   // Explicit grant for a veterinarian or other legally eligible user who may
   // be delegated final record signoff when they are not the assigned doctor.

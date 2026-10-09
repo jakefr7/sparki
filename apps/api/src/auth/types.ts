@@ -18,8 +18,8 @@ export interface AuthenticatedUser {
    *  cached copy of this for a long-lived process; it is re-read on every
    *  session verification. */
   subscriptionStatus: SubscriptionStatus;
-  /** Standalone per-user grant (User.canManageAdminSettings), deliberately
-   *  not derived from role — see permissions.ts. */
+  /** Stored per-user grant (User.canManageAdminSettings). Owners also have
+   *  effective Admin access through their role — see permissions.ts. */
   canManageAdminSettings: boolean;
   /** Per-user grant allowing explicit assignment to finalize another
    * veterinarian's visit record. The actual signer is always recorded. */

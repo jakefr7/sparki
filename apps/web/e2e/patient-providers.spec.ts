@@ -145,3 +145,29 @@ test('Admin breed additions, renames and hiding reach patient forms', async ({ p
   await page.getByRole('button', { name: 'New Patient', exact: true }).click();
   await expect(dialog.locator('datalist option[value="SPA40 Renamed Mix"]')).toHaveCount(0);
 });
+
+test('care connections recover from load failure and invoice denial uses plain language', async ({ page, request }) => {
+  const client = await request.post(`${API_URL}/clients`, { data: { firstName: 'Care', lastName: 'Polish' } });
+  expect(client.ok()).toBe(true);
+  const patient = await request.post(`${API_URL}/patients`, { data: { name: 'Care Polish', species: 'Dog', clients: [{ clientId: (await client.json()).id, isPrimary: true }] } });
+  expect(patient.ok()).toBe(true);
+  const patientId = (await patient.json()).id;
+  await page.route('**/api/patients/*/providers', route => route.fulfill({ status: 500, json: { message: 'Internal server error' } }));
+  await page.goto(`/patients/${patientId}`);
+  const panel = page.getByRole('region', { name: 'Providers and records' });
+  await expect(panel.getByRole('alert')).toContainText('Could not load patient providers');
+  await expect(panel.getByRole('button', { name: 'Try again' })).toHaveClass('button-secondary');
+  await page.unroute('**/api/patients/*/providers');
+  await panel.getByRole('button', { name: 'Try again' }).click();
+  await expect(panel.getByText('No providers recorded', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/sparki-care-connections-empty.png', fullPage: true });
+  await page.route('**/api/patients/*/invoices', route => route.fulfill({ status: 403, json: { message: 'This action requires one of the following roles: OWNER, PRACTICE_MANAGER, RECEPTIONIST' } }));
+  await page.getByRole('tab', { name: 'Invoices', exact: true }).click();
+  await expect(page.getByText('Invoice access is limited')).toBeVisible();
+  await expect(page.getByText('Invoices are available to your clinic’s owner', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/sparki-invoice-access-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: '/tmp/sparki-invoice-access-tablet.png', fullPage: true });
+});

@@ -57,17 +57,21 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setAccessDenied(false);
     try {
       const [historyResponse, activeResponse] = await Promise.all([
         fetch(`/api/patients/${patientId}/invoices`, { cache: 'no-store' }),
         activeVisitId ? fetch(`/api/visits/${activeVisitId}/invoice`, { cache: 'no-store' }) : Promise.resolve(null),
       ]);
+      if (historyResponse.status === 403 || activeResponse?.status === 403) {
+        setAccessDenied(true); setInvoice(null); setHistory([]); return;
+      }
       const historyPayload = await historyResponse.json() as Invoice[] & { message?: string };
       if (!historyResponse.ok) throw new Error(readError(historyPayload, 'Could not load invoice history.'));
       setHistory(historyPayload);
@@ -134,6 +138,15 @@ export function PatientInvoicePanel({ patientId, activeVisitId }: { patientId: s
   }
 
   if (loading) return <section className="profile-card profile-card--wide"><div className="profile-card__header"><h2>Invoices</h2></div><p role="status">Loading invoices…</p></section>;
+  if (accessDenied) return (
+    <section className="profile-card profile-card--wide" aria-labelledby="patient-invoices-access-heading">
+      <div className="profile-card__header"><p className="eyebrow">Billing history</p><h2 id="patient-invoices-access-heading">Invoices</h2></div>
+      <div className="profile-access-state" role="status">
+        <span className="profile-access-state__icon" aria-hidden="true">↗</span>
+        <div><strong>Invoice access is limited</strong><p>Invoices are available to your clinic’s owner, practice manager and reception team. Ask one of them for help with this patient’s billing.</p></div>
+      </div>
+    </section>
+  );
   if (error && !invoice && !history.length) return <section className="profile-card profile-card--wide"><div className="profile-card__header"><h2>Invoices</h2></div><p className="form-error" role="alert">{error}</p><button type="button" className="button-secondary" onClick={() => void load()}>Try again</button></section>;
   if (!activeVisitId && !history.length) return <section className="profile-card profile-card--wide" aria-labelledby="patient-invoices-heading"><div className="profile-card__header"><p className="eyebrow">Billing history</p><h2 id="patient-invoices-heading">Invoices</h2></div><div className="profile-compact-empty profile-compact-empty--roomy"><strong>No invoices yet</strong><span>Visit charges and past invoices will appear here.</span></div></section>;
 

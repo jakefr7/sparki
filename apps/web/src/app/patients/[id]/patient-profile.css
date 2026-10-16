@@ -301,3 +301,81 @@
     justify-content: flex-start;
   }
 }
+
+/* Care connections use the same quiet surfaces and controls as the profile. */
+.patient-providers__intro {
+  margin: 8px 0 0;
+  max-width: 44rem;
+  color: #667586;
+  font-size: .875rem;
+  line-height: 1.5;
+}
+.patient-providers__loading { color: #667586; font-size: .875rem; }
+.patient-providers .profile-compact-empty { margin-bottom: 16px; }
+.patient-providers > ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+.patient-providers > ul > li {
+  padding: 14px 16px;
+  border: 1px solid #dce8e8;
+  border-radius: 12px;
+  background: #f6faf9;
+  font-size: .875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.patient-providers > fieldset {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  margin: 16px 0;
+  border: 1px solid #dce8e8;
+  border-radius: 14px;
+  background: #f8fbfb;
+}
+.patient-providers legend { padding: 0 8px; font-weight: 700; color: #344b59; }
+.patient-providers fieldset > p,
+.patient-providers .records-email-draft > p { color: #667586; font-size: .875rem; line-height: 1.5; }
+.patient-providers fieldset > button { justify-self: start; }
+.patient-providers .provider-fields__results button,
+.patient-providers .provider-fields fieldset > button:not(.button-primary) {
+  border: 1px solid #d8e5e4;
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #344b59;
+  font: inherit;
+  cursor: pointer;
+}
+.patient-providers .provider-fields__results button:hover { background: #edf7f5; }
+.patient-providers .records-email-draft {
+  padding: 14px;
+  border: 1px solid #dce8e8;
+  border-radius: 12px;
+  background: #f8fbfb;
+}
+.profile-access-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #dce8e8;
+  border-radius: 14px;
+  background: #f4f9f8;
+}
+.profile-access-state__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #e2f2ef;
+  color: #177c74;
+  font-size: 1.2rem;
+}
+.profile-access-state strong { color: #344b59; font-size: .95rem; }
+.profile-access-state p { max-width: 42rem; margin: 6px 0 0; color: #667586; font-size: .875rem; line-height: 1.6; }

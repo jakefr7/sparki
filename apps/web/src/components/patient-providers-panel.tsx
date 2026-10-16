@@ -23,20 +23,24 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
   const [contactId, setContactId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [providerBusy, setProviderBusy] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const requestKey = useRef<string | null>(null);
   const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
       const [linksResponse, tasksResponse, staffResponse] = await Promise.all([
         fetch(`/api/patients/${patientId}/providers`),
         fetch('/api/tasks'),
         fetch('/api/staff'),
       ]);
-      if (!linksResponse.ok || !tasksResponse.ok || !staffResponse.ok)
-        throw new Error('Could not load providers and records requests.');
+      for (const [response, name] of [[linksResponse, 'patient providers'], [tasksResponse, 'records-request tasks'], [staffResponse, 'staff choices']] as const) {
+        if (!response.ok) throw new Error(`Could not load ${name}. Please try again.`);
+      }
       const links = (await linksResponse.json()) as Link[];
       const value = {
         referring: links.find((link) => link.kind === 'REFERRING')?.contact ?? null,
@@ -58,6 +62,8 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
       setError('');
     } catch (caught) {
       setError((caught as Error).message);
+    } finally {
+      setLoading(false);
     }
   }, [patientId]);
   useEffect(() => {
@@ -142,16 +148,16 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
       <div className="profile-card__header">
         <p className="eyebrow">Care connections</p>
         <h2>Providers & records</h2>
+        <p className="patient-providers__intro">Keep referring hospitals and outside medical records connected to this patient.</p>
       </div>
       {error ? (
         <p role="alert" className="form-error">
           {error}
         </p>
       ) : null}
+      {loading ? <p className="patient-providers__loading" role="status">Loading care connections…</p> : null}
       {!loaded ? (
-        <button type="button" onClick={() => void load()}>
-          Load providers
-        </button>
+        !loading && error ? <button type="button" className="button-secondary" onClick={() => void load()}>Try again</button> : null
       ) : (
         <>
           {editing ? (
@@ -168,6 +174,7 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
               </button>
               <button
                 type="button"
+                className="button-secondary"
                 onClick={() => {
                   setDraft(saved);
                   setEditing(false);
@@ -194,7 +201,7 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
                   ))}
                 </ul>
               ) : (
-                <p>No providers recorded.</p>
+                <div className="profile-compact-empty"><strong>No providers recorded</strong><span>Add a referring vet or another hospital to keep care coordinated and request past records.</span></div>
               )}
               <button type="button" className="button-secondary" onClick={() => setEditing(true)}>
                 Edit providers
@@ -260,7 +267,7 @@ export function PatientProvidersPanel({ patientId }: { patientId: string }) {
               <button type="button" className="button-primary" onClick={() => void request()}>
                 Create records-request task
               </button>
-              <button type="button" onClick={() => setRequesting(false)}>
+              <button type="button" className="button-secondary" onClick={() => setRequesting(false)}>
                 Cancel
               </button>
             </fieldset>

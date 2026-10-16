@@ -216,3 +216,11 @@ Verified: focused scheduler Chromium scenario passes, including external appoint
 ## Patient header baseline alignment — October 16
 
 Founder reported Coat/Golden sitting on different text baselines. Profile detail pairs now align on the text baseline instead of vertically centering differently sized labels and values. Existing patient-header Chromium check passes with Golden coat in the fixture; tablet screenshot inspected. No deployment requested.
+
+## Care connections and invoice access polish — October 16
+
+Founder authorized applying the pending provider migration locally and polishing the patient UI. Applied `20261016140000_patient_providers_and_breeds` only to verified localhost:55432/sparki. Direct provider query succeeds. Reloaded the existing local API watcher to refresh its database client; local authenticated invoice screen displays the new permission state.
+
+Providers & records now has a proper loading state, styled Try again control, failed-resource-specific messages, descriptive empty state, and profile-matched contact/form/email-draft surfaces. Invoice GET 403 responses render a quiet access explanation with plain role names and no ineffective retry button; backend permissions are unchanged.
+
+Verified: web typecheck, focused lint and two isolated Chromium scenarios pass (provider/contact persistence, records task and email draft workflow, load failure/retry recovery, invoice denied-access presentation). Desktop/tablet screenshots inspected. No staging changes or deployment.

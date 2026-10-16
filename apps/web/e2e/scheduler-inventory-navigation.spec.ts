@@ -51,13 +51,15 @@ test('scheduler changes date, zooms to 15-minute slots, and picks up an external
   await expect.poll(() => calendar.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
   await expect(page.getByLabel('Calendar zoom level')).toHaveText('175%');
   await page.locator('.scheduler-zoom').dispatchEvent('wheel', { deltaY: -100, clientY: 450 });
-  await expect(page.getByLabel('Calendar zoom level')).toHaveText('205%');
+  await expect(page.getByLabel('Calendar zoom level')).toHaveText('175%');
   await page.locator('.scheduler-calendar-zoom').dispatchEvent('wheel', { deltaY: 20, ctrlKey: true, clientY: 450 });
-  await expect(page.getByLabel('Calendar zoom level')).toHaveText('185%');
+  await expect(page.getByLabel('Calendar zoom level')).toHaveText('175%');
+  await page.locator('.scheduler-calendar-zoom').dispatchEvent('wheel', { deltaY: -100, metaKey: true, clientY: 450 });
+  await expect(page.getByLabel('Calendar zoom level')).toHaveText('175%');
   await page.locator('.scheduler-day-column').dispatchEvent('wheel', { deltaY: 100 });
-  await expect(page.getByLabel('Calendar zoom level')).toHaveText('185%');
+  await expect(page.getByLabel('Calendar zoom level')).toHaveText('175%');
   await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
-  await expect(page.getByLabel('Calendar zoom level')).toHaveText('160%');
+  await expect(page.getByLabel('Calendar zoom level')).toHaveText('150%');
   await expect(page.locator('.scheduler-time-column__quarter').first()).toBeVisible();
 
   const provider = page.getByRole('combobox', { name: 'Provider', exact: true });

@@ -200,3 +200,9 @@ SPA-42 verification: 22 focused unit tests, 76 isolated integration tests, six d
 ## Staging release authorization — October 16
 
 Founder requested committing all current changes, including Claude's work already in main, pushing main, and updating staging. Main matched origin/main before this release; no additional worktrees were present. The release includes SPA-42 implementation/tests/notes, comment-writing preferences and the generated default Next.js type reference. Full unit/infrastructure tests and all workspace typechecks passed; the focused integration/browser checks and web production build recorded above also passed. Deployment follows `agents/README.md`; deployed SHA and final health are reported in the release response.
+
+## SPA-43 scheduler zoom — October 16
+
+Founder requested implementing SPA-43 and committing/pushing to GitHub. Removed scheduler wheel/trackpad zoom and its tooltip, preserving toolbar +/− controls, zoom bounds, scroll anchoring and ordinary calendar scrolling. Updated the existing Chromium regression to assert wheel events over the toolbar, Ctrl/pinch events and Meta-wheel events leave the zoom level unchanged.
+
+Verified: focused scheduler Chromium scenario passes, including normal scrolling, both zoom buttons and automatic pickup of an externally added appointment; web typecheck and focused lint pass (four existing unused scheduler warnings). No staging deployment requested.

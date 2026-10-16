@@ -432,16 +432,15 @@ export function SchedulerPage() {
   const [zoomScale, setZoomScale] = useState(1);
   const zoom: SchedulerZoom = zoomScale >= 1.5 ? 'close' : zoomScale > 1 ? 'detail' : 'overview';
   const calendarRef = useRef<HTMLDivElement>(null);
-  const zoomControlRef = useRef<HTMLDivElement>(null);
   const zoomValue = useRef(1);
   const zoomAnchor = useRef<{ grid: HTMLElement; fraction: number; y: number } | null>(null);
-  const changeZoom = useCallback((delta: number, pointerY?: number) => {
+  const changeZoom = useCallback((delta: number) => {
     const next = Math.max(1, Math.min(2.5, Math.round((zoomValue.current + delta) * 100) / 100));
     if (next === zoomValue.current) return;
     const grid = calendarRef.current?.querySelector<HTMLElement>('.scheduler-week__body');
     if (grid) {
       const bounds = grid.getBoundingClientRect();
-      const y = Math.max(bounds.top, Math.min(bounds.bottom, pointerY ?? Math.max(bounds.top, 180)));
+      const y = Math.min(bounds.bottom, Math.max(bounds.top, 180));
       zoomAnchor.current = { grid, fraction: (y - bounds.top) / bounds.height, y };
     }
     zoomValue.current = next;
@@ -460,25 +459,6 @@ export function SchedulerPage() {
     else window.scrollBy(0, offset);
   }, [zoomScale]);
 
-  useEffect(() => {
-    const calendar = calendarRef.current;
-    const control = zoomControlRef.current;
-    const onWheel = (event: WheelEvent) => {
-      const target = event.target instanceof Element ? event.target : null;
-      // Pinch generates ctrl+wheel. Plain scrolling on the calendar moves through time.
-      if (!event.ctrlKey && !event.metaKey && !target?.closest('.scheduler-zoom')) return;
-      if (!event.deltaY || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
-      event.preventDefault();
-      const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 240 : 1);
-      changeZoom(-Math.max(-120, Math.min(120, pixels)) * (event.ctrlKey ? 0.01 : 0.003), event.clientY);
-    };
-    calendar?.addEventListener('wheel', onWheel, { passive: false });
-    control?.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      calendar?.removeEventListener('wheel', onWheel);
-      control?.removeEventListener('wheel', onWheel);
-    };
-  }, [changeZoom]);
   const [anchorDate, setAnchorDate] = useState(today);
   const [appointments, setAppointments] = useState<SchedulerAppointment[]>([]);
   const [providers, setProviders] = useState<StaffMember[]>([]);
@@ -863,7 +843,6 @@ export function SchedulerPage() {
           onDateChange={setAnchorDate}
           zoomScale={zoomScale}
           onZoomChange={changeZoom}
-          zoomControlRef={zoomControlRef}
         />
         {!loading && !loadError ? <div className="scheduler-results" role="status">
           <span>{filteredAppointments.length} of {appointments.length} appointments in this {view}</span>
@@ -1088,7 +1067,6 @@ function SchedulerToolbar({
   onDateChange,
   zoomScale,
   onZoomChange,
-  zoomControlRef,
 }: {
   view: SchedulerView;
   onViewChange: (view: SchedulerView) => void;
@@ -1106,7 +1084,6 @@ function SchedulerToolbar({
   onDateChange: (date: Date) => void;
   zoomScale: number;
   onZoomChange: (delta: number) => void;
-  zoomControlRef: React.RefObject<HTMLDivElement>;
 }) {
   return (
     <section className="scheduler-toolbar" aria-label="Scheduler controls">
@@ -1154,7 +1131,7 @@ function SchedulerToolbar({
             </select>
           </label>
         </div>
-        <div ref={zoomControlRef} className="scheduler-zoom" role="group" aria-label="Calendar zoom" title="Scroll here to zoom. Pinch or Ctrl + scroll anywhere on the calendar.">
+        <div className="scheduler-zoom" role="group" aria-label="Calendar zoom">
           <button type="button" aria-label="Zoom out" disabled={zoomScale <= 1} onClick={() => onZoomChange(-0.25)}>−</button>
           <output aria-label="Calendar zoom level">{Math.round(zoomScale * 100)}%</output>
           <button type="button" aria-label="Zoom in" disabled={zoomScale >= 2.5} onClick={() => onZoomChange(0.25)}>+</button>

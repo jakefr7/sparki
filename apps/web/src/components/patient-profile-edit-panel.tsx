@@ -1,9 +1,12 @@
 'use client';
+import { BreedField } from './breed-field';
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
+import { DateOfBirthField } from './date-of-birth-field';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
+import { dateOfBirthPayload, initialDateOfBirthValue, type DateOfBirthValue } from '../lib/date-of-birth';
 import { SEX_OPTIONS, SPECIES_OPTIONS } from '../lib/patient-types';
 
 export interface EditablePatient {
@@ -13,6 +16,7 @@ export interface EditablePatient {
   breed: string | null;
   sex: string | null;
   dateOfBirth: string | null;
+  dateOfBirthEstimated: boolean;
   estimatedAge: string | null;
   color: string | null;
   imageUrl: string | null;
@@ -33,13 +37,6 @@ export interface EditablePrimaryClient {
   country: string | null;
 }
 
-function toDateInputValue(iso: string | null): string {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toISOString().slice(0, 10);
-}
-
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
@@ -49,8 +46,7 @@ interface FormState {
   species: string;
   breed: string;
   sex: string;
-  dateOfBirth: string;
-  estimatedAge: string;
+  dateOfBirth: DateOfBirthValue;
   color: string;
   clientFirstName: string;
   clientLastName: string;
@@ -74,8 +70,12 @@ function initialFormState(
     species: patient.species,
     breed: patient.breed ?? '',
     sex: patient.sex ?? '',
-    dateOfBirth: toDateInputValue(patient.dateOfBirth),
-    estimatedAge: patient.estimatedAge ?? '',
+    // A legacy free-text estimate opens on Estimated age so it can become a date.
+    dateOfBirth: initialDateOfBirthValue(
+      patient.dateOfBirth,
+      patient.dateOfBirthEstimated,
+      patient.estimatedAge ? 'estimated' : 'exact',
+    ),
     color: patient.color ?? '',
     clientFirstName: client?.firstName ?? '',
     clientLastName: client?.lastName ?? '',
@@ -185,8 +185,9 @@ export function PatientProfileEditPanel({
           species,
           breed: form.breed.trim() || null,
           sex: form.sex.trim() || null,
-          dateOfBirth: form.dateOfBirth || null,
-          estimatedAge: form.dateOfBirth ? null : form.estimatedAge.trim() || null,
+          ...dateOfBirthPayload(form.dateOfBirth),
+          // A saved date supersedes the legacy free-text estimate.
+          ...(form.dateOfBirth.date ? { estimatedAge: null } : {}),
           color: form.color.trim() || null,
         }),
       });
@@ -342,10 +343,7 @@ export function PatientProfileEditPanel({
                 </label>
                 <label>
                   Breed
-                  <input
-                    value={form.breed}
-                    onChange={(event) => updateField('breed', event.target.value)}
-                  />
+                  <BreedField species={form.species} value={form.breed} onChange={(value) => updateField('breed', value)} />
                 </label>
                 <label>
                   Sex
@@ -368,23 +366,14 @@ export function PatientProfileEditPanel({
                     onChange={(event) => updateField('color', event.target.value)}
                   />
                 </label>
-                <label>
-                  Date of birth
-                  <input
-                    type="date"
+                <div className="front-desk-grid__field--full">
+                  <DateOfBirthField
+                    idPrefix="edit-patient"
                     value={form.dateOfBirth}
-                    onChange={(event) => updateField('dateOfBirth', event.target.value)}
+                    onChange={(value) => updateField('dateOfBirth', value)}
+                    legacyEstimate={patient.estimatedAge}
                   />
-                </label>
-                <label>
-                  Estimated age (if DOB unknown)
-                  <input
-                    value={form.estimatedAge}
-                    onChange={(event) => updateField('estimatedAge', event.target.value)}
-                    disabled={Boolean(form.dateOfBirth)}
-                    placeholder="e.g. ~3 years"
-                  />
-                </label>
+                </div>
               </div>
             </fieldset>
 

@@ -36,4 +36,14 @@ describe('updatePatientSchema', () => {
     const result = updatePatientSchema.safeParse({ estimatedAge: null, imageUrl: null });
     expect(result.success).toBe(true);
   });
+
+  it('accepts an estimated date of birth', () => {
+    const result = updatePatientSchema.safeParse({ dateOfBirth: '2021-10-16', dateOfBirthEstimated: true });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects marking a cleared date of birth as estimated', () => {
+    const result = updatePatientSchema.safeParse({ dateOfBirth: null, dateOfBirthEstimated: true });
+    expect(result.success).toBe(false);
+  });
 });

@@ -72,4 +72,23 @@ describe('createPatientSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts an estimated date of birth', () => {
+    const result = createPatientSchema.safeParse({
+      ...base,
+      dateOfBirth: '2021-10-16',
+      dateOfBirthEstimated: true,
+      clients: [{ clientId: 'client_1', isPrimary: true }],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an estimate without a date of birth', () => {
+    const result = createPatientSchema.safeParse({
+      ...base,
+      dateOfBirthEstimated: true,
+      clients: [{ clientId: 'client_1', isPrimary: true }],
+    });
+    expect(result.success).toBe(false);
+  });
 });

@@ -1,4 +1,6 @@
 'use client';
+import { ProviderFields, emptyProviders, providerPayload, type ProviderValue } from './provider-fields';
+import { BreedField } from './breed-field';
 
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { AppointmentTextStatus } from './appointment-text-status';
@@ -6,7 +8,9 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useCurrentUser } from '../lib/use-current-user';
 import { MANAGE_ADMIN_SETTINGS } from '../lib/permissions';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
+import { DateOfBirthField } from './date-of-birth-field';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
+import { dateOfBirthPayload, initialDateOfBirthValue, type DateOfBirthValue } from '../lib/date-of-birth';
 import {
   SEX_OPTIONS,
   SPECIES_OPTIONS,
@@ -314,12 +318,11 @@ export function NewAppointmentModal({
   const [species, setSpecies] = useState('Dog');
   const [breed, setBreed] = useState('');
   const [sex, setSex] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [estimatedAge, setEstimatedAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState<DateOfBirthValue>(() => initialDateOfBirthValue(null, false));
   const [color, setColor] = useState('');
   const [weight, setWeight] = useState('');
-  const [primaryCareVetName, setPrimaryCareVetName] = useState('');
-  const [previousClinicName, setPreviousClinicName] = useState('');
+  const [providerBusy, setProviderBusy] = useState(false);
+  const [patientProviders, setPatientProviders] = useState<ProviderValue>(emptyProviders);
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -625,8 +628,7 @@ export function NewAppointmentModal({
           species,
           breed: breed.trim() || undefined,
           sex: sex || undefined,
-          dateOfBirth: dateOfBirth || undefined,
-          estimatedAge: estimatedAge.trim() || undefined,
+          ...(dateOfBirth.date ? dateOfBirthPayload(dateOfBirth) : {}),
           color: color.trim() || undefined,
           weight: weight.trim() ? Number(weight) : undefined,
         },
@@ -638,8 +640,7 @@ export function NewAppointmentModal({
           expectedDurationMinutes: Number(durationMinutes),
           assignedProviderId: selectedSlotProviderId || assignedProviderId || undefined,
           scheduleBlockId: selectedSlotBlockId || undefined,
-          primaryCareVetName: primaryCareVetName.trim() || undefined,
-          previousClinicName: previousClinicName.trim() || undefined,
+          ...providerPayload(patientProviders),
         },
       }),
     });
@@ -658,7 +659,7 @@ export function NewAppointmentModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    if (!validate() || !startsAt) return;
+    if (providerBusy || !validate() || !startsAt) return;
 
     setSubmitting(true);
 
@@ -1063,7 +1064,7 @@ export function NewAppointmentModal({
                   </select>
                 </FieldError>
                 <FieldError label="Breed" error={fieldErrors.breed}>
-                  <input value={breed} onChange={(event) => setBreed(event.target.value)} />
+                  <BreedField species={species} value={breed} onChange={setBreed} />
                 </FieldError>
                 <FieldError label="Sex" error={fieldErrors.sex}>
                   <select value={sex} onChange={(event) => setSex(event.target.value)}>
@@ -1075,20 +1076,12 @@ export function NewAppointmentModal({
                     ))}
                   </select>
                 </FieldError>
-                <FieldError label="Date of birth" error={fieldErrors.dateOfBirth}>
-                  <input
-                    type="date"
-                    value={dateOfBirth}
-                    onChange={(event) => setDateOfBirth(event.target.value)}
-                  />
-                </FieldError>
-                <FieldError label="Age estimate" error={fieldErrors.estimatedAge}>
-                  <input
-                    value={estimatedAge}
-                    onChange={(event) => setEstimatedAge(event.target.value)}
-                    placeholder="e.g. 4 years"
-                  />
-                </FieldError>
+                <DateOfBirthField
+                  idPrefix="new-appointment-patient"
+                  value={dateOfBirth}
+                  onChange={setDateOfBirth}
+                  error={fieldErrors.dateOfBirth}
+                />
                 <FieldError label="Color / description" error={fieldErrors.color}>
                   <input value={color} onChange={(event) => setColor(event.target.value)} />
                 </FieldError>
@@ -1105,25 +1098,9 @@ export function NewAppointmentModal({
 
               <h4 className="new-appointment-subheading">Referral information</h4>
               <p className="new-appointment-subheading__helper">
-                Optional — saved with this appointment. This does not request or send records.
+                Saved to the patient profile when booked. Request records from the profile after booking.
               </p>
-              <div className="new-appointment-inline-form">
-                <FieldError label="Primary care vet" error={fieldErrors.primaryCareVetName}>
-                  <input
-                    value={primaryCareVetName}
-                    onChange={(event) => setPrimaryCareVetName(event.target.value)}
-                    placeholder="Optional"
-                  />
-                </FieldError>
-                <FieldError label="Previous clinic" error={fieldErrors.previousClinicName}>
-                  <input
-                    value={previousClinicName}
-                    onChange={(event) => setPreviousClinicName(event.target.value)}
-                    placeholder="Optional"
-                  />
-                </FieldError>
-
-              </div>
+              <ProviderFields value={patientProviders} onChange={setPatientProviders} onBusyChange={setProviderBusy} />
             </div>
           )}
         </section>
@@ -1154,7 +1131,7 @@ export function NewAppointmentModal({
           <button type="button" className="scheduler-secondary-action" onClick={onClose} disabled={submitting}>
             Cancel
           </button>
-          <button type="submit" className="scheduler-primary-action" disabled={submitting || !startsAt || (patientMode === 'existing' && !selectedPatient)}>
+          <button type="submit" className="scheduler-primary-action" disabled={submitting || providerBusy || !startsAt || (patientMode === 'existing' && !selectedPatient)}>
             {submitting ? (editingAppointmentId ? 'Saving…' : 'Scheduling…') : (editingAppointmentId ? 'Save Changes' : 'Schedule Appointment')}
           </button>
         </div>

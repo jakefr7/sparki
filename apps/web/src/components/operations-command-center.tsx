@@ -1,4 +1,5 @@
 'use client';
+import { TaskEmailDraft } from './task-email-draft';
 
 import { resolveConfiguredStatus, type ConfiguredDashboardStatus } from '@sparki/config';
 import Link from 'next/link';
@@ -56,6 +57,10 @@ interface StickyNote {
 type TaskState = 'Overdue' | 'Pending' | 'Completed';
 
 interface ClinicTask {
+  patientId: string | null;
+  emailTo: string | null;
+  emailSubject: string | null;
+  emailBody: string | null;
   id: string;
   title: string;
   createdAt: string;
@@ -758,6 +763,7 @@ export function TasksWidget() {
               <span>{task.dueAt ? `Due ${formatDateTime(task.dueAt)}` : 'No due date'}</span>
               <span>By {task.assignedBy}</span>
             </p>
+            {task.patientId ? <><Link href={`/patients/${task.patientId}#providers`}>Open patient</Link><TaskEmailDraft task={task} canEdit={canCompleteTask(task)} /></> : null}
           </article>
         ))}
         {!loading && filteredTasks.length === 0 && <EmptyQueue label={`No ${filter.toLowerCase()} tasks.`} />}

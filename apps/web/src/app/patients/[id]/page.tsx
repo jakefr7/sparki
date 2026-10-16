@@ -1,3 +1,4 @@
+import { PatientProvidersPanel } from '../../../components/patient-providers-panel';
 import { PatientPrescriptionsPanel } from '../../../components/patient-prescriptions-panel';
 import Link from 'next/link';
 import './patient-profile.css';
@@ -14,7 +15,8 @@ import { PatientPhotoActions } from '../../../components/patient-photo-actions';
 import { PatientInvoicePanel } from '../../../components/patient-invoice-panel';
 import { env } from '../../../lib/env';
 import { authenticatedServerFetch } from '../../../lib/server-api';
-import { formatAge, visitStateLabel } from '../../../lib/format';
+import { formatDateOfBirth, patientAgeLabel } from '../../../lib/date-of-birth';
+import { visitStateLabel } from '../../../lib/format';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -54,25 +56,17 @@ function visitDate(value: string) {
   });
 }
 
-function fullDate(value: string) {
-  return new Date(value).toLocaleDateString([], {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
 function doctorLabel(visit: RecentVisitSummary): string {
   return visit.primaryVeterinarian
     ? `Dr. ${visit.primaryVeterinarian.firstName} ${visit.primaryVeterinarian.lastName}`
     : 'Unassigned';
 }
 
-function patientDobLine(dateOfBirth: string | null, estimatedAge: string | null): string {
-  const age = formatAge(dateOfBirth) || estimatedAge;
-  if (dateOfBirth && age) return `${age} · DOB ${fullDate(dateOfBirth)}`;
-  if (dateOfBirth) return `DOB ${fullDate(dateOfBirth)}`;
-  return age ?? 'Age not captured';
+function patientDobLine(patient: PatientWorkspace['patient']): string {
+  const age = patientAgeLabel(patient);
+  if (!patient.dateOfBirth) return age ?? 'Age not captured';
+  const dob = `${patient.dateOfBirthEstimated ? 'Estimated DOB' : 'DOB'} ${formatDateOfBirth(patient.dateOfBirth)}`;
+  return age ? `${age} · ${dob}` : dob;
 }
 
 function formatPhone(value: string | null): string | null {
@@ -110,7 +104,7 @@ export default async function PatientWorkspacePage({
   const headerAlert = patient.patientAlerts[0]?.message ?? patient.alerts;
   const alertCount =
     patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
-  const ageLine = patientDobLine(patient.dateOfBirth, patient.estimatedAge);
+  const ageLine = patientDobLine(patient);
   const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
   const patientDetails = [
     { label: 'Species', value: patient.species },
@@ -188,6 +182,7 @@ export default async function PatientWorkspacePage({
               breed: patient.breed,
               sex: patient.sex,
               dateOfBirth: patient.dateOfBirth,
+              dateOfBirthEstimated: patient.dateOfBirthEstimated,
               estimatedAge: patient.estimatedAge,
               color: patient.color,
               imageUrl: patient.imageUrl,
@@ -303,6 +298,7 @@ export default async function PatientWorkspacePage({
                       </div>
                     )}
                   </section>
+                  <PatientProvidersPanel patientId={patient.id} />
                 </div>
 
                 <aside className="patient-profile-overview__sidebar">

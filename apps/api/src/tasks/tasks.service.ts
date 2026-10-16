@@ -61,13 +61,14 @@ export class TasksService {
    */
   async update(user: AuthenticatedUser, id: string, input: UpdateTaskInput) {
     const task = await this.findInOrganization(user, id);
-    if (input.status !== undefined && task.assigneeId && task.assigneeId !== user.id && task.createdById !== user.id) {
-      throw new ForbiddenException('Only the assignee or the task creator can change its status.');
+    if (task.assigneeId && task.assigneeId !== user.id && task.createdById !== user.id) {
+      throw new ForbiddenException('Only the assignee or the task creator can update this task.');
     }
 
+    if (!task.patientId && (input.emailTo !== undefined || input.emailSubject !== undefined || input.emailBody !== undefined)) throw new BadRequestException('Only records-request tasks have an email draft.');
     const updated = await prisma.task.update({
       where: { id },
-      data: { ...(input.status !== undefined ? { status: input.status } : {}) },
+      data: Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
     });
     return withEffectiveStatus(updated);
   }

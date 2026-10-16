@@ -1,3 +1,4 @@
+import { PatientOptionsModule } from './patient-options/patient-options.module';
 import { Module } from '@nestjs/common';
 import { AddressModule } from './address/address.module';
 import { AppConfigModule } from './config/app-config.module';
@@ -29,6 +30,7 @@ import { InventoryModule } from './inventory/inventory.module';
     ClientsModule,
     AppointmentsModule,
     PatientsModule,
+    PatientOptionsModule,
     SchedulerConfigModule,
     DashboardStatusColorsModule,
     NotesModule,

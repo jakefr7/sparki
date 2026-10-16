@@ -13,6 +13,20 @@ export const prescriptionDraftSchema = z.object({
 });
 export const prescriptionActionSchema = z.object({ version: z.number().int().positive(), reason: z.string().trim().min(3).max(1000).optional() });
 
+// Dates of birth are calendar dates stored at midnight UTC; reading them in
+// the clinic's time zone would print the previous day in the Americas.
+export function prescriptionDateOfBirth(value: Date): string {
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${pad(value.getUTCMonth() + 1)}/${pad(value.getUTCDate())}/${value.getUTCFullYear()}`;
+}
+
+// Prescriptions must carry a date of birth (SPA-40). An estimated age saves an
+// estimated date, so either kind satisfies this; booking never requires one.
+function assertDateOfBirth(patient: { dateOfBirth: Date | null }, action: string): Date {
+  if (!patient.dateOfBirth) throw new ConflictException(`Add the patient's date of birth or estimated age before ${action} this prescription.`);
+  return patient.dateOfBirth;
+}
+
 @Injectable()
 export class PatientPrescriptionsService {
   private assertPrepare(user: AuthenticatedUser) {
@@ -24,8 +38,8 @@ export class PatientPrescriptionsService {
     return patient;
   }
   async list(user: AuthenticatedUser, patientId: string) {
-    this.assertPrepare(user); await this.patient(user, patientId);
-    return { canAuthorize: ['OWNER', 'VETERINARIAN'].includes(user.role), catalog: await prisma.catalogItem.findMany({ where: { organizationId: user.organizationId, primaryType: 'MEDICATION', status: 'ACTIVE', OR: [{ locationId: null }, { locationId: user.locationId }] }, select: { id: true, name: true, strength: true, form: true }, orderBy: { name: 'asc' } }), prescriptions: await prisma.patientPrescription.findMany({ where: { patientId, organizationId: user.organizationId, locationId: user.locationId }, orderBy: { createdAt: 'desc' } }) };
+    this.assertPrepare(user); const patient = await this.patient(user, patientId);
+    return { canAuthorize: ['OWNER', 'VETERINARIAN'].includes(user.role), patient: { dateOfBirth: patient.dateOfBirth, dateOfBirthEstimated: patient.dateOfBirthEstimated }, catalog: await prisma.catalogItem.findMany({ where: { organizationId: user.organizationId, primaryType: 'MEDICATION', status: 'ACTIVE', OR: [{ locationId: null }, { locationId: user.locationId }] }, select: { id: true, name: true, strength: true, form: true }, orderBy: { name: 'asc' } }), prescriptions: await prisma.patientPrescription.findMany({ where: { patientId, organizationId: user.organizationId, locationId: user.locationId }, orderBy: { createdAt: 'desc' } }) };
   }
   async create(user: AuthenticatedUser, patientId: string, input: z.infer<typeof prescriptionDraftSchema>) {
     this.assertPrepare(user); await this.patient(user, patientId);
@@ -44,6 +58,7 @@ export class PatientPrescriptionsService {
     if (action === 'cancel' && prescription.status === 'CANCELLED') throw new ConflictException('This prescription is already cancelled.');
     if (action === 'cancel' && !input.reason) throw new BadRequestException('Provide a cancellation reason.');
     if (action === 'authorize' && prescription.expiresAt <= new Date()) throw new ConflictException('This prescription has expired. Prepare a new draft.');
+    if (action === 'authorize') assertDateOfBirth(await this.patient(user, patientId), 'authorizing');
     const signer = await prisma.user.findFirst({ where: { id: user.id, organizationId: user.organizationId, isActive: true }, include: { staffProfile: true } });
     if (!signer) throw new ForbiddenException('An active prescribing identity is required.');
     return prisma.$transaction(async (tx) => {
@@ -58,9 +73,10 @@ export class PatientPrescriptionsService {
     const prescription = await prisma.patientPrescription.findFirst({ where: { id, patientId, organizationId: user.organizationId, locationId: user.locationId } });
     if (!prescription) throw new NotFoundException('Prescription not found.');
     if (prescription.status !== 'AUTHORIZED' || prescription.expiresAt <= new Date()) throw new ConflictException('Only an authorized, unexpired prescription can be downloaded.');
+    const dateOfBirth = assertDateOfBirth(patient, 'downloading');
     const [clinic, location, primaryClient] = await Promise.all([prisma.organization.findUniqueOrThrow({ where: { id: user.organizationId } }), prisma.location.findUniqueOrThrow({ where: { id: user.locationId } }), prisma.patientClient.findFirst({ where: { patientId, isPrimary: true, client: { organizationId: user.organizationId } }, include: { client: true } })]);
     const date = (value: Date) => value.toLocaleDateString('en-US', { timeZone: location.timeZone });
-    return renderPatientDocument({ title: 'Prescription', clinic: clinic.name, contact: [clinic.phone, clinic.email, clinic.addressLine1, clinic.city, clinic.state, clinic.postalCode].filter(Boolean).join(' | '), patient: patient.name, identifiers: `${patient.species}${primaryClient ? ` | Client: ${primaryClient.client.firstName} ${primaryClient.client.lastName}` : ''} | Patient ID: ${patient.id} | Prescription ID: ${prescription.id}`, generatedAt: new Date().toLocaleString('en-US', { timeZone: location.timeZone }), sections: [
+    return renderPatientDocument({ title: 'Prescription', clinic: clinic.name, contact: [clinic.phone, clinic.email, clinic.addressLine1, clinic.city, clinic.state, clinic.postalCode].filter(Boolean).join(' | '), patient: patient.name, identifiers: `${patient.species} | DOB: ${prescriptionDateOfBirth(dateOfBirth)}${primaryClient ? ` | Client: ${primaryClient.client.firstName} ${primaryClient.client.lastName}` : ''} | Patient ID: ${patient.id} | Prescription ID: ${prescription.id}`, generatedAt: new Date().toLocaleString('en-US', { timeZone: location.timeZone }), sections: [
       { title: 'Medication', text: [prescription.medicationName, prescription.strength, prescription.form].filter(Boolean).join(' | ') },
       { title: 'Directions', text: prescription.directions },
       { title: 'Supply', text: `Quantity: ${prescription.quantity} ${prescription.quantityUnit}\nAllowed refills: ${prescription.allowedRefills}\nExpires: ${date(prescription.expiresAt)}` },

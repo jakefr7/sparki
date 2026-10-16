@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateOfBirthSchema, ESTIMATED_DATE_OF_BIRTH_REQUIRES_DATE } from './date-of-birth.schema';
 
 const clientLinkSchema = z.object({
   clientId: z.string().min(1),
@@ -11,7 +12,8 @@ export const createPatientSchema = z
     species: z.string().min(1).max(100),
     breed: z.string().min(1).max(100).optional(),
     sex: z.string().min(1).max(50).optional(),
-    dateOfBirth: z.coerce.date().optional(),
+    dateOfBirth: dateOfBirthSchema.optional(),
+    dateOfBirthEstimated: z.boolean().optional(),
     estimatedAge: z.string().min(1).max(50).optional(),
     weight: z.coerce.number().positive().optional(),
     color: z.string().min(1).max(200).optional(),
@@ -28,6 +30,10 @@ export const createPatientSchema = z
   .refine(
     (data) => new Set(data.clients.map((client) => client.clientId)).size === data.clients.length,
     { message: 'clientId values must be unique', path: ['clients'] },
-  );
+  )
+  .refine((data) => !data.dateOfBirthEstimated || data.dateOfBirth !== undefined, {
+    message: ESTIMATED_DATE_OF_BIRTH_REQUIRES_DATE,
+    path: ['dateOfBirth'],
+  });
 
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;

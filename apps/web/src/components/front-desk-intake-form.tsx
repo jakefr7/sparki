@@ -1,8 +1,11 @@
 'use client';
+import { BreedField } from './breed-field';
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
+import { DateOfBirthField } from './date-of-birth-field';
+import { dateOfBirthPayload, initialDateOfBirthValue, type DateOfBirthValue } from '../lib/date-of-birth';
 import { timeLabel } from '../lib/format';
 import {
   appointmentTypeLabel,
@@ -16,24 +19,7 @@ import {
 
 const DEBOUNCE_MS = 150;
 
-type DobMode = 'exact' | 'approximate';
 type VisitMode = 'walkin' | 'appointment';
-
-function computeDateOfBirth(
-  mode: DobMode,
-  exactDate: string,
-  approxAgeYears: string,
-): string | undefined {
-  if (mode === 'exact') {
-    return exactDate || undefined;
-  }
-  const years = Number(approxAgeYears);
-  if (!approxAgeYears || !Number.isFinite(years) || years <= 0) {
-    return undefined;
-  }
-  const millisecondsOld = years * 365.25 * 24 * 60 * 60 * 1000;
-  return new Date(Date.now() - millisecondsOld).toISOString();
-}
 
 export function FrontDeskIntakeForm() {
   const router = useRouter();
@@ -64,9 +50,9 @@ export function FrontDeskIntakeForm() {
   const [otherSpecies, setOtherSpecies] = useState('');
   const [breed, setBreed] = useState('');
   const [sex, setSex] = useState<string>('');
-  const [dobMode, setDobMode] = useState<DobMode>('approximate');
-  const [exactDate, setExactDate] = useState('');
-  const [approxAgeYears, setApproxAgeYears] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState<DateOfBirthValue>(() =>
+    initialDateOfBirthValue(null, false, 'estimated'),
+  );
   const [weight, setWeight] = useState('');
   const [color, setColor] = useState('');
 
@@ -247,7 +233,7 @@ export function FrontDeskIntakeForm() {
           species: species === 'Other' ? otherSpecies : species,
           breed: breed || undefined,
           sex: sex || undefined,
-          dateOfBirth: computeDateOfBirth(dobMode, exactDate, approxAgeYears),
+          ...(dateOfBirth.date ? dateOfBirthPayload(dateOfBirth) : {}),
           weight: weight ? Number(weight) : undefined,
           color: color || undefined,
           clients: [{ clientId, isPrimary: true }],
@@ -532,14 +518,7 @@ export function FrontDeskIntakeForm() {
             )}
             <label htmlFor="patient-breed">
               Breed
-              <input
-                id="patient-breed"
-                type="text"
-                value={breed}
-                onChange={(event) => setBreed(event.target.value)}
-                placeholder="Optional"
-                maxLength={100}
-              />
+              <BreedField id="patient-breed" species={species === 'Other' ? otherSpecies : species} value={breed} onChange={setBreed} />
             </label>
             <label htmlFor="patient-sex">
               Sex
@@ -577,57 +556,8 @@ export function FrontDeskIntakeForm() {
             </label>
           </div>
 
-          <div className="front-desk-grid front-desk-grid--spaced">
-            <div>
-              <span className="front-desk-field-label">DOB or estimated age</span>
-              <div
-                className="front-desk-visit-mode front-desk-visit-mode--nested"
-                role="radiogroup"
-                aria-label="Age input mode"
-              >
-                <label>
-                  <input
-                    type="radio"
-                    name="dob-mode"
-                    checked={dobMode === 'approximate'}
-                    onChange={() => setDobMode('approximate')}
-                  />
-                  Estimated age
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="dob-mode"
-                    checked={dobMode === 'exact'}
-                    onChange={() => setDobMode('exact')}
-                  />
-                  DOB
-                </label>
-              </div>
-            </div>
-            {dobMode === 'approximate' ? (
-              <label htmlFor="patient-approx-age">
-                Age (years)
-                <input
-                  id="patient-approx-age"
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  value={approxAgeYears}
-                  onChange={(event) => setApproxAgeYears(event.target.value)}
-                />
-              </label>
-            ) : (
-              <label htmlFor="patient-dob">
-                Date of birth
-                <input
-                  id="patient-dob"
-                  type="date"
-                  value={exactDate}
-                  onChange={(event) => setExactDate(event.target.value)}
-                />
-              </label>
-            )}
+          <div className="front-desk-grid--spaced">
+            <DateOfBirthField idPrefix="patient" value={dateOfBirth} onChange={setDateOfBirth} />
           </div>
         </fieldset>
 

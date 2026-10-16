@@ -1,5 +1,6 @@
 'use client';
 
+import { BreedSettingsSection } from './breed-settings-section';
 import { useState } from 'react';
 import { DashboardStatusColorsSection } from './dashboard-status-colors-section';
 import { SchedulerSettingsSection } from './scheduler-settings-section';
@@ -26,6 +27,7 @@ const GROUPS = [
     description: 'Invoice charges and checkout preferences',
     icon: 'billing',
   },
+  { id: 'patients', name: 'Patient details', description: 'Breed choices for patient forms', icon: 'workflow' },
   {
     id: 'permissions',
     name: 'Clinical permissions',
@@ -104,6 +106,7 @@ export function AdminSection() {
       >
         <DashboardStatusColorsSection />
       </div>
+      <div id="admin-panel-patients" className="admin-settings__panel" hidden={active !== 'patients'}><BreedSettingsSection /></div>
       <div id="admin-panel-billing" className="admin-settings__panel" hidden={active !== 'billing'}>
         <ServicesSection />
         <VisitPolicySection mode="checkout" />

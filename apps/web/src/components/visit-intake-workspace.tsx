@@ -125,7 +125,7 @@ export function VisitIntakeWorkspace({
     breed: string | null;
     sex: string | null;
     imageUrl: string | null;
-    estimatedAge: string | null;
+    age: string | null;
     weight: number | null;
   };
   clientName: string | null;

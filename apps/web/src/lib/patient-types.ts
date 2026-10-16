@@ -356,6 +356,7 @@ export interface PatientWorkspace {
     breed: string | null;
     sex: string | null;
     dateOfBirth: string | null;
+    dateOfBirthEstimated: boolean;
     estimatedAge: string | null;
     weight: number | null;
     color: string | null;
@@ -433,6 +434,7 @@ export interface VisitDetail {
     imageUrl: string | null;
     sex: string | null;
     dateOfBirth: string | null;
+    dateOfBirthEstimated?: boolean;
     estimatedAge: string | null;
     weight: number | null;
     alerts: string | null;

@@ -106,7 +106,7 @@ test('search with no match offers patient creation; new client + new patient wal
   await page.getByLabel('Name', { exact: true }).fill(PATIENT_NAME);
   await page.getByLabel('Species').selectOption('Dog');
   await page.getByLabel('Sex').selectOption('Male');
-  await page.getByLabel('Age (years)').fill('2');
+  await page.getByLabel('Years', { exact: true }).fill('2');
 
   await page.getByLabel('Reason for visit').fill('Annual wellness check');
   // Walk-In is the default visit mode; no extra fields required.
@@ -153,7 +153,7 @@ test('existing client search collapses the new-client fields; existing client + 
   await page.getByLabel('Name', { exact: true }).fill(EXISTING_PATIENT_NAME);
   await page.getByLabel('Species').selectOption('Cat');
   await page.getByLabel('Sex').selectOption('Female');
-  await page.getByLabel('Age (years)').fill('4');
+  await page.getByLabel('Years', { exact: true }).fill('4');
 
   await page.getByLabel('Reason for visit').fill(EXISTING_APPOINTMENT_REASON);
   await expect(page.getByText('Use this when the client already has an appointment today.')).toBeVisible();

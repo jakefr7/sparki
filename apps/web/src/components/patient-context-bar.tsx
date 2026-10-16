@@ -85,7 +85,8 @@ export function PatientContextBar({
     breed: string | null;
     sex: string | null;
     imageUrl: string | null;
-    estimatedAge: string | null;
+    /** Display age, e.g. "About 5 years old" (see patientAgeLabel). */
+    age: string | null;
     weight: number | null;
   };
   clientName: string | null;
@@ -99,7 +100,7 @@ export function PatientContextBar({
     patient.species,
     patient.breed,
     patient.sex ? enumLabel(patient.sex) : null,
-    patient.estimatedAge,
+    patient.age,
     patient.weight ? `${patient.weight} lb` : null,
   ].filter((item): item is string => Boolean(item));
 

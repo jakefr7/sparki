@@ -35,7 +35,7 @@ export class PatientsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createPatientSchema)) body: CreatePatientInput,
   ) {
-    return this.patients.create(user.organizationId, body);
+    return this.patients.create(user.organizationId, body, user.locationId);
   }
 
   // Must come before ':id' so it isn't matched as a patient ID.
@@ -136,7 +136,7 @@ export class PatientsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updatePatientSchema)) body: UpdatePatientInput,
   ) {
-    return this.patients.update(id, user.organizationId, body);
+    return this.patients.update(id, user.organizationId, body, user.locationId);
   }
 
   @Post(':id/photo')

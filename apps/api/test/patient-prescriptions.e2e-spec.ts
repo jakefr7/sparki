@@ -5,7 +5,7 @@ import request from 'supertest';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { DEV_LOCATION_ID, DEV_ORGANIZATION_ID } from '../src/auth/development-user.service';
-import { PatientPrescriptionsService } from '../src/patients/patient-prescriptions.service';
+import { PatientPrescriptionsService, prescriptionDateOfBirth } from '../src/patients/patient-prescriptions.service';
 import type { AuthenticatedUser } from '../src/auth/types';
 
 describe('Patient prescriptions', () => {
@@ -31,6 +31,13 @@ describe('Patient prescriptions', () => {
     expect(prepared.body.status).toBe('DRAFT');
     const id = prepared.body.id as string;
     expect((await request(app.getHttpServer()).get(`/patients/${patientId}/prescriptions/${id}/pdf`)).status).toBe(409);
+    // SPA-40: a prescription carries the patient's date of birth, so authorizing waits for one.
+    const listed = await request(app.getHttpServer()).get(`/patients/${patientId}/prescriptions`);
+    expect(listed.body.patient).toEqual({ dateOfBirth: null, dateOfBirthEstimated: false });
+    const withoutDateOfBirth = await request(app.getHttpServer()).post(`/patients/${patientId}/prescriptions/${id}/authorize`).send({ version: 1 });
+    expect(withoutDateOfBirth.status).toBe(409);
+    expect(withoutDateOfBirth.body.message).toContain('date of birth or estimated age');
+    expect((await request(app.getHttpServer()).patch(`/patients/${patientId}`).send({ dateOfBirth: '2021-03-04', dateOfBirthEstimated: true })).status).toBe(200);
     const authorized = await request(app.getHttpServer()).post(`/patients/${patientId}/prescriptions/${id}/authorize`).send({ version: 1 });
     expect(authorized.status).toBe(201);
     expect(authorized.body.status).toBe('AUTHORIZED');
@@ -38,10 +45,19 @@ describe('Patient prescriptions', () => {
     expect((await request(app.getHttpServer()).post(`/patients/${patientId}/prescriptions/${id}/authorize`).send({ version: 1 })).status).toBe(409);
     const pdf = await request(app.getHttpServer()).get(`/patients/${patientId}/prescriptions/${id}/pdf`);
     expect(pdf.status).toBe(200); expect(pdf.headers['content-type']).toContain('application/pdf');
+    // Downloading an authorized prescription also needs the date of birth.
+    await prisma.patient.update({ where: { id: patientId }, data: { dateOfBirth: null, dateOfBirthEstimated: false } });
+    const pdfWithoutDateOfBirth = await request(app.getHttpServer()).get(`/patients/${patientId}/prescriptions/${id}/pdf`);
+    expect(pdfWithoutDateOfBirth.status).toBe(409);
+    expect(pdfWithoutDateOfBirth.body.message).toContain('date of birth or estimated age');
     const cancelled = await request(app.getHttpServer()).post(`/patients/${patientId}/prescriptions/${id}/cancel`).send({ version: 2, reason: 'Test correction' });
     expect(cancelled.status).toBe(201);
     expect((await request(app.getHttpServer()).get(`/patients/${patientId}/prescriptions/${id}/pdf`)).status).toBe(409);
     expect(await prisma.patientPrescriptionEvent.count({ where: { prescriptionId: id } })).toBe(3);
+  });
+  it('prints the date of birth as MM/DD/YYYY on its calendar day', () => {
+    expect(prescriptionDateOfBirth(new Date('2021-03-04T00:00:00.000Z'))).toBe('03/04/2021');
+    expect(prescriptionDateOfBirth(new Date('2019-12-31T00:00:00.000Z'))).toBe('12/31/2019');
   });
   it('allows technicians to prepare but rejects their authorization; isolates location and organization', async () => {
     const service = app.get(PatientPrescriptionsService);

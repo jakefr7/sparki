@@ -8237,70 +8237,12 @@ img.pet-photo-placeholder {
     #ffffff;
 }
 
-.new-patient-age-field {
+.new-patient-dob {
   margin-top: 0.9rem;
-  padding: 0.8rem;
-  border: 1px solid rgba(218, 229, 231, 0.9);
-  border-radius: 0.68rem;
-  background: #fbfdfd;
 }
 
-.new-patient-age-field legend {
-  padding: 0;
-  color: var(--text-primary);
-  font-size: 0.86rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.new-patient-age-field__control {
-  display: grid;
-  grid-template-columns: minmax(14rem, 0.9fr) minmax(0, 1.1fr);
-  gap: 0.8rem;
-  align-items: end;
-  margin-top: 0.55rem;
-}
-
-.new-patient-age-field + label {
+.new-patient-dob + label {
   margin-top: 0.85rem;
-}
-
-.new-patient-segmented-control {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.25rem;
-  padding: 0.2rem;
-  border: 1px solid rgba(209, 224, 226, 0.88);
-  border-radius: 0.62rem;
-  background: #ffffff;
-}
-
-.new-patient-segmented-control label {
-  display: flex;
-  min-height: 2.2rem;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  padding: 0.38rem 0.55rem;
-  border-radius: 0.46rem;
-  color: var(--text-primary);
-  font-size: 0.8rem;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.new-patient-segmented-control label:has(input:checked) {
-  background: #eef8f7;
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(31, 169, 160, 0.24);
-}
-
-.new-patient-segmented-control input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .form-hint {
@@ -8383,8 +8325,7 @@ img.pet-photo-placeholder {
 @media (max-width: 820px) {
   .new-patient-form-grid--two,
   .new-patient-form-grid--three,
-  .new-patient-form-grid--address,
-  .new-patient-age-field__control {
+  .new-patient-form-grid--address {
     grid-template-columns: 1fr;
   }
 
@@ -14195,3 +14136,132 @@ button.settings-nav__sign-out:hover {
 .new-appointment-setup-message { padding: 1.25rem; color: var(--text-primary); line-height: 1.6; }
 .new-appointment-setup-message p { margin: 0 0 1rem; }
 .new-appointment-setup-message .scheduler-primary-action { text-decoration: none; text-align: center; }
+
+/* Shared date of birth / estimated age entry (SPA-40). */
+.dob-field {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem;
+  /* currentColor keeps the field legible in the light modals and the
+     system-colored front-desk intake page alike. */
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 0.68rem;
+  background: color-mix(in srgb, currentColor 2%, transparent);
+}
+.dob-field > legend {
+  padding: 0 0.25rem;
+  color: var(--text-primary);
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.dob-field .dob-field__mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  max-width: 20rem;
+  padding: 0.2rem;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 0.62rem;
+}
+.dob-field .dob-field__mode label {
+  position: relative;
+  display: flex;
+  min-height: 2.1rem;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.46rem;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dob-field .dob-field__mode label:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.dob-field .dob-field__mode label:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring, #1fa9a0);
+  outline-offset: 1px;
+}
+.dob-field .dob-field__mode input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.dob-field__inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 0.7fr) minmax(0, 1.4fr);
+  gap: 0.6rem;
+  align-items: end;
+}
+.dob-field__inputs--exact {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 20rem;
+}
+.dob-field__inputs label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.dob-field__hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.dob-field__error {
+  color: #b44135;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+@media (max-width: 640px) {
+  .dob-field__inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dob-field__inputs--exact { grid-template-columns: minmax(0, 1fr); }
+  .dob-field__date { grid-column: 1 / -1; }
+}
+.estimated-dob-tag {
+  margin-left: 0.35rem;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.new-appointment-inline-form > .dob-field {
+  grid-column: 1 / -1;
+}
+
+/* SPA-40: patient-linked referral context and staff-prepared records requests. */
+.provider-fields { display: grid; gap: .8rem; grid-column: 1 / -1; }
+.provider-fields label, .records-email-draft label { display: grid; gap: .35rem; font-weight: 650; }
+.provider-fields input, .records-email-draft input, .records-email-draft textarea { width: 100%; min-width: 0; }
+.provider-fields fieldset, .records-email-draft fieldset { display: grid; gap: .65rem; min-width: 0; padding: .75rem; border: 1px solid #d8e5e4; border-radius: .6rem; }
+.provider-fields__selected { display: flex; flex-wrap: wrap; gap: .35rem; }
+.provider-fields__selected > span { padding: .3rem .5rem; border-radius: .4rem; background: #eef8f7; }
+.provider-fields__results { display: grid; gap: .3rem; max-height: 16rem; overflow: auto; border: 1px solid #d8e5e4; border-radius: .5rem; padding: .5rem; }
+.provider-fields__results button { text-align: left; padding: .5rem; }
+.records-email-draft { margin: .65rem 0; font-size: .85rem; }
+.records-email-draft summary { cursor: pointer; font-weight: 700; }
+.records-email-draft textarea { resize: vertical; }
+.breed-settings__list { max-height: 26rem; overflow: auto; margin-top: 1rem; }
+.breed-settings__row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .5rem; }
+.breed-settings__row input { flex: 1; min-width: 10rem; }
+.provider-fields input, .records-email-draft input, .records-email-draft textarea, .patient-providers select, .breed-settings__row input {
+  box-sizing: border-box; padding: .6rem .7rem; border: 1px solid #cbdcdd; border-radius: .45rem;
+  background: #fff; color: var(--text-primary); font: inherit;
+}
+.patient-providers > button { margin: 0 .45rem .45rem 0; }
+.patient-providers > article { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #d8e5e4; }
+.patient-providers > article h3 { margin: 0 0 .45rem; font-size: 1rem; }
+.patient-providers > article > p { color: var(--text-secondary); font-size: .85rem; }
+.patient-providers label { display: grid; gap: .35rem; margin: .5rem 0; }
+.patient-providers fieldset { min-width: 0; }
+.records-email-draft .button-secondary { margin-top: .5rem; }

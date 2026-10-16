@@ -1,3 +1,4 @@
+import { assertValidDateOfBirth } from './dto/date-of-birth.schema';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   Prisma,
@@ -105,7 +106,8 @@ export class PatientsService {
     private readonly config: AppConfigService,
   ) {}
 
-  async create(organizationId: string, input: CreatePatientInput) {
+  async create(organizationId: string, input: CreatePatientInput, locationId?: string) {
+    await assertValidDateOfBirth(input.dateOfBirth, organizationId, locationId);
     await this.assertClientsBelongToOrganization(organizationId, input.clients);
 
     const primaryClientId = input.clients.find((client) => client.isPrimary)!.clientId;
@@ -128,6 +130,7 @@ export class PatientsService {
           breed: input.breed ?? null,
           sex: input.sex ?? null,
           dateOfBirth: input.dateOfBirth ?? null,
+          dateOfBirthEstimated: Boolean(input.dateOfBirth && input.dateOfBirthEstimated),
           estimatedAge: input.estimatedAge ?? null,
           weight: input.weight ?? null,
           color: input.color ?? null,
@@ -159,10 +162,18 @@ export class PatientsService {
     return patient;
   }
 
-  async update(id: string, organizationId: string, input: UpdatePatientInput) {
-    await this.findById(id, organizationId);
+  async update(id: string, organizationId: string, input: UpdatePatientInput, locationId?: string) {
+    await assertValidDateOfBirth(input.dateOfBirth, organizationId, locationId);
+    const existing = await this.findById(id, organizationId);
 
     const data: Record<string, unknown> = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    // A cleared date of birth cannot stay estimated. A new date sent without
+    // the flag keeps the stored one, so an editor unaware of estimates never
+    // turns an estimated date into an exact one.
+    if (input.dateOfBirth === null) data.dateOfBirthEstimated = false;
+    if (input.dateOfBirthEstimated && input.dateOfBirth === undefined && !existing.dateOfBirth) {
+      throw new BadRequestException('An estimated date of birth needs a date.');
+    }
     // imageUrl edited directly (cleared, or replaced with an external URL) no
     // longer points at anything this service uploaded — drop the stale key
     // so the content endpoint stops serving the old object. uploadPhoto()
@@ -432,6 +443,7 @@ export class PatientsService {
         breed: patient.breed,
         sex: patient.sex,
         dateOfBirth: patient.dateOfBirth,
+        dateOfBirthEstimated: patient.dateOfBirthEstimated,
         estimatedAge: patient.estimatedAge,
         weight: patient.weight,
         color: patient.color,

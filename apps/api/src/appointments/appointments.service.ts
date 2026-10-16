@@ -1,3 +1,5 @@
+import { savePatientProviders } from '../patient-options/patient-options.service';
+import { assertValidDateOfBirth } from '../patients/dto/date-of-birth.schema';
 import {
   BadRequestException,
   ConflictException,
@@ -145,6 +147,7 @@ export class AppointmentsService {
       if (!reservation?.providerId) {
         throw new ConflictException('That appointment time is no longer available.');
       }
+      await savePatientProviders(tx, organizationId, patient.id, input);
       const created = await tx.appointment.create({ data: {
         organizationId,
         locationId,
@@ -196,6 +199,7 @@ export class AppointmentsService {
     createdById: string,
     input: CreateAppointmentWithNewPatientInput,
   ) {
+    await assertValidDateOfBirth(input.patient.dateOfBirth, organizationId, locationId);
     return serializableTransaction(async (tx) => {
       // Checked inside the transaction (not before it, unlike the plain
       // create() above) so a bad provider rolls back the Client/Patient this
@@ -268,6 +272,7 @@ export class AppointmentsService {
           breed: input.patient.breed ?? null,
           sex: input.patient.sex ?? null,
           dateOfBirth: input.patient.dateOfBirth ?? null,
+          dateOfBirthEstimated: Boolean(input.patient.dateOfBirth && input.patient.dateOfBirthEstimated),
           estimatedAge: input.patient.estimatedAge ?? null,
           weight: input.patient.weight ?? null,
           color: input.patient.color ?? null,
@@ -278,6 +283,7 @@ export class AppointmentsService {
         data: { patientId: patient.id, clientId: client.id, isPrimary: true },
       });
 
+      await savePatientProviders(tx, organizationId, patient.id, input.appointment);
       const created = await tx.appointment.create({
         data: {
           organizationId,

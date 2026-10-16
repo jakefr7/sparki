@@ -42,11 +42,20 @@ export function formatAge(
   style: 'long' | 'short' = 'long',
 ): string | null {
   if (!dateOfBirth) return null;
-  const years = (Date.now() - new Date(dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
+  // Whole birthdays on the calendar: an age entered as "5 years" must read
+  // 5 on the day it is entered. The DOB is a UTC calendar date; today is local.
+  const today = new Date();
+  const beforeBirthday =
+    today.getMonth() < dob.getUTCMonth() ||
+    (today.getMonth() === dob.getUTCMonth() && today.getDate() < dob.getUTCDate());
+  const years = today.getFullYear() - dob.getUTCFullYear() - (beforeBirthday ? 1 : 0);
 
   if (style === 'short') {
-    return years < 1 ? '<1 yr' : `${Math.floor(years)} yr`;
+    return years < 1 ? '<1 yr' : `${years} yr`;
   }
 
-  return years < 1 ? 'under 1 year old' : `${Math.floor(years)} years old`;
+  if (years < 1) return 'under 1 year old';
+  return `${years} ${years === 1 ? 'year' : 'years'} old`;
 }

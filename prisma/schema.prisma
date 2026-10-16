@@ -110,6 +110,9 @@ model Organization {
   locations                    Location[]
   users                        User[]
   clients                      Client[]
+  breedChoices                 BreedChoice[]
+  referralContacts             ReferralContact[]
+  patientProviders             PatientProvider[]
   patients                     Patient[]
   patientAlerts                PatientAlert[]
   patientMedications           PatientMedication[]
@@ -591,6 +594,8 @@ enum PatientStatus {
 }
 
 model Patient {
+  providerContacts PatientProvider[]
+  tasks Task[]
   fasAssessments PatientFasAssessment[]
   prescriptions PatientPrescription[]
   id             String        @id @default(cuid())
@@ -605,6 +610,12 @@ model Patient {
   breed          String?
   sex            String?
   dateOfBirth    DateTime?
+  // True when dateOfBirth was derived from an age estimate (SPA-40, Anna):
+  // prescriptions need a real MM/DD/YYYY date, but the record keeps that the
+  // date is approximate. Always false when dateOfBirth is null.
+  dateOfBirthEstimated Boolean @default(false)
+  // Legacy free-text estimate ("~3 years") captured before estimated ages
+  // produced a date. New entries save an estimated dateOfBirth instead.
   estimatedAge   String?
   weight         Float?
   color          String?
@@ -1054,6 +1065,12 @@ enum TaskStatus {
 // from a Pending task whose dueAt has passed, so a task can't get stuck in
 // a stale Overdue state after its due date is edited.
 model Task {
+  patientId      String?
+  requestKey     String?    @unique
+  emailTo        String?
+  emailSubject   String?
+  emailBody      String?
+  patient        Patient?   @relation(fields: [patientId], references: [id])
   id             String     @id @default(cuid())
   organizationId String
   locationId     String
@@ -4202,4 +4219,45 @@ model PatientFasAssessment {
 
   @@unique([visitId, requestId])
   @@index([organizationId, locationId, patientId, createdAt, id], map: "PatientFasAssessment_org_location_patient_created_id_idx")
+}
+
+// Clinic-owned breed overrides and additions; never rewrite saved patient breeds.
+model BreedChoice {
+  id String @id @default(cuid())
+  organizationId String
+  species String
+  key String
+  name String
+  isActive Boolean @default(true)
+  organization Organization @relation(fields: [organizationId], references: [id])
+  @@unique([organizationId, species, key])
+}
+
+// Entered by clinic staff, not an externally licensed/global directory.
+model ReferralContact {
+  id String @id @default(cuid())
+  organizationId String
+  hospitalName String
+  veterinarian String?
+  email String?
+  phone String?
+  address String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id])
+  patients PatientProvider[]
+  @@index([organizationId, hospitalName])
+}
+
+model PatientProvider {
+  id String @id @default(cuid())
+  organizationId String
+  patientId String
+  contactId String
+  kind String
+  organization Organization @relation(fields: [organizationId], references: [id])
+  patient Patient @relation(fields: [patientId], references: [id])
+  contact ReferralContact @relation(fields: [contactId], references: [id])
+  @@unique([patientId, contactId, kind])
+  @@index([organizationId, patientId])
 }

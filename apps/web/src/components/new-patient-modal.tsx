@@ -1,10 +1,13 @@
 'use client';
+import { BreedField } from './breed-field';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AddressAutocompleteField, type AddressAutofillResult } from './address-autocomplete-field';
 import { useLockBodyScroll } from '../hooks/use-lock-body-scroll';
+import { DateOfBirthField } from './date-of-birth-field';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
+import { dateOfBirthPayload, initialDateOfBirthValue, type DateOfBirthValue } from '../lib/date-of-birth';
 import { clientDisplayName, SEX_OPTIONS, SPECIES_OPTIONS, type ClientSearchResult, type PatientSearchResult } from '../lib/patient-types';
 
 const DEBOUNCE_MS = 200;
@@ -29,7 +32,6 @@ export interface NewPatientCreationResult {
 }
 
 type ModalStep = 'form' | 'success';
-type DobMode = 'exact' | 'estimated';
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -425,12 +427,8 @@ function NewPatientPatientSection({
   onSexChange,
   color,
   onColorChange,
-  dobMode,
-  onDobModeChange,
-  exactDate,
-  onExactDateChange,
-  estimatedAge,
-  onEstimatedAgeChange,
+  dateOfBirth,
+  onDateOfBirthChange,
   alerts,
   onAlertsChange,
   patientDuplicateHint,
@@ -448,12 +446,8 @@ function NewPatientPatientSection({
   onSexChange: (value: string) => void;
   color: string;
   onColorChange: (value: string) => void;
-  dobMode: DobMode;
-  onDobModeChange: (mode: DobMode) => void;
-  exactDate: string;
-  onExactDateChange: (value: string) => void;
-  estimatedAge: string;
-  onEstimatedAgeChange: (value: string) => void;
+  dateOfBirth: DateOfBirthValue;
+  onDateOfBirthChange: (value: DateOfBirthValue) => void;
   alerts: string;
   onAlertsChange: (value: string) => void;
   patientDuplicateHint: string | null;
@@ -514,15 +508,7 @@ function NewPatientPatientSection({
         )}
         <label htmlFor="new-patient-breed">
           Breed
-          <input
-            id="new-patient-breed"
-            type="text"
-            value={breed}
-            onChange={(event) => onBreedChange(event.target.value)}
-            placeholder="Optional"
-            maxLength={100}
-            autoComplete="new-password"
-          />
+          <BreedField id="new-patient-breed" species={species} value={breed} onChange={onBreedChange} />
         </label>
         <label htmlFor="new-patient-sex">
           Sex
@@ -549,56 +535,13 @@ function NewPatientPatientSection({
         </label>
       </div>
 
-      <fieldset className="new-patient-age-field">
-        <legend>Age</legend>
-        <div className="new-patient-age-field__control">
-          <div className="new-patient-segmented-control" role="radiogroup" aria-label="Age input mode">
-            <label>
-              <input
-                type="radio"
-                name="new-patient-dob-mode"
-                checked={dobMode === 'exact'}
-                onChange={() => onDobModeChange('exact')}
-              />
-              <span>Known DOB</span>
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="new-patient-dob-mode"
-                checked={dobMode === 'estimated'}
-                onChange={() => onDobModeChange('estimated')}
-              />
-              <span>Estimated age</span>
-            </label>
-          </div>
-          {dobMode === 'exact' ? (
-            <label htmlFor="new-patient-dob">
-              Date of birth
-              <input
-                id="new-patient-dob"
-                type="date"
-                value={exactDate}
-                onChange={(event) => onExactDateChange(event.target.value)}
-                autoComplete="new-password"
-              />
-            </label>
-          ) : (
-            <label htmlFor="new-patient-estimated-age">
-              Estimated age
-              <input
-                id="new-patient-estimated-age"
-                type="text"
-                placeholder="e.g. ~3 years"
-                value={estimatedAge}
-                onChange={(event) => onEstimatedAgeChange(event.target.value)}
-                maxLength={50}
-                autoComplete="new-password"
-              />
-            </label>
-          )}
-        </div>
-      </fieldset>
+      <div className="new-patient-dob">
+        <DateOfBirthField
+          idPrefix="new-patient"
+          value={dateOfBirth}
+          onChange={onDateOfBirthChange}
+        />
+      </div>
 
       <label htmlFor="new-patient-alerts">
         Allergies / Alerts
@@ -674,9 +617,7 @@ const INITIAL_STATE = {
   breed: '',
   sex: '',
   color: '',
-  dobMode: 'exact' as DobMode,
-  exactDate: '',
-  estimatedAge: '',
+  dateOfBirth: initialDateOfBirthValue(null, false),
   alerts: '',
 };
 
@@ -726,9 +667,7 @@ export function NewPatientModal({
   const [sex, setSex] = useState(INITIAL_STATE.sex);
   const [color, setColor] = useState(INITIAL_STATE.color);
   const [draftPhotoFile, setDraftPhotoFile] = useState<File | null>(null);
-  const [dobMode, setDobMode] = useState<DobMode>(INITIAL_STATE.dobMode);
-  const [exactDate, setExactDate] = useState(INITIAL_STATE.exactDate);
-  const [estimatedAge, setEstimatedAge] = useState(INITIAL_STATE.estimatedAge);
+  const [dateOfBirth, setDateOfBirth] = useState<DateOfBirthValue>(INITIAL_STATE.dateOfBirth);
   const [alerts, setAlerts] = useState(INITIAL_STATE.alerts);
   const [patientDuplicateHint, setPatientDuplicateHint] = useState<string | null>(null);
 
@@ -753,9 +692,7 @@ export function NewPatientModal({
     setSex(INITIAL_STATE.sex);
     setColor(INITIAL_STATE.color);
     setDraftPhotoFile(null);
-    setDobMode(INITIAL_STATE.dobMode);
-    setExactDate(INITIAL_STATE.exactDate);
-    setEstimatedAge(INITIAL_STATE.estimatedAge);
+    setDateOfBirth(INITIAL_STATE.dateOfBirth);
     setAlerts(INITIAL_STATE.alerts);
     setPatientDuplicateHint(null);
     setError(null);
@@ -778,8 +715,7 @@ export function NewPatientModal({
     otherSpecies.trim() !== '' ||
     color.trim() !== '' ||
     draftPhotoFile !== null ||
-    exactDate.trim() !== '' ||
-    estimatedAge.trim() !== '' ||
+    dateOfBirth.date !== '' ||
     alerts.trim() !== '';
 
   function requestClose() {
@@ -952,8 +888,7 @@ export function NewPatientModal({
           breed: breed.trim() || undefined,
           sex: sex || undefined,
           color: color.trim() || undefined,
-          dateOfBirth: dobMode === 'exact' ? exactDate || undefined : undefined,
-          estimatedAge: dobMode === 'estimated' ? estimatedAge.trim() || undefined : undefined,
+          ...(dateOfBirth.date ? dateOfBirthPayload(dateOfBirth) : {}),
           alerts: alerts.trim() || undefined,
           clients: [{ clientId, isPrimary: true }],
         }),
@@ -1067,12 +1002,8 @@ export function NewPatientModal({
                 onSexChange={setSex}
                 color={color}
                 onColorChange={setColor}
-                dobMode={dobMode}
-                onDobModeChange={setDobMode}
-                exactDate={exactDate}
-                onExactDateChange={setExactDate}
-                estimatedAge={estimatedAge}
-                onEstimatedAgeChange={setEstimatedAge}
+                dateOfBirth={dateOfBirth}
+                onDateOfBirthChange={setDateOfBirth}
                 alerts={alerts}
                 onAlertsChange={setAlerts}
                 patientDuplicateHint={patientDuplicateHint}

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AppointmentSource, AppointmentType, ConfirmationStatus, RecordsPrepStatus } from '@sparki/db';
 import { createClientSchema } from '../../clients/dto/create-client.schema';
+import { dateOfBirthSchema, ESTIMATED_DATE_OF_BIRTH_REQUIRES_DATE } from '../../patients/dto/date-of-birth.schema';
 
 export const APPOINTMENT_COLOR_KEYS = [
   'teal',
@@ -31,7 +32,9 @@ const appointmentFields = {
   // Optional only for compatibility with older API clients during rollout.
   appointmentTypeId: z.string().min(1).optional(),
   source: z.nativeEnum(AppointmentSource).optional(),
-  visitReason: z.string().min(1).max(500),
+  visitReason: z.string().trim().min(1).max(500),
+  referringProviderId: z.string().min(1).optional(),
+  additionalProviderIds: z.array(z.string().min(1)).max(20).optional(),
   startTime: z.coerce.date(),
   expectedDurationMinutes: z.coerce
     .number()
@@ -68,10 +71,14 @@ const newPatientDetailsSchema = z.object({
   species: z.string().min(1).max(100),
   breed: z.string().min(1).max(100).optional(),
   sex: z.string().min(1).max(50).optional(),
-  dateOfBirth: z.coerce.date().optional(),
+  dateOfBirth: dateOfBirthSchema.optional(),
+  dateOfBirthEstimated: z.boolean().optional(),
   estimatedAge: z.string().min(1).max(50).optional(),
   weight: z.coerce.number().positive().optional(),
   color: z.string().min(1).max(200).optional(),
+}).refine((data) => !data.dateOfBirthEstimated || data.dateOfBirth !== undefined, {
+  message: ESTIMATED_DATE_OF_BIRTH_REQUIRES_DATE,
+  path: ['dateOfBirth'],
 });
 
 export const createAppointmentWithNewPatientSchema = z.object({

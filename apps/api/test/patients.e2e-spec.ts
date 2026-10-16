@@ -816,6 +816,44 @@ describe('Patients (e2e)', () => {
       expect(response.body.breed).toBeNull();
     });
 
+    it('keeps an age-derived date of birth marked as estimated until it is cleared', async () => {
+      const created = await request(app.getHttpServer())
+        .post('/patients')
+        .send({
+          name: 'Estimated Age Patient',
+          species: 'Canine',
+          dateOfBirth: '2021-10-16',
+          dateOfBirthEstimated: true,
+          clients: [{ clientId: primaryClientId, isPrimary: true }],
+        });
+      expect(created.status).toBe(201);
+      expect(created.body).toMatchObject({
+        dateOfBirth: '2021-10-16T00:00:00.000Z',
+        dateOfBirthEstimated: true,
+      });
+
+      // A date edited without the flag (an editor unaware of estimates) stays estimated.
+      const adjusted = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}`)
+        .send({ dateOfBirth: '2021-09-01' });
+      expect(adjusted.status).toBe(200);
+      expect(adjusted.body).toMatchObject({
+        dateOfBirth: '2021-09-01T00:00:00.000Z',
+        dateOfBirthEstimated: true,
+      });
+
+      const cleared = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}`)
+        .send({ dateOfBirth: null });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body).toMatchObject({ dateOfBirth: null, dateOfBirthEstimated: false });
+
+      const estimateWithoutDate = await request(app.getHttpServer())
+        .patch(`/patients/${created.body.id}`)
+        .send({ dateOfBirthEstimated: true });
+      expect(estimateWithoutDate.status).toBe(400);
+    });
+
     it('rejects an empty body with 400', async () => {
       const created = await request(app.getHttpServer())
         .post('/patients')

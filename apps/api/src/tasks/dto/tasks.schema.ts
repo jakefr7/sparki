@@ -15,6 +15,9 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export const updateTaskSchema = z
   .object({
     status: z.enum(['Pending', 'Completed']).optional(),
+    emailTo: z.union([z.string().trim().email(), z.literal('')]).optional(),
+    emailSubject: z.string().trim().min(1).max(300).optional(),
+    emailBody: z.string().trim().min(1).max(10000).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field must be provided',

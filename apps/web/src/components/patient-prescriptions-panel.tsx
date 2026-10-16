@@ -1,5 +1,12 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { DateOfBirthField } from './date-of-birth-field';
+import {
+  dateOfBirthPayload,
+  initialDateOfBirthValue,
+  type DateOfBirthValue,
+} from '../lib/date-of-birth';
 
 type Prescription = {
   id: string;
@@ -15,6 +22,7 @@ type Prescription = {
   authorizedByName: string | null;
 };
 export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) {
+  const router = useRouter();
   const [catalog, setCatalog] = useState<
     Array<{ id: string; name: string; strength: string | null }>
   >([]);
@@ -26,6 +34,12 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState<string | null>(null);
+  // Prescriptions print the patient's date of birth (SPA-40); null until loaded.
+  const [hasDateOfBirth, setHasDateOfBirth] = useState<boolean | null>(null);
+  const [dateOfBirth, setDateOfBirth] = useState<DateOfBirthValue>(() =>
+    initialDateOfBirthValue(null, false, 'estimated'),
+  );
+  const [dateOfBirthError, setDateOfBirthError] = useState('');
   const url = `/api/patients/${encodeURIComponent(patientId)}/prescriptions`;
   const load = useCallback(async () => {
     const response = await fetch(url);
@@ -33,6 +47,7 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
       prescriptions?: Prescription[];
       canAuthorize?: boolean;
       catalog?: Array<{ id: string; name: string; strength: string | null }>;
+      patient?: { dateOfBirth: string | null };
       message?: string;
     };
     if (!response.ok) throw new Error(body.message ?? 'Could not load prescriptions.');
@@ -41,6 +56,7 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
     setCatalog(body.catalog ?? []);
     setPrescriptions(body.prescriptions ?? []);
     setCanAuthorize(Boolean(body.canAuthorize));
+    setHasDateOfBirth(Boolean(body.patient?.dateOfBirth));
   }, [url]);
   const reload = useCallback(async () => {
     setLoading(true);
@@ -82,6 +98,34 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
       setBusy(false);
     }
   }
+  async function saveDateOfBirth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dateOfBirth.date) {
+      setDateOfBirthError('Enter a date of birth or an estimated age.');
+      return;
+    }
+    setBusy(true);
+    setDateOfBirthError('');
+    try {
+      const response = await fetch(`/api/patients/${encodeURIComponent(patientId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...dateOfBirthPayload(dateOfBirth), estimatedAge: null }),
+      });
+      if (!response.ok) throw new Error('Could not save the date of birth. Try again.');
+      setHasDateOfBirth(true);
+      router.refresh();
+    } catch (caught) {
+      setDateOfBirthError(
+        caught instanceof Error ? caught.message : 'Could not save the date of birth. Try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const needsDateOfBirth =
+    hasDateOfBirth === false &&
+    (preparing || prescriptions.some((prescription) => prescription.status !== 'CANCELLED'));
   function prepare(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -125,6 +169,34 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
         <p className="form-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {needsDateOfBirth ? (
+        <form
+          className="patient-inline-form patient-prescription-dob"
+          aria-label="Patient date of birth"
+          onSubmit={(event) => void saveDateOfBirth(event)}
+        >
+          <p className="patient-section-description">
+            <strong>Date of birth needed.</strong> Prescriptions show the patient&apos;s date of
+            birth. Enter a date or an estimated age before authorizing or downloading.
+          </p>
+          <DateOfBirthField
+            idPrefix="prescription-patient"
+            legend="Patient date of birth"
+            value={dateOfBirth}
+            onChange={(value) => {
+              setDateOfBirth(value);
+              setDateOfBirthError('');
+            }}
+            error={dateOfBirthError || undefined}
+            disabled={busy}
+          />
+          <div className="front-desk-actions">
+            <button className="button-primary" disabled={busy}>
+              Save date of birth
+            </button>
+          </div>
+        </form>
       ) : null}
       {loadFailed && !loading ? (
         <button
@@ -255,7 +327,7 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
               {canAuthorize && prescription.status === 'DRAFT' ? (
                 <button
                   className="button-primary"
-                  disabled={busy}
+                  disabled={busy || hasDateOfBirth === false}
                   onClick={() =>
                     void send(`${url}/${prescription.id}/authorize`, {
                       version: prescription.version,
@@ -267,9 +339,15 @@ export function PatientPrescriptionsPanel({ patientId }: { patientId: string }) 
               ) : null}
               {prescription.status === 'AUTHORIZED' &&
               new Date(prescription.expiresAt) > new Date() ? (
-                <a className="button-secondary" href={`${url}/${prescription.id}/pdf`}>
-                  Download prescription PDF
-                </a>
+                hasDateOfBirth === false ? (
+                  <button type="button" className="button-secondary" disabled>
+                    Download prescription PDF
+                  </button>
+                ) : (
+                  <a className="button-secondary" href={`${url}/${prescription.id}/pdf`}>
+                    Download prescription PDF
+                  </a>
+                )
               ) : null}
               {canAuthorize && prescription.status !== 'CANCELLED' ? (
                 <button

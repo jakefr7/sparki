@@ -4,6 +4,7 @@ import { VisitCareSections } from '../../../components/visit-care-sections';
 import { notFound } from 'next/navigation';
 import { ExamFindingsPanel } from '../../../components/exam-findings-panel';
 import { VisitIntakeWorkspace } from '../../../components/visit-intake-workspace';
+import { patientAgeLabel } from '../../../lib/date-of-birth';
 import { VisitDischargePanel } from '../../../components/visit-discharge-panel';
 import { VisitWorkItemsPanel } from '../../../components/visit-work-items-panel';
 import { PostExamReview } from '../../../components/post-exam-review';
@@ -116,7 +117,7 @@ export default async function VisitWorkspacePage({
             breed: visit.patient.breed,
             sex: visit.patient.sex,
             imageUrl: visit.patient.imageUrl,
-            estimatedAge: visit.patient.estimatedAge,
+            age: patientAgeLabel(visit.patient),
             weight: visit.patient.weight,
           }}
           clientName={visit.client ? clientDisplayName(visit.client) : null}

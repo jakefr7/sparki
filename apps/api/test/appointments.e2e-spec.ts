@@ -385,15 +385,20 @@ describe('Appointments (e2e)', () => {
   describe('POST /appointments/new-patient', () => {
     const createdClientIds: string[] = [];
     const createdPatientIds: string[] = [];
+    const createdContactIds: string[] = [];
 
     afterAll(async () => {
       await prisma.appointment.deleteMany({ where: { clientId: { in: createdClientIds } } });
       await prisma.patientClient.deleteMany({ where: { patientId: { in: createdPatientIds } } });
+      await prisma.patientProvider.deleteMany({ where: { patientId: { in: createdPatientIds } } });
+      await prisma.referralContact.deleteMany({ where: { id: { in: createdContactIds } } });
       await prisma.patient.deleteMany({ where: { id: { in: createdPatientIds } } });
       await prisma.client.deleteMany({ where: { id: { in: createdClientIds } } });
     });
 
     it('creates Client + Patient + PatientClient + Appointment together, including optional records-request fields', async () => {
+      const contact = await prisma.referralContact.create({ data: { organizationId: DEV_ORGANIZATION_ID, hospitalName: 'Booking referral fixture' } });
+      createdContactIds.push(contact.id);
       const response = await request(app.getHttpServer())
         .post('/appointments/new-patient')
         .send({
@@ -410,12 +415,15 @@ describe('Appointments (e2e)', () => {
             name: 'Pepper',
             species: 'Canine',
             breed: 'Corgi',
+            dateOfBirth: '2021-03-04',
+            dateOfBirthEstimated: true,
           },
           appointment: {
             appointmentType: 'WellnessPreventiveCare',
             visitReason: 'New patient wellness visit',
             startTime: '2027-04-01T15:00:00.000Z',
             expectedDurationMinutes: 30,
+            referringProviderId: contact.id,
             primaryCareVetName: 'Dr. Adams',
             previousClinicName: 'Maple Street Animal Hospital',
             previousRecordsSource: 'Will fax records',
@@ -464,6 +472,11 @@ describe('Appointments (e2e)', () => {
         },
       });
       expect(link.isPrimary).toBe(true);
+      expect(patient.dateOfBirthEstimated).toBe(true);
+      expect(patient.dateOfBirth?.toISOString()).toBe('2021-03-04T00:00:00.000Z');
+      const providerLink = await prisma.patientProvider.findFirstOrThrow({ where: { patientId: patient.id } });
+      expect(providerLink).toMatchObject({ organizationId: DEV_ORGANIZATION_ID, contactId: contact.id, kind: 'REFERRING' });
+      expect(await prisma.task.count({ where: { patientId: patient.id } })).toBe(0);
     });
 
     it('leaves optional records-request fields null when blank, without blocking creation', async () => {

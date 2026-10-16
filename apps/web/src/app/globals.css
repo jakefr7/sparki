@@ -6104,9 +6104,11 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   text-decoration: none;
 }
 
-.dashboard-live-status {
+/* Shared automatic-refresh status across dashboards and scheduler. */
+.live-update-status {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   min-height: 1.65rem;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
@@ -6115,6 +6117,31 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   font-size: 0.75rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.live-update-status__dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #2ca59a;
+}
+
+.live-update-status[data-state='refreshing'] .live-update-status__dot {
+  animation: ops-status-pulse 1.1s ease-in-out infinite;
+}
+
+.live-update-status[data-state='stale'] {
+  background: #fff6e6;
+  color: #805c22;
+}
+
+.live-update-status[data-state='stale'] .live-update-status__dot {
+  background: var(--warning);
+}
+
+.live-update-status[data-state='loading'] .live-update-status__dot {
+  background: var(--text-secondary);
 }
 
 .quick-action-grid {
@@ -14015,7 +14042,6 @@ button.settings-nav__sign-out:hover {
 .scheduler-toolbar .scheduler-view-toggle button { min-height: 1.8rem; font-size: .75rem; font-weight: 600; }
 .scheduler-toolbar .scheduler-view-toggle__button--active { background: #fff; color: #176f69; box-shadow: 0 1px 4px #17263314; }
 .scheduler-live-status { margin-left: auto; font-size: .72rem; color: #7a8992; }
-.scheduler-live-status::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #2ca59a; margin: 0 .4rem .1rem 0; }
 .scheduler-results { font-size: .75rem; padding: 0 .2rem; }
 .scheduler-zoom { display: flex; align-items: center; gap: .2rem; padding-left: .65rem; border-left: 1px solid #e4ebed; color: #526773; }
 .scheduler-zoom output { min-width: 3rem; text-align: center; font-size: .72rem; font-weight: 600; font-variant-numeric: tabular-nums; }

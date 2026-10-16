@@ -1,5 +1,7 @@
 'use client';
 
+import { LiveUpdateStatus } from './live-update-status';
+
 import { AppointmentTextStatus } from './appointment-text-status';
 import Link from 'next/link';
 import {
@@ -462,6 +464,7 @@ export function SchedulerPage() {
   const [anchorDate, setAnchorDate] = useState(today);
   const [appointments, setAppointments] = useState<SchedulerAppointment[]>([]);
   const [providers, setProviders] = useState<StaffMember[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const scheduleRequest = useRef(0);
@@ -483,6 +486,7 @@ export function SchedulerPage() {
   const loadSchedulerData = useCallback(
     async (rangeStart: Date, rangeEnd: Date, signal?: AbortSignal, background = false) => {
       const requestId = ++scheduleRequest.current;
+      setRefreshing(background);
       if (!background) { setLoading(true); setBookingSetupStatus('loading'); }
       try {
         const requestInit: RequestInit = signal
@@ -535,6 +539,7 @@ export function SchedulerPage() {
           setLoadError(caught instanceof Error ? caught.message : 'Schedule could not be updated.');
         }
       } finally {
+        if (requestId === scheduleRequest.current && !signal?.aborted) setRefreshing(false);
         if (!background && requestId === scheduleRequest.current && !signal?.aborted) setLoading(false);
       }
     },
@@ -844,10 +849,10 @@ export function SchedulerPage() {
           zoomScale={zoomScale}
           onZoomChange={changeZoom}
         />
-        {!loading && !loadError ? <div className="scheduler-results" role="status">
+        {!loading && (!loadError || generatedAt) ? <div className="scheduler-results" role="status">
           <span>{filteredAppointments.length} of {appointments.length} appointments in this {view}</span>
           {providerFilter !== 'all' || statusFilter !== 'all' ? <button type="button" className="button-secondary" onClick={() => { setProviderFilter('all'); setStatusFilter('all'); }}>Clear filters</button> : null}
-          <span className="scheduler-live-status">{generatedAt ? `Auto-updating · Updated ${formatTime(new Date(generatedAt))}` : 'Connecting…'}</span>
+          <span className="scheduler-live-status"><LiveUpdateStatus updatedAt={generatedAt} refreshing={refreshing} isStale={Boolean(loadError)} /></span>
         </div> : null}
         {loadError ? (
           <p className="scheduler-inline-error" role="alert">

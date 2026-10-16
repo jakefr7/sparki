@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { timeLabel } from '../../lib/format';
+import { LiveUpdateStatus } from '../live-update-status';
 import type { DashboardPersonSummary, OperationsDashboard } from '../../lib/patient-types';
 import { PatientSearch } from '../patient-search';
 import type { ClinicHealth } from './card-helpers';
@@ -42,21 +42,7 @@ export function CommandCenterHeader({
             <span className="ops-clinic-health__dot" aria-hidden="true" />
             {CLINIC_HEALTH_LABEL[clinicHealth]}
           </div>
-          <div
-            className="ops-status-badge"
-            data-state={refreshing ? 'refreshing' : isStale ? 'stale' : 'live'}
-            aria-label="Clinic status"
-          >
-            <span className="ops-status-badge__dot" aria-hidden="true" />
-            <span className="ops-status-badge__text">
-              <span className="ops-status-badge__label">
-                {refreshing ? 'Refreshing' : isStale ? 'Stale' : 'Live'}
-              </span>
-              <span className="ops-status-badge__meta">
-                {dashboard ? `Updated ${timeLabel(dashboard.generatedAt)}` : 'Loading floor'}
-              </span>
-            </span>
-          </div>
+          <LiveUpdateStatus updatedAt={dashboard?.generatedAt ?? null} refreshing={refreshing} isStale={isStale} />
           <Link href="/settings" className="settings-link" aria-label="Settings" title="Settings">
             ⚙
           </Link>

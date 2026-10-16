@@ -206,3 +206,9 @@ Founder requested committing all current changes, including Claude's work alread
 Founder requested implementing SPA-43 and committing/pushing to GitHub. Removed scheduler wheel/trackpad zoom and its tooltip, preserving toolbar +/− controls, zoom bounds, scroll anchoring and ordinary calendar scrolling. Updated the existing Chromium regression to assert wheel events over the toolbar, Ctrl/pinch events and Meta-wheel events leave the zoom level unchanged.
 
 Verified: focused scheduler Chromium scenario passes, including normal scrolling, both zoom buttons and automatic pickup of an externally added appointment; web typecheck and focused lint pass (four existing unused scheduler warnings). No staging deployment requested.
+
+## Shared automatic-update status — October 16
+
+Founder requested consistent automatic-update wording and styling throughout the app. Scheduler, receptionist Today Snapshot and Command Center header now use one LiveUpdateStatus component and shared pill styles: Live / Refreshing / Stale with the same Updated timestamp format and dot treatment. The shared display ages to Stale after 90 seconds without an update; scheduler refresh failures also mark retained data stale and successful recovery restores Live. Existing polling intervals remain unchanged.
+
+Verified: focused scheduler Chromium scenario passes, including external appointment polling, failed refresh and recovery; tablet screenshot inspected; focused lint passes with four existing scheduler warnings. Web typecheck passes after browser completion (an overlapping attempt raced with generated Next route types). No staging deployment requested.

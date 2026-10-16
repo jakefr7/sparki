@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 test('scheduler changes date, zooms to 15-minute slots, and picks up an external appointment', async ({ page }) => {
   await page.route('**/api/staff?canReceiveAppointments=true', (route) => route.fulfill({ json: [{ id: 'navigation-provider', displayName: 'Navigation Test Vet', role: 'VETERINARIAN', isActive: true }] }));
   await page.goto('/scheduler');
-  await expect(page.getByRole('status').filter({ hasText: 'Auto-updating' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Live · Updated' })).toBeVisible();
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect.poll(() => page.locator('.scheduler-toolbar').evaluate((node) => node.getBoundingClientRect().height)).toBeLessThan(64);
   await expect(page.locator('.scheduler-time-column__quarter').first()).toBeHidden();
@@ -83,6 +83,18 @@ test('scheduler changes date, zooms to 15-minute slots, and picks up an external
   await expect(page.getByLabel('Go to date')).toBeInViewport();
   await expect(page.getByRole('button', { name: 'Week', exact: true })).toBeInViewport();
   await page.screenshot({ path: '/tmp/sparki-scheduler-navigation.png' });
+
+  const liveStatus = page.locator('.scheduler-live-status .live-update-status');
+  await page.route('**/api/appointments/schedule?*', (route) => route.fulfill({ status: 503, json: {} }));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(liveStatus).toHaveAttribute('data-state', 'stale');
+  await expect(liveStatus).toContainText('Stale · Updated');
+  await expect(page.locator('.scheduler-inline-error')).toContainText('Showing the last updated schedule');
+  await page.route('**/api/appointments/schedule?*', (route) => route.fulfill({ json: [] }));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(liveStatus).toHaveAttribute('data-state', 'live');
+  await expect(liveStatus).toContainText('Live · Updated');
+  await expect(page.locator('.scheduler-inline-error')).toBeHidden();
 });
 
 test('inventory search does not reload operational data and preserves the item view across tabs', async ({ page }) => {

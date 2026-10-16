@@ -1,4 +1,5 @@
 'use client';
+import { LiveUpdateStatus } from './live-update-status';
 import { TaskEmailDraft } from './task-email-draft';
 
 import { resolveConfiguredStatus, type ConfiguredDashboardStatus } from '@sparki/config';
@@ -26,7 +27,6 @@ import {
 } from '../lib/dashboard-role';
 import {
   appointmentToScheduleRow,
-  formatTime,
   visitToClinicRow,
   type ClinicDisplayRow,
   type ScheduleDisplayRow,
@@ -172,8 +172,12 @@ function PatientClientCell({
 
 function TodaySnapshotWidget({
   dashboard,
+  refreshing,
+  isStale,
 }: {
   dashboard: NonNullable<ReturnType<typeof useOperationsDashboard>['dashboard']>;
+  refreshing: boolean;
+  isStale: boolean;
 }) {
   const summary = dashboard.summary;
   const items = [
@@ -190,7 +194,7 @@ function TodaySnapshotWidget({
           <p className="eyebrow">Clinic flow</p>
           <h2 id="today-snapshot-heading">Today Snapshot</h2>
         </div>
-        <span className="dashboard-live-status">Live · Updated {formatTime(dashboard.generatedAt)}</span>
+        <LiveUpdateStatus updatedAt={dashboard.generatedAt} refreshing={refreshing} isStale={isStale} />
       </div>
       <div className="snapshot-grid">
         {items.map((item) => (
@@ -897,7 +901,7 @@ function TaskCreateDialog({
 }
 
 function ReceptionistDashboard() {
-  const { dashboard, loading, error, groups, refresh } = useOperationsDashboard();
+  const { dashboard, loading, refreshing, isStale, error, groups, refresh } = useOperationsDashboard();
   const { colors } = useDashboardStatusColors();
   const statuses = colors ?? [];
 
@@ -930,7 +934,7 @@ function ReceptionistDashboard() {
       {!loading && !error && dashboard && (
         <div className="dashboard-widget-grid">
           <div className="dashboard-widget-row dashboard-widget-row--top">
-            <TodaySnapshotWidget dashboard={dashboard} />
+            <TodaySnapshotWidget dashboard={dashboard} refreshing={refreshing} isStale={isStale || Boolean(error)} />
           </div>
           <div className="dashboard-widget-row dashboard-widget-row--shift">
             <StickyNotesWidget />

@@ -225,6 +225,7 @@ test('patient profile separates age from DOB with existing muted detail labels',
     data: {
       name: 'SPA42 age',
       species: 'Dog',
+      color: 'Golden',
       dateOfBirth: '2016-10-27',
       dateOfBirthEstimated: true,
       clients: [{ clientId: (await client.json()).id, isPrimary: true }],

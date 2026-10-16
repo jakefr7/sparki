@@ -212,3 +212,7 @@ Verified: focused scheduler Chromium scenario passes, including normal scrolling
 Founder requested consistent automatic-update wording and styling throughout the app. Scheduler, receptionist Today Snapshot and Command Center header now use one LiveUpdateStatus component and shared pill styles: Live / Refreshing / Stale with the same Updated timestamp format and dot treatment. The shared display ages to Stale after 90 seconds without an update; scheduler refresh failures also mark retained data stale and successful recovery restores Live. Existing polling intervals remain unchanged.
 
 Verified: focused scheduler Chromium scenario passes, including external appointment polling, failed refresh and recovery; tablet screenshot inspected; focused lint passes with four existing scheduler warnings. Web typecheck passes after browser completion (an overlapping attempt raced with generated Next route types). No staging deployment requested.
+
+## Patient header baseline alignment — October 16
+
+Founder reported Coat/Golden sitting on different text baselines. Profile detail pairs now align on the text baseline instead of vertically centering differently sized labels and values. Existing patient-header Chromium check passes with Golden coat in the fixture; tablet screenshot inspected. No deployment requested.

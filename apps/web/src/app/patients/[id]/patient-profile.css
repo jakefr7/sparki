@@ -32,6 +32,7 @@
   margin-top: 16px;
 }
 .patient-profile-hub .patient-profile-hero__details div {
+  align-items: baseline;
   padding: 0;
   min-height: 0;
   border: 0;

@@ -8837,9 +8837,9 @@ img.pet-photo-placeholder {
     repeating-linear-gradient(
       to bottom,
       transparent 0,
-      transparent calc((100% / 12) - 1px),
-      rgba(205, 218, 223, 0.72) calc((100% / 12) - 1px),
-      rgba(205, 218, 223, 0.72) calc(100% / 12)
+      transparent calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(205, 218, 223, 0.72) calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(205, 218, 223, 0.72) calc(100% / var(--scheduler-hour-count, 12))
     ),
     repeating-linear-gradient(
       to bottom,
@@ -8857,9 +8857,9 @@ img.pet-photo-placeholder {
     repeating-linear-gradient(
       to bottom,
       transparent 0,
-      transparent calc((100% / 12) - 1px),
-      rgba(205, 218, 223, 0.72) calc((100% / 12) - 1px),
-      rgba(205, 218, 223, 0.72) calc(100% / 12)
+      transparent calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(205, 218, 223, 0.72) calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(205, 218, 223, 0.72) calc(100% / var(--scheduler-hour-count, 12))
     ),
     repeating-linear-gradient(
       to bottom,
@@ -8877,9 +8877,9 @@ img.pet-photo-placeholder {
     repeating-linear-gradient(
       to bottom,
       transparent 0,
-      transparent calc((100% / 12) - 1px),
-      rgba(190, 203, 208, 0.72) calc((100% / 12) - 1px),
-      rgba(190, 203, 208, 0.72) calc(100% / 12)
+      transparent calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(190, 203, 208, 0.72) calc((100% / var(--scheduler-hour-count, 12)) - 1px),
+      rgba(190, 203, 208, 0.72) calc(100% / var(--scheduler-hour-count, 12))
     ),
     repeating-linear-gradient(
       to bottom,
@@ -14031,7 +14031,7 @@ button.settings-nav__sign-out:hover {
 .scheduler-calendar-zoom--detail .scheduler-time-column__half,
 .scheduler-calendar-zoom--close .scheduler-time-column__half { visibility: visible; color: #91a0a9; font-size: .62rem; font-weight: 500; }
 .scheduler-calendar-zoom--close .scheduler-time-column__quarter { visibility: visible; color: #a3afb7; font-size: .58rem; font-weight: 500; }
-.scheduler-day-column--past { background: repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / 12) - 1px), rgba(205, 218, 223, .52) calc((100% / 12) - 1px), rgba(205, 218, 223, .52) calc(100% / 12)), repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc(100% / var(--scheduler-slot-count, 24))), #fafbfc; }
+.scheduler-day-column--past { background: repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / var(--scheduler-hour-count, 12)) - 1px), rgba(205, 218, 223, .52) calc((100% / var(--scheduler-hour-count, 12)) - 1px), rgba(205, 218, 223, .52) calc(100% / var(--scheduler-hour-count, 12))), repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc(100% / var(--scheduler-slot-count, 24))), #fafbfc; }
 @media (min-width: 901px) {
   .scheduler-page > .scheduler-calendar-zoom { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .scheduler-calendar-zoom .scheduler-calendar-card { height: 0; overflow-x: auto; overflow-y: auto; }
@@ -14265,3 +14265,62 @@ button.settings-nav__sign-out:hover {
 .patient-providers label { display: grid; gap: .35rem; margin: .5rem 0; }
 .patient-providers fieldset { min-width: 0; }
 .records-email-draft .button-secondary { margin-top: .5rem; }
+
+/* SPA-42: shared clinic controls and dialog surfaces. */
+.sparki-dialog-surface {
+  --surface: #fff;
+  --surface-secondary: #f0f7f6;
+  --text-primary: #172633;
+  --text-secondary: #667586;
+  --border: #dde7e9;
+  --accent: #1fa9a0;
+  --focus-ring: #1fa9a070;
+  color: var(--text-primary);
+  color-scheme: light;
+}
+.inventory-form select,
+.inventory-modal--item-editor .inventory-form select,
+.schedule-block-modal select,
+.scheduler-toolbar select,
+.date-exceptions-editor select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2rem;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23667586' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: right .6rem center;
+  background-repeat: no-repeat;
+}
+.weekday-picker { min-width: 0; margin: 0; padding: .8rem; border: 1px solid var(--border); border-radius: .6rem; }
+.weekday-picker legend { padding: 0 .3rem; color: var(--text-secondary); font-size: .78rem; font-weight: 600; }
+.weekday-picker__days, .weekday-picker__presets, .date-selection { display: flex; flex-wrap: wrap; gap: .5rem; }
+.weekday-picker .weekday-picker__days label { display: flex; align-items: center; gap: .35rem; padding: .4rem .5rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); font-size: .8rem; }
+.weekday-picker .weekday-picker__days label:has(:checked) { border-color: var(--accent); background: var(--surface-secondary); }
+.weekday-picker .weekday-picker__days input { width: 1rem; min-height: 1rem; height: 1rem; margin: 0; accent-color: var(--accent); }
+.weekday-picker__presets { margin-top: .65rem; }
+.weekday-picker small { display: block; margin-top: .5rem; color: var(--text-secondary); }
+.date-exceptions-editor .weekday-picker { grid-column: 1 / -1; }
+.required-mark { color: #b53f37; }
+.scheduler-appointment-card { gap: .15rem; }
+.scheduler-appointment-card > strong { flex: 0 0 auto; font-size: .85rem; line-height: 1.25; }
+.scheduler-appointment-card__meta--primary { flex: 0 0 auto; white-space: nowrap; font-size: .65rem !important; }
+.scheduler-appointment-card__reason { flex: 0 0 auto; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: .72rem; font-weight: 600; line-height: 1.25; }
+.scheduler-appointment-card__client, .scheduler-appointment-card__meta--care-team, .scheduler-appointment-card__status { display: none; }
+.schedule-block-modal { display: flex; flex-direction: column; }
+.schedule-block-modal__header { flex: 0 0 auto; }
+.schedule-block-modal__form { min-height: 0; overscroll-behavior: contain; }
+
+/* A week keeps readable appointment columns when the viewport narrows. */
+.scheduler-week .scheduler-week__header,
+.scheduler-week .scheduler-week__body { min-width: 70rem; }
+.scheduler-appointment-card > strong { padding-right: .5rem; }
+.sparki-dialog-surface .button-secondary {
+  min-height: 2.25rem; padding: .4rem .7rem; border: 1px solid var(--border);
+  border-radius: .5rem; color: var(--text-primary); background: var(--surface);
+  font: inherit; font-size: .8rem; cursor: pointer;
+}
+.sparki-dialog-surface .button-secondary:hover { background: var(--surface-secondary); }
+
+.admin-settings .date-exceptions-editor .weekday-picker { display: block; padding: .8rem; border: 1px solid var(--border); }
+.admin-settings .date-exceptions-editor .weekday-picker legend { padding: 0 .3rem; font-size: .78rem; }
+.admin-settings .date-exceptions-editor .weekday-picker__days label { display: flex; align-items: center; gap: .35rem; }

@@ -89,3 +89,15 @@ export const createDateExceptionSchema = z
     },
   );
 export type CreateDateExceptionInput = z.infer<typeof createDateExceptionSchema>;
+
+// Batches are bounded and validated before any configuration is written.
+export const createDateExceptionsSchema = z.object({
+  exceptions: z.array(createDateExceptionSchema).min(1).max(366),
+});
+export type CreateDateExceptionsInput = z.infer<typeof createDateExceptionsSchema>;
+export const createSlotTemplatesSchema = z.object({
+  templates: z.array(upsertSlotTemplateSchema.refine((value) => !value.id, {
+    message: 'Create new blocks without an existing ID',
+  })).min(1).max(7),
+});
+export type CreateSlotTemplatesInput = z.infer<typeof createSlotTemplatesSchema>;

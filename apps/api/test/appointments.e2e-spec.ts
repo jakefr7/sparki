@@ -972,6 +972,51 @@ describe('Appointments (e2e)', () => {
       expect(response.status).toBe(404);
     });
   });
+  it('saves multiple weekly blocks atomically and retains edits outside the old grid', async () => {
+    const label = 'SPA-42 early consult';
+    const template = { label, startTime: '05:10', endTime: '06:40', color: '#1FA9A0', isActive: true, staffId: DEV_USER_ID, appointmentTypeIds: [wellnessAppointmentTypeId] };
+    const response = await request(app.getHttpServer()).post('/scheduler-config/slot-templates/batch').send({ templates: [1, 3, 5].map((dayOfWeek) => ({ ...template, dayOfWeek })) });
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveLength(3);
+    const ids = response.body.map((block: { id: string }) => block.id);
+    availabilityBlockIds.push(...ids);
+    for (const block of response.body) {
+      expect(block).toMatchObject({ startTime: '05:10', endTime: '06:40', appointmentTypeIds: [wellnessAppointmentTypeId], organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID });
+      expect(await prisma.schedulerConfigChange.count({ where: { entityId: block.id, actorId: DEV_USER_ID, action: 'Created' } })).toBe(1);
+    }
+    const edited = await request(app.getHttpServer()).post('/scheduler-config/slot-templates').send({ ...template, id: ids[0], dayOfWeek: 1, startTime: '20:10', endTime: '22:35' });
+    expect(edited.status).toBe(201);
+    const config = await request(app.getHttpServer()).get('/scheduler-config');
+    expect(config.body.slotTemplates.find((block: { id: string }) => block.id === ids[0])).toMatchObject({ startTime: '20:10', endTime: '22:35' });
+    const failed = await request(app.getHttpServer()).post('/scheduler-config/slot-templates/batch').send({ templates: [{ ...template, label: 'SPA-42 rollback', dayOfWeek: 1 }, { ...template, dayOfWeek: 2, staffId: 'foreign-provider' }] });
+    expect(failed.status).toBe(400);
+    expect(await prisma.schedulerSlotTemplate.count({ where: { label: 'SPA-42 rollback' } })).toBe(0);
+  });
+
+  it('validates entire closure batches and recovers repeated requests without duplicating closures', async () => {
+    const exceptions = ['2027-02-01', '2027-02-08'].map((date) => ({ date, reason: 'SPA-42 Mondays', providerId: DEV_USER_ID }));
+    const saved = await request(app.getHttpServer()).post('/scheduler-config/date-exceptions/batch').send({ exceptions });
+    expect(saved.status).toBe(201);
+    expect(saved.body).toHaveLength(2);
+    const ids = saved.body.map((item: { id: string }) => item.id);
+    try {
+      const repeated = await request(app.getHttpServer()).post('/scheduler-config/date-exceptions/batch').send({ exceptions });
+      expect(repeated.status).toBe(201);
+      expect(repeated.body.map((item: { id: string }) => item.id)).toEqual(ids);
+      for (const item of saved.body) {
+        expect(item).toMatchObject({ organizationId: DEV_ORGANIZATION_ID, locationId: DEV_LOCATION_ID });
+        expect(await prisma.schedulerConfigChange.count({ where: { entityId: item.id, action: 'Created' } })).toBe(1);
+      }
+      const invalid = await request(app.getHttpServer()).post('/scheduler-config/date-exceptions/batch').send({ exceptions: [{ date: '2027-03-01', reason: 'SPA-42 invalid batch' }, { date: '2027-02-30', reason: 'Impossible' }] });
+      expect(invalid.status).toBe(400);
+      const foreign = await request(app.getHttpServer()).post('/scheduler-config/date-exceptions/batch').send({ exceptions: [{ date: '2027-03-01', reason: 'SPA-42 invalid batch' }, { date: '2027-03-02', reason: 'Foreign provider', providerId: 'foreign-provider' }] });
+      expect(foreign.status).toBe(400);
+      expect(await prisma.schedulerDateException.count({ where: { reason: 'SPA-42 invalid batch' } })).toBe(0);
+    } finally {
+      for (const id of ids) await request(app.getHttpServer()).delete(`/scheduler-config/date-exceptions/${id}`).expect(200);
+    }
+  });
+
   it('audits date closures, blocks stale booking, and restores weekly availability after removal', async () => {
     const date = new Date(); date.setUTCDate(date.getUTCDate() + 40); date.setUTCHours(12, 0, 0, 0);
     const end = new Date(date); end.setUTCHours(23, 0, 0, 0);

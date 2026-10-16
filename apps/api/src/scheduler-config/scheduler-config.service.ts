@@ -87,29 +87,29 @@ export class SchedulerConfigService {
   }
 
   async createDateException(user: AuthenticatedUser, input: CreateDateExceptionInput) {
-    if (input.providerId) {
-      const eligible = await this.listEligibleProviders(user);
-      if (!eligible.some((provider) => provider.id === input.providerId))
-        throw new BadRequestException('Provider is not eligible at this location.');
-    }
+    return (await this.createDateExceptions(user, [input]))[0];
+  }
+
+  async createDateExceptions(user: AuthenticatedUser, inputs: CreateDateExceptionInput[]) {
+    const eligible = await this.listEligibleProviders(user);
+    if (inputs.some((input) => input.providerId && !eligible.some((p) => p.id === input.providerId)))
+      throw new BadRequestException('Provider is not eligible at this location.');
     return prisma.$transaction(async (tx) => {
-      const saved = await tx.schedulerDateException.create({
-        data: {
-          organizationId: user.organizationId,
-          locationId: user.locationId,
-          ...input,
-        },
-      });
-      await recordConfigChange(
-        tx,
-        user,
-        'SchedulerDateException',
-        saved.id,
-        'Created',
-        null,
-        saved,
-      );
-      return saved;
+      const results = [];
+      for (const input of inputs) {
+        // A retry after a lost response recovers the same closure, without duplicates.
+        const existing = await tx.schedulerDateException.findFirst({ where: {
+          organizationId: user.organizationId, locationId: user.locationId,
+          deletedAt: null, ...input,
+        } });
+        if (existing) { results.push(existing); continue; }
+        const saved = await tx.schedulerDateException.create({ data: {
+          organizationId: user.organizationId, locationId: user.locationId, ...input,
+        } });
+        await recordConfigChange(tx, user, 'SchedulerDateException', saved.id, 'Created', null, saved);
+        results.push(saved);
+      }
+      return results;
     });
   }
 
@@ -290,33 +290,24 @@ export class SchedulerConfigService {
     }));
   }
 
-  async upsertSlotTemplate(user: AuthenticatedUser, input: UpsertSlotTemplateInput) {
-    const schedulerSettings = await prisma.schedulerSettings.findUnique({
-      where: { locationId: user.locationId },
+  async createSlotTemplates(user: AuthenticatedUser, inputs: UpsertSlotTemplateInput[]) {
+    return prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const input of inputs) {
+        results.push(await this.upsertSlotTemplate(user, input, tx));
+      }
+      return results;
     });
-    const interval = schedulerSettings?.slotIntervalMinutes ?? DEFAULT_SLOT_INTERVAL_MINUTES;
-    const startMinutes = clockMinutes(input.startTime);
-    const endMinutes = clockMinutes(input.endTime);
-    const visibleStart = 7 * 60;
-    const visibleEnd = 19 * 60;
-    if (startMinutes < visibleStart || endMinutes > visibleEnd) {
-      throw new BadRequestException('Schedule blocks must be between 7:00 AM and 7:00 PM.');
-    }
-    if (
-      (startMinutes - visibleStart) % interval !== 0 ||
-      (endMinutes - visibleStart) % interval !== 0
-    ) {
-      throw new BadRequestException(
-        `Block times must align to the ${interval}-minute schedule grid.`,
-      );
-    }
+  }
+
+  async upsertSlotTemplate(user: AuthenticatedUser, input: UpsertSlotTemplateInput, db: Prisma.TransactionClient = prisma) {
     if (input.staffId) {
       const eligibleProviders = await this.listEligibleProviders(user);
       if (!eligibleProviders.some((provider) => provider.id === input.staffId)) {
         throw new BadRequestException('The selected provider is not eligible at this location.');
       }
     }
-    const validTypes = await prisma.appointmentTypeSetting.count({
+    const validTypes = await db.appointmentTypeSetting.count({
       where: {
         id: { in: input.appointmentTypeIds },
         organizationId: user.organizationId,
@@ -342,7 +333,7 @@ export class SchedulerConfigService {
     };
 
     if (!input.id || input.id.startsWith('default-')) {
-      const created = await prisma.schedulerSlotTemplate.create({
+      const created = await db.schedulerSlotTemplate.create({
         data: {
           organizationId: user.organizationId,
           locationId: user.locationId,
@@ -354,7 +345,7 @@ export class SchedulerConfigService {
         include: { appointmentTypes: { select: { appointmentTypeId: true } } },
       });
       await recordConfigChange(
-        prisma,
+        db,
         user,
         'SchedulerSlotTemplate',
         created.id,
@@ -371,7 +362,7 @@ export class SchedulerConfigService {
       };
     }
 
-    const existing = await prisma.schedulerSlotTemplate.findFirst({
+    const existing = await db.schedulerSlotTemplate.findFirst({
       where: {
         id: input.id,
         organizationId: user.organizationId,
@@ -390,7 +381,7 @@ export class SchedulerConfigService {
       existing.staffId !== (input.staffId || null) ||
       existing.room !== (input.room?.trim() || null) ||
       existing.isActive !== input.isActive;
-    const existingTypeIds = await prisma.appointmentTypeSlotTemplate.findMany({
+    const existingTypeIds = await db.appointmentTypeSlotTemplate.findMany({
       where: { slotTemplateId: existing.id },
       select: { appointmentTypeId: true },
     });
@@ -402,7 +393,7 @@ export class SchedulerConfigService {
       await this.assertBlockHasNoFutureAppointments(existing.id);
     }
 
-    const updated = await prisma.schedulerSlotTemplate.update({
+    const updated = await db.schedulerSlotTemplate.update({
       where: { id: input.id },
       data: {
         ...data,
@@ -414,7 +405,7 @@ export class SchedulerConfigService {
       include: { appointmentTypes: { select: { appointmentTypeId: true } } },
     });
     await recordConfigChange(
-      prisma,
+      db,
       user,
       'SchedulerSlotTemplate',
       updated.id,
@@ -519,11 +510,6 @@ export class SchedulerConfigService {
 
     return { color: '#475569', source: 'fallback' };
   }
-}
-
-function clockMinutes(value: string): number {
-  const [hours = '0', minutes = '0'] = value.split(':');
-  return Number(hours) * 60 + Number(minutes);
 }
 
 async function recordConfigChange(

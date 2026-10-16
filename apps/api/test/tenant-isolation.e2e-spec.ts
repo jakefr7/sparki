@@ -115,6 +115,32 @@ describe('Tenant isolation (e2e)', () => {
   });
 
   describe('through the API', () => {
+    it('rejects foreign scheduling references in bulk writes without saving a partial batch', async () => {
+      const ownConfig = await asDevelopmentClinic().get('/scheduler-config/appointment-types/eligible-providers').expect(200);
+      const ownProviderId = ownConfig.body[0].id;
+      const template = { dayOfWeek: 1, startTime: '06:10', endTime: '08:20', label: 'SPA42 tenant boundary', color: '#1FA9A0', isActive: true };
+      const blocks = await asDevelopmentClinic().post('/scheduler-config/slot-templates/batch').set('Cookie', otherOwnerCookie()).send({ templates: [template, { ...template, dayOfWeek: 2, staffId: ownProviderId }] });
+      expect(blocks.status).toBe(400);
+      const closures = await asDevelopmentClinic().post('/scheduler-config/date-exceptions/batch').set('Cookie', otherOwnerCookie()).send({ exceptions: [{ date: '2027-06-01', reason: 'SPA42 tenant boundary' }, { date: '2027-06-02', reason: 'SPA42 tenant boundary', providerId: ownProviderId }] });
+      expect(closures.status).toBe(400);
+      expect(await prismaUnscoped.schedulerSlotTemplate.count({ where: { label: 'SPA42 tenant boundary' } })).toBe(0);
+      expect(await prismaUnscoped.schedulerDateException.count({ where: { reason: 'SPA42 tenant boundary' } })).toBe(0);
+    });
+
+    it('keeps bulk scheduling writes unavailable to clinical roles without settings permission', async () => {
+      await prismaUnscoped.user.update({ where: { id: otherOwnerId }, data: { role: 'VETERINARIAN' } });
+      await prismaUnscoped.organizationMembership.update({ where: { organizationId_userId: { organizationId: otherOrganizationId, userId: otherOwnerId } }, data: { role: 'VETERINARIAN' } });
+      await prismaUnscoped.clinicLocationAccess.updateMany({ where: { userId: otherOwnerId }, data: { role: 'VETERINARIAN' } });
+      try {
+        await asDevelopmentClinic().post('/scheduler-config/slot-templates/batch').set('Cookie', otherOwnerCookie()).send({ templates: [{ dayOfWeek: 1, startTime: '06:00', endTime: '08:00', label: 'SPA42 role boundary', color: '#1FA9A0', isActive: true }] }).expect(403);
+        await asDevelopmentClinic().post('/scheduler-config/date-exceptions/batch').set('Cookie', otherOwnerCookie()).send({ exceptions: [{ date: '2027-06-01', reason: 'SPA42 role boundary' }] }).expect(403);
+      } finally {
+        await prismaUnscoped.user.update({ where: { id: otherOwnerId }, data: { role: 'OWNER' } });
+        await prismaUnscoped.organizationMembership.update({ where: { organizationId_userId: { organizationId: otherOrganizationId, userId: otherOwnerId } }, data: { role: 'OWNER' } });
+        await prismaUnscoped.clinicLocationAccess.updateMany({ where: { userId: otherOwnerId }, data: { role: 'OWNER' } });
+      }
+    });
+
     it('lets each clinic read its own client and not the other one', async () => {
       await asDevelopmentClinic().get(`/clients/${ownClientId}`).expect(200);
       await asDevelopmentClinic().get(`/clients/${otherClientId}`).expect(404);

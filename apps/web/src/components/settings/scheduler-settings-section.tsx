@@ -9,6 +9,8 @@ import {
   type CSSProperties,
   type FormEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
+import { useLockBodyScroll } from '../../hooks/use-lock-body-scroll';
 import {
   APPOINTMENT_TYPES,
   appointmentTypeLabel,
@@ -143,6 +145,7 @@ export function SchedulerSettingsSection() {
     Array<{ id: string; displayName: string; role: string }>
   >([]);
 
+  const [selectedDays, setSelectedDays] = useState<number[]>([1]);
   const [blockModalOpen, setBlockModalOpen] = useState(false);
   const [draftTemplate, setDraftTemplate] = useState<SchedulerSlotTemplate>(EMPTY_TEMPLATE);
   const [blockFormError, setBlockFormError] = useState<string | null>(null);
@@ -161,6 +164,8 @@ export function SchedulerSettingsSection() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const blockFeedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useLockBodyScroll(blockModalOpen || Boolean(typeDraft && !typeDraft.id));
 
   const sortedAppointmentTypes = useMemo(
     () => [...(config?.appointmentTypes ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -330,12 +335,14 @@ export function SchedulerSettingsSection() {
   function openAddBlock() {
     setExpandedSections((current) => ({ ...current, blocks: true }));
     setDraftTemplate(EMPTY_TEMPLATE);
+    setSelectedDays([1]);
     setBlockFormError(null);
     setBlockModalOpen(true);
   }
 
   function openEditBlock(template: SchedulerSlotTemplate) {
     setDraftTemplate(normalizeSlotTemplate(template));
+    setSelectedDays([template.dayOfWeek]);
     setBlockFormError(null);
     setBlockModalOpen(true);
   }
@@ -350,7 +357,7 @@ export function SchedulerSettingsSection() {
   async function saveSlotTemplate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (blockSaving) return;
-    const validationError = validateBlockDraft(draftTemplate);
+    const validationError = selectedDays.length ? validateBlockDraft(draftTemplate) : 'Choose at least one weekday.';
     if (validationError) {
       setBlockFormError(validationError);
       return;
@@ -359,29 +366,21 @@ export function SchedulerSettingsSection() {
     setBlockSaving(true);
     setBlockFormError(null);
     const { id, ...templateWithoutId } = draftTemplate;
-    const payload = id ? draftTemplate : templateWithoutId;
+    const payload = id ? draftTemplate : { templates: selectedDays.map((dayOfWeek) => ({ ...templateWithoutId, dayOfWeek })) };
     try {
-      const response = await fetch('/api/scheduler-config/slot-templates', {
+      const response = await fetch(id ? '/api/scheduler-config/slot-templates' : '/api/scheduler-config/slot-templates/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (response.ok) {
-        const saved = normalizeSlotTemplate(
-          (await response.json()) as SchedulerSlotTemplate,
-          draftTemplate.appointmentTypeIds,
-        );
-        setConfig((current) =>
-          current
-            ? {
-                ...current,
-                slotTemplates: [
-                  ...current.slotTemplates.filter((candidate) => candidate.id !== saved.id),
-                  saved,
-                ],
-              }
-            : current,
-        );
+        const body = await response.json() as SchedulerSlotTemplate | SchedulerSlotTemplate[];
+        const saved = (Array.isArray(body) ? body : [body]).map((template) =>
+          normalizeSlotTemplate(template, draftTemplate.appointmentTypeIds));
+        setConfig((current) => current ? { ...current, slotTemplates: [
+          ...current.slotTemplates.filter((candidate) => !saved.some((item) => item.id === candidate.id)),
+          ...saved,
+        ] } : current);
         setBlockModalOpen(false);
         setBlockFormError(null);
         setDraftTemplate(EMPTY_TEMPLATE);
@@ -1120,8 +1119,8 @@ export function SchedulerSettingsSection() {
 
       {message ? <p className="settings-save-message">{message}</p> : null}
 
-      {blockModalOpen ? (
-        <div className="schedule-block-modal-overlay" role="presentation" onClick={closeBlockModal}>
+      {blockModalOpen ? createPortal(
+        <div className="schedule-block-modal-overlay sparki-dialog-surface" role="presentation" onClick={closeBlockModal}>
           <div
             className="schedule-block-modal"
             role="dialog"
@@ -1137,7 +1136,7 @@ export function SchedulerSettingsSection() {
                 </h2>
                 <p>
                   Define weekly booking hours in the clinic time zone. This block repeats every week
-                  on the selected day.
+                  on the selected weekdays.
                 </p>
               </div>
               <span
@@ -1146,7 +1145,7 @@ export function SchedulerSettingsSection() {
               >
                 <strong>{draftTemplate.label || 'Block preview'}</strong>
                 <small>
-                  {DAY_LABELS[draftTemplate.dayOfWeek]} · {timeLabel(draftTemplate.startTime)}–
+                  {selectedDays.map((day) => shortDay(day)).join(', ') || 'Choose days'} · {timeLabel(draftTemplate.startTime)}–
                   {timeLabel(draftTemplate.endTime)}
                 </small>
               </span>
@@ -1172,24 +1171,30 @@ export function SchedulerSettingsSection() {
                     required
                   />
                 </label>
-                <label>
+                {isEditingBlock ? <label>
                   <span>Day</span>
-                  <select
-                    value={draftTemplate.dayOfWeek}
-                    onChange={(event) =>
-                      setDraftTemplate((current) => ({
-                        ...current,
-                        dayOfWeek: Number(event.target.value),
-                      }))
-                    }
-                  >
-                    {DAY_LABELS.map((day, index) => (
-                      <option key={day} value={index}>
-                        {day}
-                      </option>
-                    ))}
+                  <select value={draftTemplate.dayOfWeek} onChange={(event) => {
+                    const dayOfWeek = Number(event.target.value);
+                    setDraftTemplate((current) => ({ ...current, dayOfWeek }));
+                    setSelectedDays([dayOfWeek]);
+                  }}>
+                    {DAY_LABELS.map((day, index) => <option key={day} value={index}>{day}</option>)}
                   </select>
-                </label>
+                </label> : <fieldset className="weekday-picker">
+                  <legend>Repeat every week on</legend>
+                  <div className="weekday-picker__days">
+                    {DAY_LABELS.map((day, index) => <label key={day}>
+                      <input type="checkbox" checked={selectedDays.includes(index)} onChange={(event) =>
+                        setSelectedDays((current) => event.target.checked ? [...current, index].sort() : current.filter((value) => value !== index))} />
+                      {day.slice(0, 3)}
+                    </label>)}
+                  </div>
+                  <div className="weekday-picker__presets">
+                    <button type="button" className="button-secondary" onClick={() => setSelectedDays([1,2,3,4,5])}>Weekdays</button>
+                    <button type="button" className="button-secondary" onClick={() => setSelectedDays([0,6])}>Weekends</button>
+                    <button type="button" className="button-secondary" onClick={() => setSelectedDays([0,1,2,3,4,5,6])}>Every day</button>
+                  </div>
+                </fieldset>}
                 <div className="schedule-block-modal__form-row">
                   <label>
                     <span>Start time</span>
@@ -1333,7 +1338,7 @@ export function SchedulerSettingsSection() {
             </form>
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
     </section>
   );
 }

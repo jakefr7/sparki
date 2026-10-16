@@ -12,6 +12,10 @@ type DateException = {
 type Provider = { id: string; displayName: string };
 const EMPTY = {
   date: '',
+  endDate: '',
+  days: [] as number[],
+  dates: [] as string[],
+  mode: 'dates' as 'dates' | 'repeat',
   startTime: '09:00',
   endTime: '17:00',
   providerId: '',
@@ -52,19 +56,40 @@ export function DateExceptionsSection() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (pending) return;
+    const dates =
+      form.mode === 'dates'
+        ? [...new Set([...form.dates, ...(form.date ? [form.date] : [])])].sort()
+        : [];
+    if (form.mode === 'repeat' && form.date && form.endDate && form.date <= form.endDate) {
+      const cursor = new Date(`${form.date}T12:00:00Z`);
+      for (let i = 0; i < 366 && cursor.toISOString().slice(0, 10) <= form.endDate; i++) {
+        if (form.days.includes(cursor.getUTCDay())) dates.push(cursor.toISOString().slice(0, 10));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+      if (cursor.toISOString().slice(0, 10) <= form.endDate) {
+        setError('Choose a range of at most 366 days.');
+        return;
+      }
+    }
+    if (!dates.length || dates.length > 366) {
+      setError('Choose between 1 and 366 dates.');
+      return;
+    }
     setPending(true);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch('/api/scheduler-config/date-exceptions', {
+      const response = await fetch('/api/scheduler-config/date-exceptions/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          date: form.date,
-          startTime: form.allDay ? null : form.startTime,
-          endTime: form.allDay ? null : form.endTime,
-          providerId: form.providerId || null,
-          reason: form.reason,
+          exceptions: dates.map((date) => ({
+            date,
+            startTime: form.allDay ? null : form.startTime,
+            endTime: form.allDay ? null : form.endTime,
+            providerId: form.providerId || null,
+            reason: form.reason,
+          })),
         }),
       });
       if (!response.ok) {
@@ -75,11 +100,17 @@ export function DateExceptionsSection() {
             : 'Could not save date exception. Check the date and times.',
         );
       }
-      const saved = (await response.json()) as DateException;
-      setItems((current) => [...current, saved].sort((a, b) => a.date.localeCompare(b.date)));
+      const saved = (await response.json()) as DateException[];
+      setItems((current) =>
+        [...current.filter((item) => !saved.some((entry) => entry.id === item.id)), ...saved].sort(
+          (a, b) => a.date.localeCompare(b.date),
+        ),
+      );
       setEditing(false);
       setForm(EMPTY);
-      setMessage('Date exception saved. Existing appointments remain scheduled.');
+      setMessage(
+        `${saved.length} date exception${saved.length === 1 ? '' : 's'} saved. Existing appointments remain scheduled.`,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save date exception.');
     } finally {
@@ -139,17 +170,123 @@ export function DateExceptionsSection() {
       {editing ? (
         <form className="date-exceptions-editor" onSubmit={submit}>
           <fieldset disabled={pending} className="settings-form-grid">
-            <legend>Close booking on a date</legend>
+            <legend>Close booking on selected dates</legend>
             <label>
-              Date
+              Dates to close
+              <select
+                value={form.mode}
+                onChange={(event) =>
+                  setForm({ ...form, mode: event.target.value as 'dates' | 'repeat' })
+                }
+              >
+                <option value="dates">Specific dates</option>
+                <option value="repeat">Weekdays within a date range</option>
+              </select>
+            </label>
+            <label>
+              {form.mode === 'repeat' ? 'Start date' : 'Date'}
               <input
                 type="date"
                 autoFocus
-                required
+                required={form.mode === 'repeat' || !form.dates.length}
                 value={form.date}
                 onChange={(event) => setForm({ ...form, date: event.target.value })}
               />
             </label>
+            {form.mode === 'dates' ? (
+              <div className="date-selection">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={!form.date}
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      dates: [...new Set([...form.dates, form.date])].sort(),
+                      date: '',
+                    })
+                  }
+                >
+                  Add another date
+                </button>
+                {form.dates.map((date) => (
+                  <button
+                    type="button"
+                    key={date}
+                    className="button-secondary"
+                    aria-label={`Remove ${date}`}
+                    onClick={() =>
+                      setForm({ ...form, dates: form.dates.filter((value) => value !== date) })
+                    }
+                  >
+                    {date} ×
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
+                <label>
+                  End date
+                  <input
+                    type="date"
+                    required
+                    min={form.date}
+                    value={form.endDate}
+                    onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+                  />
+                </label>
+                <fieldset className="weekday-picker">
+                  <legend>Repeat on</legend>
+                  <div className="weekday-picker__days">
+                    {[
+                      'Sunday',
+                      'Monday',
+                      'Tuesday',
+                      'Wednesday',
+                      'Thursday',
+                      'Friday',
+                      'Saturday',
+                    ].map((day, index) => (
+                      <label key={day}>
+                        <input
+                          type="checkbox"
+                          checked={form.days.includes(index)}
+                          onChange={(event) =>
+                            setForm({
+                              ...form,
+                              days: event.target.checked
+                                ? [...form.days, index]
+                                : form.days.filter((value) => value !== index),
+                            })
+                          }
+                        />
+                        {day.slice(0, 3)}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="weekday-picker__presets">
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setForm({ ...form, days: [0, 6] })}
+                    >
+                      Weekends
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary"
+                      onClick={() => setForm({ ...form, days: [1, 2, 3, 4, 5] })}
+                    >
+                      Weekdays
+                    </button>
+                  </div>
+                  <small>
+                    Creates individual date exceptions through the end date. Existing appointments
+                    stay scheduled.
+                  </small>
+                </fieldset>
+              </>
+            )}
             <label>
               Provider
               <select

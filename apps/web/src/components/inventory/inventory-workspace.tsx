@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useLockBodyScroll } from '../../hooks/use-lock-body-scroll';
 
 type Item = {
   id: string;
@@ -3233,17 +3234,15 @@ function Modal({
   className?: string;
 }) {
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [onClose]);
+  useLockBodyScroll(true);
   const modal = (
     <div
       className="modal-backdrop"
@@ -3284,12 +3283,15 @@ function ItemEditor({
   const [type, setType] = useState(item?.primaryType ?? 'MEDICATION');
   const [dirty, setDirty] = useState(false);
   const [formError, setFormError] = useState('');
+  const [savingItem, setSavingItem] = useState(false);
   const activeConversion = item?.conversions.find((conversion) => conversion.isActive);
   const close = () => {
+    if (savingItem) return;
     if (!dirty || window.confirm('Discard unsaved inventory item changes?')) onClose();
   };
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (savingItem) return;
     setFormError('');
     const f = new FormData(e.currentTarget);
     const value = (name: string) => String(f.get(name) || '').trim() || null;
@@ -3347,6 +3349,12 @@ function ItemEditor({
             ? undefined
             : null,
     };
+    if (!body.name) { setFormError('Item name is required.'); return; }
+    if (Boolean(value('purchaseUnit')) !== Boolean(value('stockUnit'))) {
+      setFormError('Enter both Purchase unit and Stock/base unit, or leave both blank.'); return;
+    }
+    setSavingItem(true);
+    try {
     const url = mode === 'edit' ? `/api/inventory/items/${item?.id}` : '/api/inventory/items';
     const response = await fetch(url, {
       method: mode === 'edit' ? 'PATCH' : 'POST',
@@ -3354,18 +3362,20 @@ function ItemEditor({
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      const failure = await response.json();
-      setFormError(
-        Array.isArray(failure.message)
-          ? failure.message.join(' · ')
-          : (failure.message ?? 'Unable to save item'),
-      );
+      const failure = await response.json().catch(() => null) as { message?: unknown; fieldErrors?: Record<string, string[]>; formErrors?: string[] } | null;
+      const details = failure?.message && typeof failure.message === 'object' && !Array.isArray(failure.message)
+        ? failure.message as { fieldErrors?: Record<string, string[]>; formErrors?: string[] } : failure;
+      const fields = Object.entries(details?.fieldErrors ?? {}).flatMap(([field, errors]) => errors.map((error) => `${humanize(field)}: ${error}`));
+      setFormError(typeof failure?.message === 'string' ? failure.message : Array.isArray(failure?.message) ? failure.message.join(' · ') : [...fields, ...(details?.formErrors ?? [])].join(' · ') || 'Unable to save item. Check the fields and try again.');
       return;
     }
     const saved = (await response.json()) as { id: string };
     setDirty(false);
     onClose();
     await onSaved(saved.id);
+    } catch {
+      setFormError('Could not save item. Your entries are retained. Try again.');
+    } finally { setSavingItem(false); }
   };
   const initialName = mode === 'duplicate' ? `${item?.name} — Copy` : (item?.name ?? '');
   const initialSku = mode === 'duplicate' ? '' : (item?.sku ?? '');
@@ -3378,17 +3388,17 @@ function ItemEditor({
       <form className="inventory-form" onChange={() => setDirty(true)} onSubmit={submit}>
         <p className="item-editor__intro form-wide">
           Add the essential item details first. Stock controls and unit conversions can be refined
-          here or from the item record later.
+          here or from the item record later. Fields marked * are required.
         </p>
-        {formError && <div className="inventory__error form-wide">{formError}</div>}
+        {formError && <div className="inventory__error form-wide" role="alert">{formError}</div>}
         <h3>Basics</h3>
         <label>
-          Item name
-          <input required name="name" defaultValue={initialName} />
+          <span>Item name <span className="required-mark" aria-hidden="true">*</span></span>
+          <input required maxLength={200} name="name" defaultValue={initialName} />
         </label>
         <label>
-          Type
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <span>Type <span className="required-mark" aria-hidden="true">*</span></span>
+          <select required value={type} onChange={(e) => setType(e.target.value)}>
             {[
               'MEDICATION',
               'VACCINE',
@@ -3406,7 +3416,7 @@ function ItemEditor({
           </select>
         </label>
         <label>
-          SKU
+          <span>SKU {mode === 'duplicate' && item?.sku ? <span className="required-mark" aria-hidden="true">*</span> : '(optional)'}</span>
           <input
             name="sku"
             required={mode === 'duplicate' && Boolean(item?.sku)}
@@ -3565,12 +3575,12 @@ function ItemEditor({
           <textarea name="internalNotes" defaultValue={item?.internalNotes ?? ''} />
         </label>
         <footer className="item-editor__footer">
-          <span>Required fields are marked by your browser.</span>
-          <button type="button" onClick={close}>
+          <span>* Required. Unit conversion needs both purchase and stock units.</span>
+          <button type="button" onClick={close} disabled={savingItem}>
             Cancel
           </button>
-          <button className="button-primary">
-            {mode === 'edit' ? 'Save changes' : 'Create item'}
+          <button className="button-primary" disabled={savingItem}>
+            {savingItem ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Create item'}
           </button>
         </footer>
       </form>

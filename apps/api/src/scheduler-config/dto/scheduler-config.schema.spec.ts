@@ -3,6 +3,8 @@ import { canManageSchedulerSettings, MANAGE_SCHEDULER_SETTINGS } from '../../aut
 import { ROLE_PERMISSIONS } from '../../auth/role-permissions';
 import {
   createDateExceptionSchema,
+  createDateExceptionsSchema,
+  createSlotTemplatesSchema,
   updateSchedulerSettingsSchema,
   upsertAppointmentTypeSettingSchema,
   upsertSlotTemplateSchema,
@@ -92,5 +94,18 @@ describe('date exceptions', () => {
   it('rejects partial, overnight and zero-length intervals', () => {
     for (const times of [{ startTime: '09:00' }, { startTime: '17:00', endTime: '09:00' }, { startTime: '09:00', endTime: '09:00' }])
       expect(createDateExceptionSchema.safeParse({ date: '2026-10-02', reason: 'Closed', ...times }).success).toBe(false);
+  });
+});
+
+describe('bounded scheduling batches', () => {
+  it('rejects empty and oversized batches before writing anything', () => {
+    expect(createDateExceptionsSchema.safeParse({ exceptions: [] }).success).toBe(false);
+    expect(createDateExceptionsSchema.safeParse({ exceptions: Array.from({ length: 367 }, () => ({ date: '2027-01-01', reason: 'Closed' })) }).success).toBe(false);
+    expect(createSlotTemplatesSchema.safeParse({ templates: [] }).success).toBe(false);
+  });
+  it('allows early, late and off-grid blocks but rejects an existing block ID in a creation batch', () => {
+    const template = { dayOfWeek: 1, startTime: '05:10', endTime: '22:35', label: 'Consult', color: '#1FA9A0', isActive: true };
+    expect(createSlotTemplatesSchema.safeParse({ templates: [template] }).success).toBe(true);
+    expect(createSlotTemplatesSchema.safeParse({ templates: [{ ...template, id: 'existing' }] }).success).toBe(false);
   });
 });

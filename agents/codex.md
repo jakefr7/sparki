@@ -54,6 +54,13 @@ Codex maintains the structure of the repository and helps turn product, architec
 - Specs should separate decisions, assumptions, open questions, and future work.
 - Implementation work should follow existing patterns and include appropriate verification.
 
+## Writing Comments For Jake
+
+- For requested Linear comments or replies, tag the recipient and go straight to the update.
+- Do not add greetings such as “Hey Anna” or closing thanks such as “Thanks for putting these together.”
+- Keep the wording concise, direct, and natural; avoid added pleasantries.
+- This is a writing preference, not standing authorization to post comments without a request.
+
 ## Expected Outputs
 
 - Markdown documents

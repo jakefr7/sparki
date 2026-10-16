@@ -62,13 +62,6 @@ function doctorLabel(visit: RecentVisitSummary): string {
     : 'Unassigned';
 }
 
-function patientDobLine(patient: PatientWorkspace['patient']): string {
-  const age = patientAgeLabel(patient);
-  if (!patient.dateOfBirth) return age ?? 'Age not captured';
-  const dob = `${patient.dateOfBirthEstimated ? 'Estimated DOB' : 'DOB'} ${formatDateOfBirth(patient.dateOfBirth)}`;
-  return age ? `${age} · ${dob}` : dob;
-}
-
 function formatPhone(value: string | null): string | null {
   if (!value) return null;
   const digits = value.replace(/\D/g, '');
@@ -104,13 +97,13 @@ export default async function PatientWorkspacePage({
   const headerAlert = patient.patientAlerts[0]?.message ?? patient.alerts;
   const alertCount =
     patient.patientAlerts.length + (patient.patientAlerts.length === 0 && patient.alerts ? 1 : 0);
-  const ageLine = patientDobLine(patient);
   const ownerAddress = primaryClient ? formatClientAddress(primaryClient) : null;
   const patientDetails = [
     { label: 'Species', value: patient.species },
     { label: 'Breed', value: patient.breed },
     { label: 'Sex', value: patient.sex },
-    { label: 'Age / DOB', value: ageLine },
+    { label: 'Age', value: patientAgeLabel(patient) ?? 'Not captured' },
+    { label: patient.dateOfBirthEstimated ? 'Estimated DOB' : 'DOB', value: patient.dateOfBirth ? formatDateOfBirth(patient.dateOfBirth) : null },
     { label: 'Coat', value: patient.color },
   ].filter((item) => displayValue(item.value));
   const ownerContactDetails = primaryClient

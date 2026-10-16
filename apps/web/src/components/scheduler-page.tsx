@@ -3,6 +3,8 @@
 import { AppointmentTextStatus } from './appointment-text-status';
 import Link from 'next/link';
 import {
+  createContext,
+  useContext,
   useCallback,
   useEffect,
   useMemo,
@@ -81,8 +83,9 @@ interface SchedulerConfig {
   canManage: boolean;
 }
 
-const CLINIC_START_HOUR = 7;
-const CLINIC_END_HOUR = 19;
+type CalendarHours = { start: number; end: number };
+const DEFAULT_HOURS: CalendarHours = { start: 7, end: 19 };
+const CalendarHoursContext = createContext(DEFAULT_HOURS);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_APPOINTMENT_COLOR = '#475569';
 
@@ -238,13 +241,6 @@ function appointmentProviderName(appointment: SchedulerAppointment): string | nu
   return appointment.provider?.displayName ?? null;
 }
 
-function appointmentPrimaryMeta(
-  appointment: SchedulerAppointment,
-  appointmentTypes: AppointmentTypeSetting[],
-): string {
-  return `${timeRange(appointment)} · ${configuredAppointmentTypeLabel(appointment.type, appointmentTypes)}`;
-}
-
 function appointmentCareTeamMeta(appointment: SchedulerAppointment): string | null {
   const parts: string[] = [];
   const provider = appointmentProviderName(appointment);
@@ -291,20 +287,14 @@ function isSameDay(a: Date, b: Date): boolean {
   return startOfDay(a).getTime() === startOfDay(b).getTime();
 }
 
-function minutesSinceClinicOpen(date: Date): number {
-  return (date.getHours() - CLINIC_START_HOUR) * 60 + date.getMinutes();
+function minutesSinceClinicOpen(date: Date, hours: CalendarHours): number {
+  return (date.getHours() - hours.start) * 60 + date.getMinutes();
 }
 
-function inVisibleHours(appointment: SchedulerAppointment): boolean {
-  const startsAt = new Date(appointment.scheduledAt);
-  const minutes = minutesSinceClinicOpen(startsAt);
-  return minutes >= 0 && minutes < (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
-}
-
-function appointmentStyle(appointment: SchedulerAppointment): { top: string; height: string } {
-  const minutes = minutesSinceClinicOpen(new Date(appointment.scheduledAt));
+function appointmentStyle(appointment: SchedulerAppointment, hours: CalendarHours): { top: string; height: string } {
+  const minutes = minutesSinceClinicOpen(new Date(appointment.scheduledAt), hours);
   const duration = appointment.expectedDurationMinutes ?? 0;
-  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+  const total = (hours.end - hours.start) * 60;
   return {
     top: `${(minutes / total) * 100}%`,
     height: `${(duration / total) * 100}%`,
@@ -329,20 +319,22 @@ function toSchedulerAppointment(appointment: DashboardAppointmentSummary): Sched
   return appointment;
 }
 
-function slotStartsAt(day: Date, slotIndex: number, slotIntervalMinutes: number): Date {
+function slotStartsAt(day: Date, slotIndex: number, slotIntervalMinutes: number, hours: CalendarHours): Date {
   const startsAt = new Date(day);
-  startsAt.setHours(CLINIC_START_HOUR, slotIndex * slotIntervalMinutes, 0, 0);
+  startsAt.setHours(hours.start, slotIndex * slotIntervalMinutes, 0, 0);
   return startsAt;
 }
 
-function slotCount(slotIntervalMinutes: number): number {
-  return ((CLINIC_END_HOUR - CLINIC_START_HOUR) * 60) / slotIntervalMinutes;
+function slotCount(slotIntervalMinutes: number, hours: CalendarHours): number {
+  return Math.ceil(((hours.end - hours.start) * 60) / slotIntervalMinutes);
 }
 
-function timeSlotsFor(day: Date, slotIntervalMinutes: number): SelectedSlot[] {
-  return Array.from({ length: slotCount(slotIntervalMinutes) }, (_, slotIndex) => {
-    const startsAt = slotStartsAt(day, slotIndex, slotIntervalMinutes);
-    return { startsAt, endsAt: new Date(startsAt.getTime() + slotIntervalMinutes * 60_000) };
+function timeSlotsFor(day: Date, slotIntervalMinutes: number, hours: CalendarHours): SelectedSlot[] {
+  return Array.from({ length: slotCount(slotIntervalMinutes, hours) }, (_, slotIndex) => {
+    const startsAt = slotStartsAt(day, slotIndex, slotIntervalMinutes, hours);
+    const lastMinute = new Date(day);
+    lastMinute.setHours(hours.end, 0, 0, 0);
+    return { startsAt, endsAt: new Date(Math.min(lastMinute.getTime(), startsAt.getTime() + slotIntervalMinutes * 60_000)) };
   });
 }
 
@@ -351,10 +343,10 @@ function minutesFromTime(value: string): number {
   return Number(hours) * 60 + Number(minutes);
 }
 
-function slotTemplateStyle(template: SchedulerSlotTemplate): CSSProperties {
-  const start = minutesFromTime(template.startTime) - CLINIC_START_HOUR * 60;
-  const end = minutesFromTime(template.endTime) - CLINIC_START_HOUR * 60;
-  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+function slotTemplateStyle(template: SchedulerSlotTemplate, hours: CalendarHours): CSSProperties {
+  const start = minutesFromTime(template.startTime) - hours.start * 60;
+  const end = minutesFromTime(template.endTime) - hours.start * 60;
+  const total = (hours.end - hours.start) * 60;
   return {
     top: `${(Math.max(0, start) / total) * 100}%`,
     height: `${((Math.min(total, end) - Math.max(0, start)) / total) * 100}%`,
@@ -363,10 +355,10 @@ function slotTemplateStyle(template: SchedulerSlotTemplate): CSSProperties {
   };
 }
 
-function slotTemplateOverlayStyle(template: SchedulerSlotTemplate): CSSProperties {
-  const start = minutesFromTime(template.startTime) - CLINIC_START_HOUR * 60;
-  const end = minutesFromTime(template.endTime) - CLINIC_START_HOUR * 60;
-  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+function slotTemplateOverlayStyle(template: SchedulerSlotTemplate, hours: CalendarHours): CSSProperties {
+  const start = minutesFromTime(template.startTime) - hours.start * 60;
+  const end = minutesFromTime(template.endTime) - hours.start * 60;
+  const total = (hours.end - hours.start) * 60;
   return {
     top: `${(Math.max(0, start) / total) * 100}%`,
     height: `${((Math.min(total, end) - Math.max(0, start)) / total) * 100}%`,
@@ -420,7 +412,7 @@ function appointmentsForDay(
 ): SchedulerAppointment[] {
   return appointments.filter(
     (appointment) =>
-      isSameDay(new Date(appointment.scheduledAt), day) && inVisibleHours(appointment),
+      isSameDay(new Date(appointment.scheduledAt), day),
   );
 }
 
@@ -532,7 +524,7 @@ export function SchedulerPage() {
           scheduleAppointments.map(toSchedulerAppointment),
         );
 
-        if (!background) {
+        {
           const [staffResponse, configResponse] = await Promise.all([
             fetch('/api/staff?canReceiveAppointments=true', requestInit),
             fetch('/api/scheduler-config', requestInit),
@@ -581,6 +573,22 @@ export function SchedulerPage() {
     const weekStart = startOfWeek(anchorDate);
     return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   }, [anchorDate, view]);
+
+  const calendarHours = useMemo<CalendarHours>(() => {
+    let start = DEFAULT_HOURS.start;
+    let end = DEFAULT_HOURS.end;
+    for (const template of schedulerConfig.slotTemplates) {
+      if (!template.isActive || !days.some((day) => day.getDay() === template.dayOfWeek)) continue;
+      start = Math.min(start, Math.floor(minutesFromTime(template.startTime) / 60));
+      end = Math.max(end, Math.ceil(minutesFromTime(template.endTime) / 60));
+    }
+    for (const appointment of appointments) {
+      const date = new Date(appointment.scheduledAt);
+      start = Math.min(start, date.getHours());
+      end = Math.max(end, Math.ceil((date.getHours() * 60 + date.getMinutes() + (appointment.expectedDurationMinutes ?? 30)) / 60));
+    }
+    return { start, end: Math.min(24, end) };
+  }, [schedulerConfig.slotTemplates, appointments, days]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -867,7 +875,8 @@ export function SchedulerPage() {
             {loadError} {generatedAt ? 'Showing the last updated schedule; another sync will be attempted automatically.' : 'No appointments could be loaded.'}
           </p>
         ) : null}
-        <div ref={calendarRef} className={`scheduler-calendar-zoom scheduler-calendar-zoom--${zoom}`} style={{ '--scheduler-grid-height': `${54 * zoomScale}rem` } as CSSProperties}>
+        <CalendarHoursContext.Provider value={calendarHours}>
+        <div ref={calendarRef} className={`scheduler-calendar-zoom scheduler-calendar-zoom--${zoom}`} style={{ '--scheduler-grid-height': `${4.5 * (calendarHours.end - calendarHours.start) * zoomScale}rem` } as CSSProperties}>
         {view === 'week' ? (
         <WeekSchedulerGrid
             days={days}
@@ -904,6 +913,7 @@ export function SchedulerPage() {
           />
         )}
         </div>
+        </CalendarHoursContext.Provider>
         {bookingNote ? (
           <p className="scheduler-inline-note" role="status">
             {bookingNote}
@@ -1338,9 +1348,9 @@ function DaySchedulerGrid({
   );
 }
 
-function currentTimeTopPercent(currentTime: Date): number | null {
-  const minutes = minutesSinceClinicOpen(currentTime);
-  const total = (CLINIC_END_HOUR - CLINIC_START_HOUR) * 60;
+function currentTimeTopPercent(currentTime: Date, hours: CalendarHours): number | null {
+  const minutes = minutesSinceClinicOpen(currentTime, hours);
+  const total = (hours.end - hours.start) * 60;
   if (minutes < 0 || minutes > total) return null;
   return (minutes / total) * 100;
 }
@@ -1354,7 +1364,8 @@ function CurrentTimeIndicator({
   todayIndex: number;
   columnCount: number;
 }) {
-  const top = currentTimeTopPercent(currentTime);
+  const hours = useContext(CalendarHoursContext);
+  const top = currentTimeTopPercent(currentTime, hours);
   if (top === null) return null;
 
   const segmentWidth = 100 / columnCount;
@@ -1383,13 +1394,14 @@ function CurrentTimeIndicator({
 }
 
 function TimeColumn() {
+  const hours = useContext(CalendarHoursContext);
   const subdivisions = 4;
-  const markerCount = (CLINIC_END_HOUR - CLINIC_START_HOUR) * subdivisions;
+  const markerCount = (hours.end - hours.start) * subdivisions;
   return (
     <div className="scheduler-time-column" style={{ gridTemplateRows: `repeat(${markerCount}, 1fr)` }} aria-hidden="true">
       {Array.from({ length: markerCount }, (_, index) => {
         const time = new Date();
-        time.setHours(CLINIC_START_HOUR, index * 15, 0, 0);
+        time.setHours(hours.start, index * 15, 0, 0);
         const minute = time.getMinutes();
         return <span key={index} className={minute === 0 ? 'scheduler-time-column__hour' : minute === 30 ? 'scheduler-time-column__half' : 'scheduler-time-column__quarter'}>{minute === 0 ? formatTime(time) : `:${String(minute).padStart(2, '0')}`}</span>;
       })}
@@ -1428,10 +1440,11 @@ function SchedulerDayColumn({
   onAppointmentDragEnd: () => void;
   getMoveRestriction: (appointment: SchedulerAppointment, slot: SelectedSlot) => string | null;
 }) {
+  const hours = useContext(CalendarHoursContext);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const isPastDay = day < today && !isSameDay(day, today);
   const targetSlot = dropTarget
-    ? timeSlotsFor(day, slotIntervalMinutes).find((slot) => slot.startsAt.toISOString() === dropTarget) ?? null
+    ? timeSlotsFor(day, slotIntervalMinutes, hours).find((slot) => slot.startsAt.toISOString() === dropTarget) ?? null
     : null;
   const targetDuration = draggingAppointment?.expectedDurationMinutes ?? 30;
   const fullTargetSlot = targetSlot
@@ -1454,21 +1467,21 @@ function SchedulerDayColumn({
         draggingAppointment ? 'scheduler-day-column--drag-active' : '',
         targetSlot ? 'scheduler-day-column--drag-target' : '',
       ].filter(Boolean).join(' ')}
-      style={{ '--scheduler-slot-count': slotCount(slotIntervalMinutes) } as CSSProperties}
+      style={{ '--scheduler-slot-count': ((hours.end - hours.start) * 60) / slotIntervalMinutes, '--scheduler-hour-count': hours.end - hours.start } as CSSProperties}
     >
       {slotTemplates.map((template) => (
         <div
           key={template.id}
           className="scheduler-slot-template scheduler-slot-template--wash"
-          style={slotTemplateStyle(template)}
+          style={slotTemplateStyle(template, hours)}
           aria-hidden="true"
         />
       ))}
       <div
         className="scheduler-day-column__slots"
-        style={{ gridTemplateRows: `repeat(${slotCount(slotIntervalMinutes)}, 1fr)` }}
+        style={{ gridTemplateRows: timeSlotsFor(day, slotIntervalMinutes, hours).map((slot) => `${(slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000}fr`).join(' ') }}
       >
-        {timeSlotsFor(day, slotIntervalMinutes).map((slot) => {
+        {timeSlotsFor(day, slotIntervalMinutes, hours).map((slot) => {
           const slotKey = slot.startsAt.toISOString();
           const isInsideScheduleBlock = slotOverlapsTemplate(slot, slotTemplates);
           const slotClassName = [
@@ -1514,7 +1527,7 @@ function SchedulerDayColumn({
       {draggingAppointment && fullTargetSlot ? (
         <div
           className={restriction ? 'scheduler-drop-preview scheduler-drop-preview--invalid' : 'scheduler-drop-preview scheduler-drop-preview--valid'}
-          style={appointmentStyle({ ...draggingAppointment, scheduledAt: fullTargetSlot.startsAt.toISOString() })}
+          style={appointmentStyle({ ...draggingAppointment, scheduledAt: fullTargetSlot.startsAt.toISOString() }, hours)}
           aria-live="polite"
         >
           <span>{fullTargetSlot.startsAt.toLocaleDateString([], { weekday: 'short' })} · {formatTime(fullTargetSlot.startsAt)}–{formatTime(fullTargetSlot.endsAt)}</span>
@@ -1527,7 +1540,7 @@ function SchedulerDayColumn({
           appointment={appointment}
           appointmentTypes={appointmentTypes}
           compact={compact}
-          style={appointmentStyle(appointment)}
+          style={appointmentStyle(appointment, hours)}
           blockColor={templateForAppointment(appointment, slotTemplates)?.color ?? null}
           dragging={draggingAppointment?.id === appointment.id}
           readOnly={isPastDay}
@@ -1540,7 +1553,7 @@ function SchedulerDayColumn({
         <div
           key={`${template.id}-overlay`}
           className="scheduler-slot-template scheduler-slot-template--overlay"
-          style={slotTemplateOverlayStyle(template)}
+          style={slotTemplateOverlayStyle(template, hours)}
           aria-hidden="true"
         >
         </div>
@@ -1573,6 +1586,8 @@ function SchedulerAppointmentCard({
   onClick: () => void;
 }) {
   const careTeamMeta = appointmentCareTeamMeta(appointment);
+  const reason = appointment.reason?.trim() || configuredAppointmentTypeLabel(appointment.type, appointmentTypes);
+  const summary = `${appointmentPatientName(appointment)} · ${timeRange(appointment)} · ${reason}`;
   const color = appointmentColor(appointment, appointmentTypes);
   const cardStyle: CSSProperties = {
     ...style,
@@ -1586,6 +1601,8 @@ function SchedulerAppointmentCard({
       type="button"
       className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''} ${dragging ? 'scheduler-appointment-card--dragging' : ''} ${readOnly ? 'scheduler-appointment-card--past' : ''}`}
       style={cardStyle}
+      aria-label={summary}
+      title={summary}
       draggable={!readOnly}
       onDragStart={(event) => {
         if (readOnly) {
@@ -1612,8 +1629,9 @@ function SchedulerAppointmentCard({
       ) : null}
       <strong>{appointmentPatientName(appointment)}</strong>
       <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
-        {appointmentPrimaryMeta(appointment, appointmentTypes)}
+        {timeRange(appointment)}
       </span>
+      <span className="scheduler-appointment-card__reason">{reason}</span>
       <span className="scheduler-appointment-card__client">
         {appointmentClientName(appointment)}
       </span>

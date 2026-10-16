@@ -5,6 +5,10 @@ import type { AuthenticatedUser } from '../auth/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import {
   createDateExceptionSchema,
+  createDateExceptionsSchema,
+  createSlotTemplatesSchema,
+  type CreateDateExceptionsInput,
+  type CreateSlotTemplatesInput,
   type CreateDateExceptionInput,
   setSlotTemplateVisibilitySchema,
   updateSchedulerSettingsSchema,
@@ -38,6 +42,24 @@ export class SchedulerConfigController {
   ) {
     requireSchedulerSettingsManager(user);
     return this.schedulerConfig.createDateException(user, body);
+  }
+
+  @Post('date-exceptions/batch')
+  createDateExceptions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createDateExceptionsSchema)) body: CreateDateExceptionsInput,
+  ) {
+    requireSchedulerSettingsManager(user);
+    return this.schedulerConfig.createDateExceptions(user, body.exceptions);
+  }
+
+  @Post('slot-templates/batch')
+  createSlotTemplates(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createSlotTemplatesSchema)) body: CreateSlotTemplatesInput,
+  ) {
+    requireSchedulerSettingsManager(user);
+    return this.schedulerConfig.createSlotTemplates(user, body.templates);
   }
 
   @Delete('date-exceptions/:id')

@@ -190,3 +190,13 @@ Founder authorized completing SPA-40 and pushing/deploying staging. Includes the
 - Browser testing caught and fixed the nested hospital-save race: parent provider-save/booking actions wait until a new hospital is saved and selected. Desktop/tablet patient layout was inspected; the record-request editor uses the wider patient column.
 
 Verification before release: API unit suite 357 passed; 111 focused isolated integration checks passed on Node 24 (staging runtime), covering patients, prescriptions, appointments, operations, breeds/providers, tenant/location boundaries, retry recovery, draft editing and DOB arithmetic. A further focused API run verifies tomorrow is rejected at all three DOB write endpoints. Browser checks cover phone/address/required notes, estimated DOB and prescription capture, Admin breed edits, and the owner-to-receptionist records-task handoff. Production build and deployment results are recorded in the completion response.
+
+## SPA-42 appointment/Admin feedback — October 16
+
+Founder requested grouping Anna's seven SPA-42 findings into phases and implementing each with focused tests and Sparki's existing UI language. Task-specific groups: (1) bulk dated closures, multi-weekday availability and saved time edits; (2) calendar hours/card readability; (3) separate Age/DOB, inventory required fields/dropdowns and popup scrolling/stacking. Implementation and verification: [SPA-42 work record](../docs/research/spa42-appointment-admin-flow-2026-10-16.md). Local only; no deployment requested.
+
+SPA-42 verification: 22 focused unit tests, 76 isolated integration tests, six dedicated Chromium scenarios plus five existing browser regressions passed. API/web typechecks, focused lint and production web build passed; existing warnings remain. Desktop/tablet screenshots inspected. No commit, push or deployment.
+
+## Staging release authorization — October 16
+
+Founder requested committing all current changes, including Claude's work already in main, pushing main, and updating staging. Main matched origin/main before this release; no additional worktrees were present. The release includes SPA-42 implementation/tests/notes, comment-writing preferences and the generated default Next.js type reference. Full unit/infrastructure tests and all workspace typechecks passed; the focused integration/browser checks and web production build recorded above also passed. Deployment follows `agents/README.md`; deployed SHA and final health are reported in the release response.

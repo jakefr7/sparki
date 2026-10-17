@@ -61,18 +61,20 @@ export function SidebarNav({
   collapsed,
   onToggleCollapsed,
   communicationVisible,
+  communicationDisabled = false,
 }: {
   activeHref: DashboardRoute;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   communicationVisible: boolean;
+  communicationDisabled?: boolean;
 }) {
   return (
     <aside className="dashboard-sidebar">
       <div className="dashboard-sidebar__top">
         <Link href="/" className="dashboard-sidebar__brand" aria-label="Sparki dashboard">
-          <SparkiLogo className="dashboard-sidebar__wordmark" />
           <SparkiLogo kind="mark" className="dashboard-sidebar__paw" />
+          <SparkiLogo className="dashboard-sidebar__wordmark" />
         </Link>
         <button
           type="button"
@@ -88,7 +90,7 @@ export function SidebarNav({
         {SIDEBAR_ITEMS.filter((item) => item.href !== '/communication' || communicationVisible).map((item) => {
           const isActive = item.href === activeHref;
 
-          if (!item.href) {
+          if (!item.href || (item.href === '/communication' && communicationDisabled)) {
             return (
               <span
                 key={item.label}
@@ -273,6 +275,10 @@ export function DashboardShell({
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const communicationVisible = useCommunicationNavigation();
+  const [communicationDisabled, setCommunicationDisabled] = useState(true);
+  useLayoutEffect(() => {
+    setCommunicationDisabled(window.location.hostname === 'staging.sparki.vet');
+  }, []);
   const bootstrap = useAuthBootstrap();
   const [billing, setBilling] = useState<BillingStatus | null>(bootstrap.billing);
   const [billingError, setBillingError] = useState(false);
@@ -306,6 +312,7 @@ export function DashboardShell({
         activeHref={activeHref}
         collapsed={sidebarCollapsed}
         communicationVisible={communicationVisible}
+        communicationDisabled={communicationDisabled}
         onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
       <main className={workspace ? 'dashboard-main dashboard-main--workspace' : 'dashboard-main'}>
@@ -315,7 +322,7 @@ export function DashboardShell({
           subtitle={subtitle}
           userName={resolvedUserName}
           avatarUrl={profile?.avatarUrl}
-          avatarFallback={profileInitials}
+          avatarFallback={profileInitials ?? ''}
           initialWeather={bootstrap.weather}
           refreshing={refreshing}
           onRefresh={onRefresh}

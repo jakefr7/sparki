@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type MouseEvent } from 'react';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -12,7 +12,9 @@ export function LoginForm() {
   const [mode, setMode] = useState<Mode>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [code, setCode] = useState('');
+  const [codeDigits, setCodeDigits] = useState<string[]>(Array(6).fill(''));
+  const code = codeDigits.join('');
+  const codeInputs = useRef<Array<HTMLInputElement | null>>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -62,7 +64,7 @@ export function LoginForm() {
       }
 
       setMode(nextMode);
-      setCode('');
+      setCodeDigits(Array(6).fill(''));
       startResendCooldown();
     } catch {
       setError('Could not reach the server. Check your connection and try again.');
@@ -119,19 +121,25 @@ export function LoginForm() {
     setShowPassword((current) => !current);
   }
 
-  function switchToCodeMode() {
+  // Cancel the click default before replacing the form; method changes must never submit it.
+  function switchToCodeMode(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
     setError(null);
     setMode('code-request');
   }
 
-  function switchToPasswordMode() {
+  function switchToPasswordMode(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
     setError(null);
     setMode('password');
   }
 
   if (mode === 'code-request') {
     return (
-      <form onSubmit={handleCodeRequestSubmit} noValidate>
+      <form key="code-request" data-login-mode="code-request" onSubmit={handleCodeRequestSubmit} noValidate>
+        <p className="login-eyebrow">SIGN IN WITH EMAIL</p>
+        <h1 id="login-heading">Get a sign-in code</h1>
+        <p className="login-subtitle">We’ll email you a one-time code to sign in.</p>
         <div className="login-field">
           <label htmlFor="login-email-code">Email</label>
           <input
@@ -157,7 +165,7 @@ export function LoginForm() {
         </button>
 
         <button type="button" className="login-mode-toggle" onClick={switchToPasswordMode} disabled={submitting}>
-          ← Sign in with a password instead
+          ← Back to password sign-in
         </button>
       </form>
     );
@@ -165,26 +173,61 @@ export function LoginForm() {
 
   if (mode === 'code-verify') {
     return (
-      <form onSubmit={handleCodeVerifySubmit} noValidate>
-        <p className="login-code-hint">
+      <form key="code-verify" data-login-mode="code-verify" onSubmit={handleCodeVerifySubmit} noValidate>
+        <p className="login-eyebrow">CHECK YOUR EMAIL</p>
+        <h1 id="login-heading">Enter your code</h1>
+        <p className="login-code-hint" id="login-code-hint">
           Enter the 6-digit code we sent to <strong>{email}</strong>.
         </p>
-        <div className="login-field">
-          <label htmlFor="login-code">Sign-in code</label>
-          <input
-            id="login-code"
-            name="code"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            required
-            className="login-code-input"
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-            disabled={submitting}
-          />
-        </div>
+        <fieldset className="login-field login-code-field" aria-describedby="login-code-hint">
+          <legend>Sign-in code</legend>
+          <div className="login-code-digits">
+            {Array.from({ length: 6 }, (_, index) => (
+              <input
+                key={index}
+                ref={(element) => { codeInputs.current[index] = element; }}
+                aria-label={`Digit ${index + 1} of 6`}
+                aria-invalid={Boolean(error)}
+                type="text"
+                inputMode="numeric"
+                autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                autoFocus={index === 0}
+                className="login-code-digit"
+                value={codeDigits[index]}
+                onFocus={(event) => event.target.select()}
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, '');
+                  if (digits.length > 1) {
+                    const next = digits.slice(0, 6);
+                    setCodeDigits(Array.from({ length: 6 }, (_, position) => next[position] ?? ''));
+                    codeInputs.current[Math.min(next.length, 5)]?.focus();
+                  } else {
+                    setCodeDigits((current) => current.map((digit, position) => position === index ? digits : digit));
+                    if (digits) codeInputs.current[Math.min(index + 1, 5)]?.focus();
+                  }
+                }}
+                onPaste={(event) => {
+                  event.preventDefault();
+                  const digits = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                  if (!digits) return;
+                  setCodeDigits(Array.from({ length: 6 }, (_, position) => digits[position] ?? ''));
+                  codeInputs.current[Math.min(digits.length, 5)]?.focus();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Backspace' && !codeDigits[index] && index > 0) {
+                    event.preventDefault();
+                    setCodeDigits((current) => current.map((digit, position) => position === index - 1 ? '' : digit));
+                    codeInputs.current[index - 1]?.focus();
+                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    codeInputs.current[Math.max(0, Math.min(5, index + (event.key === 'ArrowLeft' ? -1 : 1)))]?.focus();
+                  }
+                }}
+                disabled={submitting}
+              />
+            ))}
+          </div>
+        </fieldset>
 
         {error && (
           <p className="login-error" role="alert">
@@ -198,7 +241,7 @@ export function LoginForm() {
 
         <div className="login-code-actions">
           <button type="button" className="login-mode-toggle" onClick={switchToPasswordMode} disabled={submitting}>
-            Use a different sign-in method
+            ← Back to password sign-in
           </button>
           <button
             type="button"
@@ -214,7 +257,10 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handlePasswordSubmit} noValidate>
+    <form key="password" data-login-mode="password" onSubmit={handlePasswordSubmit} noValidate>
+      <p className="login-eyebrow">WELCOME BACK</p>
+      <h1 id="login-heading">Sign in</h1>
+      <p className="login-subtitle">Pick up where your clinic left off.</p>
       <div className="login-field">
         <label htmlFor="login-email">Email</label>
         <input
@@ -284,9 +330,12 @@ export function LoginForm() {
         {submitting ? 'Signing in...' : 'Sign in'}
       </button>
 
-      <button type="button" className="login-mode-toggle" onClick={switchToCodeMode} disabled={submitting}>
-        Sign in with an email code instead
-      </button>
+      <p className="login-code-option">
+        Sign in with a{' '}
+        <button type="button" className="login-code-link" aria-label="Sign in with a one-time code" onClick={switchToCodeMode} disabled={submitting}>
+          one-time code
+        </button>
+      </p>
     </form>
   );
 }

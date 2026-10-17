@@ -4769,21 +4769,20 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  padding: 2rem clamp(1.25rem, 5vw, 5rem);
+  padding: 7rem clamp(1.25rem, 5vw, 5rem) 2rem;
   background: radial-gradient(ellipse at 15% 50%, #e7f4f2 0, transparent 60%), #f7fbfb;
   color: #172633;
   color-scheme: light;
 }
 
-.login-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.login-header .login-brand { margin: 0; text-decoration: none; }
-.login-back { color: #667586; font-size: .85rem; text-decoration: none; }
-.login-back:hover { color: #176f69; }
-.login-content { flex: 1; width: 100%; max-width: 65rem; margin: 4rem auto; display: grid; grid-template-columns: 1fr 25rem; align-items: center; gap: 5rem; }
-.login-eyebrow { margin: 0 0 1.25rem; color: #176f69; font-size: .7rem; font-weight: 700; letter-spacing: .15em; }
+.login-content { flex: 1; width: 100%; max-width: 28rem; margin: 3rem auto; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; }
+.login-content:has([data-login-mode="password"]) { max-width: 65rem; grid-template-columns: minmax(0, 1fr) 25rem; gap: 5rem; }
+.login-intro { display: none; }
+.login-content:has([data-login-mode="password"]) .login-intro { display: block; }
 .login-intro h2 { margin: 0 0 1.5rem; font-size: clamp(2.8rem, 5vw, 4.5rem); line-height: 1.05; font-weight: 550; letter-spacing: -.055em; }
 .login-intro h2 span { color: #71818b; }
 .login-intro > p:last-child { color: #667586; font-size: 1rem; line-height: 1.8; }
+.login-eyebrow { margin: 0 0 1.25rem; color: #176f69; font-size: .7rem; font-weight: 700; letter-spacing: .15em; }
 .login-footer { text-align: center; font-size: .8rem; color: #667586; }
 .login-card {
   width: 100%;
@@ -4795,7 +4794,8 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 }
 .login-card .login-eyebrow { margin-bottom: .8rem; }
 @media (max-width: 760px) {
-  .login-content { max-width: 25rem; grid-template-columns: minmax(0, 1fr); gap: 2rem; margin: 2.5rem auto; }
+  .login-content { margin: 2rem auto; }
+  .login-content:has([data-login-mode="password"]) { max-width: 28rem; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
   .login-intro { text-align: center; }
   .login-intro h2 { font-size: 2.6rem; margin-bottom: .75rem; }
   .login-intro > .login-eyebrow { display: none; }
@@ -4951,6 +4951,12 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 .login-mode-toggle:disabled { cursor: not-allowed; opacity: .6; }
 .login-mode-toggle:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
 
+.login-code-option { margin: 1rem 0 0; color: #667586; font-size: .85rem; text-align: center; }
+.login-code-link { padding: 0; border: 0; background: none; color: #176f69; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: .2em; cursor: pointer; }
+.login-code-link:hover { color: #125d58; }
+.login-code-link:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 4px; border-radius: 2px; }
+.login-code-link:disabled { opacity: .6; cursor: not-allowed; }
+
 .login-code-hint {
   margin: 0 0 1.1rem;
   color: #667586;
@@ -4962,16 +4968,34 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   display: flex;
   justify-content: space-between;
   gap: .5rem;
+  flex-wrap: wrap;
 }
 .login-code-actions .login-mode-toggle { width: auto; margin-top: .85rem; }
 
-.login-code-input {
-  font-size: 1.5rem !important;
-  font-weight: 700;
-  letter-spacing: .5em;
+.login-code-field { border: 0; padding: 0; min-width: 0; }
+.login-code-field legend { padding: 0; margin-bottom: .65rem; font-size: .9rem; font-weight: 600; }
+.login-code-digits { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.login-code-digits .login-code-digit {
+  width: 100%;
+  min-width: 0;
+  height: 3.5rem;
+  padding: .25rem;
+  border: 1px solid #d5e3e4;
+  border-radius: .65rem;
+  background: #f7fbfb;
+  font-size: 1.5rem;
+  font-weight: 600;
   text-align: center;
-  font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
+  transition: border-color .15s, box-shadow .15s, background .15s;
 }
+.login-code-digits .login-code-digit:focus-visible {
+  outline: 2px solid #176f69;
+  outline-offset: 2px;
+  border-color: #176f69;
+  background: #fff;
+  box-shadow: 0 0 0 4px #176f6910;
+}
+.login-code-digits .login-code-digit[aria-invalid="true"] { border-color: #b54747; }
 
 .login-page .login-submit {
   display: flex;
@@ -5087,7 +5111,7 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
 .dashboard-sidebar__brand {
   display: inline-flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 10px;
   min-width: 0;
   padding: 0.35rem 0.45rem;
   color: var(--text-primary);
@@ -5108,16 +5132,9 @@ body:has(.messaging-drawer) .inventory { padding-bottom: min(44rem, 72vh); }
   box-shadow: 0 10px 22px rgba(31, 169, 160, 0.22);
 }
 
-.dashboard-sidebar__paw {
-  display: none;
-}
-
+/* Paw then wordmark, matching the public header; collapsed keeps the paw. */
 .dashboard-shell--sidebar-collapsed .dashboard-sidebar__wordmark {
   display: none;
-}
-
-.dashboard-shell--sidebar-collapsed .dashboard-sidebar__paw {
-  display: block;
 }
 
 .dashboard-sidebar__toggle {
@@ -8852,7 +8869,8 @@ img.pet-photo-placeholder {
 }
 
 .scheduler-time-column span:first-child {
-  padding-top: 0.45rem;
+  padding-top: 0;
+  line-height: 1;
   transform: none;
 }
 
@@ -14053,10 +14071,8 @@ button.settings-nav__sign-out:hover {
 .scheduler-calendar-zoom .scheduler-week__body,
 .scheduler-calendar-zoom .scheduler-day-column { min-height: var(--scheduler-grid-height, 54rem); }
 .scheduler-time-column span { color: #6e8090; font-size: .7rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.scheduler-time-column__half, .scheduler-time-column__quarter { visibility: hidden; }
-.scheduler-calendar-zoom--detail .scheduler-time-column__half,
-.scheduler-calendar-zoom--close .scheduler-time-column__half { visibility: visible; color: #91a0a9; font-size: .62rem; font-weight: 500; }
-.scheduler-calendar-zoom--close .scheduler-time-column__quarter { visibility: visible; color: #a3afb7; font-size: .58rem; font-weight: 500; }
+.scheduler-time-column .scheduler-time-column__half { color: #91a0a9; font-size: .62rem; font-weight: 500; }
+.scheduler-time-column .scheduler-time-column__quarter { color: #a3afb7; font-size: .58rem; font-weight: 500; }
 .scheduler-day-column--past { background: repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / var(--scheduler-hour-count, 12)) - 1px), rgba(205, 218, 223, .52) calc((100% / var(--scheduler-hour-count, 12)) - 1px), rgba(205, 218, 223, .52) calc(100% / var(--scheduler-hour-count, 12))), repeating-linear-gradient(to bottom, transparent 0, transparent calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc((100% / var(--scheduler-slot-count, 24)) - 1px), rgba(229, 237, 240, .44) calc(100% / var(--scheduler-slot-count, 24))), #fafbfc; }
 @media (min-width: 901px) {
   .scheduler-page > .scheduler-calendar-zoom { flex: 1 1 auto; min-height: 0; overflow: hidden; }
@@ -14350,3 +14366,42 @@ button.settings-nav__sign-out:hover {
 .admin-settings .date-exceptions-editor .weekday-picker { display: block; padding: .8rem; border: 1px solid var(--border); }
 .admin-settings .date-exceptions-editor .weekday-picker legend { padding: 0 .3rem; font-size: .78rem; }
 .admin-settings .date-exceptions-editor .weekday-picker__days label { display: flex; align-items: center; gap: .35rem; }
+
+
+/* Appointment cards stay inside their actual slot, including busy quarter hours. */
+.scheduler-week__body .scheduler-appointment-card {
+  min-height: 0;
+  padding: .2rem .4rem;
+  gap: .1rem;
+  border-left-width: 3px;
+  border-radius: .35rem;
+  box-shadow: 0 1px 3px #1f364610;
+}
+.scheduler-week__body .scheduler-appointment-card > strong {
+  width: 100%;
+  font-size: .76rem;
+  line-height: 1.15;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.scheduler-week__body .scheduler-appointment-card__type {
+  display: block;
+  width: 100%;
+  font-size: .65rem;
+  line-height: 1.15;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #506372;
+}
+.scheduler-week__body .scheduler-appointment-card--brief {
+  flex-direction: row;
+  align-items: center;
+  gap: .3rem;
+  padding-block: 0;
+}
+.scheduler-week__body .scheduler-appointment-card--brief > strong { width: auto; max-width: 50%; flex: 0 1 auto; }
+.scheduler-week__body .scheduler-appointment-card--brief .scheduler-appointment-card__type { width: auto; min-width: 0; flex: 1; }
+.scheduler-week__body .scheduler-appointment-card__drag { display: none; }

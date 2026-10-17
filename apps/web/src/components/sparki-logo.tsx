@@ -19,8 +19,8 @@ export function SparkiLogo({
       src={isMark ? mark.src : wordmark.src}
       alt=""
       aria-hidden="true"
-      width={isMark ? 745 : 870}
-      height={isMark ? 775 : 341}
+      width={isMark ? 32 : 87}
+      height={isMark ? 32 : 34}
       className={[styles.image, isMark ? styles.mark : styles.wordmark, className].filter(Boolean).join(' ')}
     />
   );

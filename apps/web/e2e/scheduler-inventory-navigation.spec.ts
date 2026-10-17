@@ -6,7 +6,7 @@ test('scheduler changes date, zooms to 15-minute slots, and picks up an external
   await expect(page.getByRole('status').filter({ hasText: 'Live · Updated' })).toBeVisible();
   await page.setViewportSize({ width: 1600, height: 900 });
   await expect.poll(() => page.locator('.scheduler-toolbar').evaluate((node) => node.getBoundingClientRect().height)).toBeLessThan(64);
-  await expect(page.locator('.scheduler-time-column__quarter').first()).toBeHidden();
+  await expect(page.locator('.scheduler-time-column__quarter').first()).toBeVisible();
   await page.screenshot({ path: '/tmp/sparki-toolbar-compact.png' });
   const nowLabel = page.locator('.scheduler-now-indicator__label');
   await expect(nowLabel).toBeVisible();

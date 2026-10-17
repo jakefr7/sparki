@@ -4,3 +4,17 @@
 .dashboard-header__avatar,.messaging-avatar,.team-message-avatar,.team-nav-item__avatar,.team-context-person>span,.team-avatar-stack i,.profile-photo,.profile-photo-control .patient-photo-control__avatar-button{border-radius:10px!important}.team-avatar-stack i{border-radius:5px!important}.profile-photo,.profile-photo-control .patient-photo-control__avatar-button{border-radius:16px!important}
 
 .dashboard-header{position:relative;z-index:100}.dashboard-header__tools,.dashboard-header__context{position:relative;z-index:101;overflow:visible!important}.dashboard-header__user{position:relative;align-self:stretch;cursor:default}
+
+/* Keep short display names compact without shifting the avatar away from the divider. */
+.dashboard-header__user {
+  min-width: 0;
+  justify-content: flex-start;
+}
+.dashboard-header__user span { margin-top: 0; }
+.dashboard-header__user-copy strong {
+  display: block;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

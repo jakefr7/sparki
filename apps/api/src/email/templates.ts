@@ -1,6 +1,6 @@
 import type { EmailAttachment } from './email.service';
-import { codeBlock, emailButton, emailLayout, escapeHtml, LOGO_CONTENT_ID } from './email-layout';
-import { SPARKI_WORDMARK_PNG_BASE64 } from './sparki-logo-base64';
+import { codeBlock, emailButton, emailLayout, escapeHtml, LOGO_CONTENT_ID, MARK_CONTENT_ID } from './email-layout';
+import { SPARKI_WORDMARK_PNG_BASE64, SPARKI_MARK_PNG_BASE64 } from './sparki-logo-base64';
 
 export interface RenderedEmail {
   subject: string;
@@ -15,6 +15,12 @@ const LOGO_ATTACHMENT: EmailAttachment = {
   filename: 'sparki-wordmark.png',
   content: SPARKI_WORDMARK_PNG_BASE64,
   contentId: LOGO_CONTENT_ID,
+};
+
+const MARK_ATTACHMENT: EmailAttachment = {
+  filename: 'sparki-mark.png',
+  content: SPARKI_MARK_PNG_BASE64,
+  contentId: MARK_CONTENT_ID,
 };
 
 function formatRole(role: string): string {
@@ -43,7 +49,7 @@ export function ownerActivationEmail(opts: { clinicName: string; link: string; e
       footerNote: `This link expires in ${opts.expiresInDays} days.`,
     }),
     text: `Your Sparki subscription is confirmed. Follow the link below to create your account and finish setting up ${opts.clinicName}.\n\n${opts.link}\n\nThis link expires in ${opts.expiresInDays} days.`,
-    attachments: [LOGO_ATTACHMENT],
+    attachments: [MARK_ATTACHMENT, LOGO_ATTACHMENT],
   };
 }
 
@@ -72,7 +78,7 @@ export function staffInvitationEmail(opts: {
       footerNote: `This link expires in ${opts.expiresInDays} days.`,
     }),
     text: `${opts.invitedByName ?? 'A teammate'} invited you to join ${opts.clinicName} on Sparki as a ${roleLabel}.\n\n${opts.link}\n\nThis link expires in ${opts.expiresInDays} days.`,
-    attachments: [LOGO_ATTACHMENT],
+    attachments: [MARK_ATTACHMENT, LOGO_ATTACHMENT],
   };
 }
 
@@ -92,6 +98,6 @@ export function signInCodeEmail(opts: { code: string; expiresInMinutes: number }
       footerNote: `This code expires in ${opts.expiresInMinutes} minutes. If you didn't request this, you can ignore this email.`,
     }),
     text: `Your Sparki sign-in code is: ${opts.code}\n\nThis code expires in ${opts.expiresInMinutes} minutes. If you didn't request this, you can ignore this email.`,
-    attachments: [LOGO_ATTACHMENT],
+    attachments: [MARK_ATTACHMENT, LOGO_ATTACHMENT],
   };
 }

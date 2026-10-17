@@ -831,7 +831,8 @@ export function SparkiCanvas({
         <aside className={s.sidebar}>
           <div className={s.sidebarTop}>
             <span className={s.brand} role="img" aria-label="Sparki">
-              <SparkiLogo />
+              <SparkiLogo kind="mark" />
+              <SparkiLogo kind="wordmark" />
             </span>
             <span className={s.collapse}>‹</span>
           </div>

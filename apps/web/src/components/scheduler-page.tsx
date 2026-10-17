@@ -243,17 +243,6 @@ function appointmentProviderName(appointment: SchedulerAppointment): string | nu
   return appointment.provider?.displayName ?? null;
 }
 
-function appointmentCareTeamMeta(appointment: SchedulerAppointment): string | null {
-  const parts: string[] = [];
-  const provider = appointmentProviderName(appointment);
-  if (provider) {
-    parts.push(provider);
-  }
-  if (appointment.room) {
-    parts.push(appointment.room);
-  }
-  return parts.length > 0 ? parts.join(' · ') : null;
-}
 
 function isHexColor(value: string | null | undefined): value is string {
   return Boolean(value && /^#[0-9A-Fa-f]{6}$/.test(value));
@@ -299,7 +288,7 @@ function appointmentStyle(appointment: SchedulerAppointment, hours: CalendarHour
   const total = (hours.end - hours.start) * 60;
   return {
     top: `${(minutes / total) * 100}%`,
-    height: `${(duration / total) * 100}%`,
+    height: `calc(${(duration / total) * 100}% - 2px)`,
   };
 }
 
@@ -603,11 +592,7 @@ export function SchedulerPage() {
     };
   }, [days, loadSchedulerData, loading]);
 
-  const visibleSlotMinutes = zoom === 'close'
-    ? Math.min(schedulerConfig.settings.slotIntervalMinutes, 15)
-    : zoom === 'detail'
-      ? Math.min(schedulerConfig.settings.slotIntervalMinutes, 30)
-      : schedulerConfig.settings.slotIntervalMinutes;
+  const visibleSlotMinutes = Math.min(schedulerConfig.settings.slotIntervalMinutes, 15);
 
   const filteredAppointments = useMemo(
     () =>
@@ -1567,9 +1552,10 @@ function SchedulerAppointmentCard({
   onDragEnd: () => void;
   onClick: () => void;
 }) {
-  const careTeamMeta = appointmentCareTeamMeta(appointment);
-  const reason = appointment.reason?.trim() || configuredAppointmentTypeLabel(appointment.type, appointmentTypes);
-  const summary = `${appointmentPatientName(appointment)} · ${timeRange(appointment)} · ${reason}`;
+  const typeLabel = appointmentTypes.find((setting) => setting.id === appointment.appointmentTypeSettingId)?.name
+    ?? configuredAppointmentTypeLabel(appointment.type, appointmentTypes);
+  const duration = appointment.expectedDurationMinutes ?? 0;
+  const summary = `${appointmentPatientName(appointment)} · ${timeRange(appointment)} · ${typeLabel}`;
   const color = appointmentColor(appointment, appointmentTypes);
   const cardStyle: CSSProperties = {
     ...style,
@@ -1581,7 +1567,7 @@ function SchedulerAppointmentCard({
   return (
     <button
       type="button"
-      className={`scheduler-appointment-card ${compact ? 'scheduler-appointment-card--compact' : ''} ${dragging ? 'scheduler-appointment-card--dragging' : ''} ${readOnly ? 'scheduler-appointment-card--past' : ''}`}
+      className={`scheduler-appointment-card ${duration < 30 ? 'scheduler-appointment-card--brief' : ''} ${compact ? 'scheduler-appointment-card--compact' : ''} ${dragging ? 'scheduler-appointment-card--dragging' : ''} ${readOnly ? 'scheduler-appointment-card--past' : ''}`}
       style={cardStyle}
       aria-label={summary}
       title={summary}
@@ -1610,23 +1596,10 @@ function SchedulerAppointmentCard({
         </span>
       ) : null}
       <strong>{appointmentPatientName(appointment)}</strong>
-      <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
+      <span className="scheduler-appointment-card__type">{typeLabel}</span>
+      {duration >= 45 && <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--primary">
         {timeRange(appointment)}
-      </span>
-      <span className="scheduler-appointment-card__reason">{reason}</span>
-      <span className="scheduler-appointment-card__client">
-        {appointmentClientName(appointment)}
-      </span>
-      {careTeamMeta ? (
-        <span className="scheduler-appointment-card__meta scheduler-appointment-card__meta--care-team">
-          {careTeamMeta}
-        </span>
-      ) : null}
-      {!compact && (
-        <small className="scheduler-appointment-card__status">
-          {STATUS_LABELS[appointment.state] ?? appointment.state}
-        </small>
-      )}
+      </span>}
     </button>
   );
 }

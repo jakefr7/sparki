@@ -17,7 +17,7 @@ export default function BillingRequiredPage() {
   useEffect(() => { clinicRequest<BillingStatus>('/clinic/billing').then(setBilling).catch(() => setError(true)); }, []);
   useEffect(() => { if (billing && !billing.isRestricted) window.location.assign('/today'); }, [billing]);
   const message = billing?.subscriptionStatus && billing.subscriptionStatus in copy ? copy[billing.subscriptionStatus as keyof typeof copy] : null;
-  return <main className="clinic-access"><section className="clinic-access__panel"><Link href="/" className="clinic-access__brand" aria-label="Sparki home"><SparkiLogo /></Link>
+  return <main className="clinic-access"><section className="clinic-access__panel"><Link href="/" className="clinic-access__brand" aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
     {error ? <><h1>We couldn’t check your clinic’s status</h1><p>Try refreshing this page.</p><button className="button-secondary" onClick={() => window.location.reload()}>Try again</button></> : !billing ? <p role="status">Checking your clinic…</p> : message ? <><h1>{message[0]}</h1><p>{message[1]}</p><button className="button-secondary" onClick={() => window.location.reload()}>Check again</button></> : <p role="status">Opening Sparki…</p>}
   </section></main>;
 }

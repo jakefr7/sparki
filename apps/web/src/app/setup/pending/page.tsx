@@ -89,7 +89,7 @@ export default function PendingSetupPage() {
 
   return <div className={s.page}>
     <header className={s.header}>
-      <Link href="/" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link>
+      <Link href="/" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
       <Link href="/pricing" className={s.headerLink}>Back to pricing <span aria-hidden="true">↗</span></Link>
     </header>
 

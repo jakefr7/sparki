@@ -13,6 +13,8 @@ import { MANAGE_ADMIN_SETTINGS } from '../../lib/permissions';
 
 type TabId = 'profile' | 'appearance' | 'admin' | 'team' | 'texts';
 
+const SHOW_LOCAL_APPEARANCE = process.env.NODE_ENV === 'development';
+
 export default function SettingsPage() {
   const { user, loading } = useCurrentUser();
   const isAdmin = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
@@ -62,7 +64,7 @@ export default function SettingsPage() {
         <nav aria-label="Settings sections">
           <ul className="settings-nav">
             <li><button type="button" className={activeTab === 'profile' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'profile' ? 'page' : undefined} onClick={() => setActiveTab('profile')}>Profile</button></li>
-            <li>
+            {SHOW_LOCAL_APPEARANCE && <li>
               <button
                 type="button"
                 className={
@@ -75,7 +77,7 @@ export default function SettingsPage() {
               >
                 Appearance
               </button>
-            </li>
+            </li>}
             {canManageTeam ? <li><button type="button" className={activeTab === 'team' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'team' ? 'page' : undefined} onClick={() => setActiveTab('team')}>Team</button></li> : null}
             {canManageTeam && <li><button type="button" className={activeTab === 'texts' ? 'settings-nav__item settings-nav__item--active' : 'settings-nav__item'} aria-current={activeTab === 'texts' ? 'page' : undefined} onClick={() => { setTextsVisited(true); setActiveTab('texts'); }}>Appointment texts</button></li>}
             {isAdmin ? (
@@ -105,7 +107,7 @@ export default function SettingsPage() {
         <div className="settings-sections-stack">
           {textsVisited && canManageTeam && <div hidden={activeTab !== 'texts'}><AppointmentTextSettings /></div>}
           {activeTab === 'profile' && <ProfileSection />}
-          {activeTab === 'appearance' && <AppearanceSection />}
+          {SHOW_LOCAL_APPEARANCE && activeTab === 'appearance' && <AppearanceSection />}
           {activeTab === 'admin' && isAdmin && <AdminSection />}
           {activeTab === 'team' && canManageTeam && user && <TeamSection user={user} />}
         </div>

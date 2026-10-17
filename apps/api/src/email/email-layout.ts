@@ -1,6 +1,6 @@
 /**
  * Shared HTML primitives for Sparki's transactional email — one visual
- * system (wordmark, card, hero, button, footer) reused by every email
+ * system (paw and wordmark, card, hero, button, footer) reused by every email
  * Sparki sends, so a clinic recognizes Sparki mail on sight. Colors mirror
  * the web app's light-theme palette (apps/web/src/app/globals.css: the
  * `--accent`/login-brand teal), not any client's own branding.
@@ -16,6 +16,7 @@
  * plain data: URI doesn't work here.
  */
 export const LOGO_CONTENT_ID = 'sparki-wordmark';
+export const MARK_CONTENT_ID = 'sparki-mark';
 
 const COLOR = {
   text: '#172633',
@@ -97,16 +98,18 @@ ${preheader}
     <td align="center">
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">
 
-        <!-- Wordmark — sent as a cid: inline attachment (see
-             LOGO_CONTENT_ID above and EmailAttachment.contentId), not a
-             URL or a data: URI: a URL to a local dev server is
-             unreachable from Gmail's infrastructure, and Gmail's web/
-             mobile client separately blocks inline base64 images
-             outright. Same proportions as sparki-logo.tsx's "wordmark"
-             kind (34px tall, here at 2x). -->
+        <!-- Inline brand attachments keep the paw and wordmark available
+             without relying on remote image hosting. Paw first, then the
+             wordmark, at the public header's sizes (32px paw, 34px
+             wordmark, 10px apart). -->
         <tr>
-          <td style="padding-bottom:24px;text-align:center;">
-            <img src="cid:${LOGO_CONTENT_ID}" width="87" height="34" alt="Sparki" style="display:inline-block;border:0;outline:none;text-decoration:none;" />
+          <td align="center" style="padding-bottom:24px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" align="center">
+              <tr>
+                <td style="vertical-align:middle;padding-right:10px;"><img src="cid:${MARK_CONTENT_ID}" width="31" height="32" alt="" style="display:block;border:0;outline:none;" /></td>
+                <td style="vertical-align:middle;"><img src="cid:${LOGO_CONTENT_ID}" width="87" height="34" alt="Sparki" style="display:block;border:0;outline:none;text-decoration:none;" /></td>
+              </tr>
+            </table>
           </td>
         </tr>
 

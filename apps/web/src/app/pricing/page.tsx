@@ -194,6 +194,6 @@ export default function PricingPage() {
         </section>
       </>}
     </main>
-    <footer className={s.footer}><Link href="/" className={s.brand} aria-label="Sparki home"><SparkiLogo /></Link><span>Built for the people who care.</span><div><Link href="/#product">Product</Link><Link href="/pricing">Pricing</Link><Link href="/login">Sign In</Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
+    <footer className={s.footer}><Link href="/" className={s.brand} aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link><span>Built for the people who care.</span><div><Link href="/#product">Product</Link><Link href="/pricing">Pricing</Link><Link href="/login">Sign In</Link><span>© {new Date().getFullYear()} Sparki</span></div></footer>
   </div>;
 }

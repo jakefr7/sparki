@@ -53,7 +53,7 @@ export default function InvitationPage() {
     }
   }
   const inactive = invite && invite.status !== 'PENDING' ? stateCopy[invite.status] : null;
-  return <main className="clinic-access"><section className="clinic-access__panel"><Link className="clinic-access__brand" href="/" aria-label="Sparki home"><SparkiLogo /></Link>
+  return <main className="clinic-access"><section className="clinic-access__panel"><Link className="clinic-access__brand" href="/" aria-label="Sparki home"><SparkiLogo kind="mark" /><SparkiLogo kind="wordmark" /></Link>
     {loading ? <p role="status">Loading your invitation…</p> : inactive ? <><h1>{inactive[0]}</h1><p>{inactive[1]}</p><Link href="/login" className="button-primary">Sign in</Link></> : invite ? <>
       <p className="eyebrow">{invite.isOwnerFounding ? 'Your clinic is ready' : 'Join your clinic'}</p>
       <h1>{invite.isOwnerFounding ? 'Welcome to Sparki' : `You’ve been invited to ${invite.clinicName}`}</h1>

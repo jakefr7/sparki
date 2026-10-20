@@ -14175,9 +14175,32 @@ button.settings-nav__sign-out:hover {
   .settings-page--admin .settings-nav { width: 100%; box-sizing: border-box; }
 }
 
-.new-appointment-setup-message { padding: 1.25rem; color: var(--text-primary); line-height: 1.6; }
-.new-appointment-setup-message p { margin: 0 0 1rem; }
-.new-appointment-setup-message .scheduler-primary-action { text-decoration: none; text-align: center; }
+.scheduler-modal.scheduler-modal--appointment-setup { width: min(34rem, 100%); padding: 1.5rem; border-radius: 1.25rem; border-top: 4px solid #1fa9a0; box-sizing: border-box; }
+.scheduler-modal--appointment-setup .scheduler-modal__header { align-items: flex-start; gap: .85rem; margin-bottom: 1rem; }
+.scheduler-modal--appointment-setup .scheduler-modal__header > div { flex: 1; min-width: 0; }
+.scheduler-modal--appointment-setup .scheduler-modal__header h2 { font-size: 1.2rem; line-height: 1.35; letter-spacing: -.025em; }
+.scheduler-modal--appointment-setup .scheduler-modal__header > button { flex-shrink: 0; }
+.appointment-setup-icon { display: grid; place-items: center; flex-shrink: 0; width: 2.65rem; height: 2.65rem; border: 1px solid #d3eae6; border-radius: .8rem; color: #168b83; background: #eaf8f5; }
+.appointment-setup-icon svg { width: 1.4rem; height: 1.4rem; }
+.new-appointment-setup-message { color: #667586; font-size: .9rem; line-height: 1.6; }
+.new-appointment-setup-message p { margin: 0; }
+.appointment-setup-guide { margin: 1.15rem 0; padding: 1rem; border: 1px solid #d8e9e6; border-radius: .8rem; background: #f5faf9; }
+.appointment-setup-guide__label { color: #267d76; font-size: .75rem; font-weight: 750; }
+.appointment-setup-guide__label span { padding: 0 .35rem; color: #86aaa5; }
+.appointment-setup-guide ol { display: grid; gap: .65rem; margin: .85rem 0 0; padding: 0; list-style: none; counter-reset: setup; color: #172633; font-size: .85rem; }
+.appointment-setup-guide li { display: flex; align-items: center; gap: .65rem; counter-increment: setup; }
+.appointment-setup-guide li::before { content: counter(setup); display: grid; place-items: center; flex-shrink: 0; width: 1.4rem; height: 1.4rem; border-radius: 50%; background: #e0efec; color: #267d76; font-size: .7rem; font-weight: 750; }
+.new-appointment-setup-message .scheduler-modal__actions { justify-content: flex-end; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #e5eeed; }
+.new-appointment-setup-message .scheduler-primary-action { background: #1fa9a0; border-color: #1fa9a0; color: white; text-decoration: none; text-align: center; }
+.new-appointment-setup-message .scheduler-primary-action:hover { background: #178d85; border-color: #178d85; }
+.new-appointment-setup-message .scheduler-secondary-action { min-height: 2.25rem; padding: 0 .85rem; border: 1px solid #dce8eb; border-radius: .55rem; color: #526873; background: white; font: inherit; font-weight: 650; cursor: pointer; }
+@media (max-width: 480px) {
+  .scheduler-modal.scheduler-modal--appointment-setup { padding: 1.1rem; }
+  .scheduler-modal--appointment-setup .scheduler-modal__header { gap: .6rem; }
+  .scheduler-modal--appointment-setup .scheduler-modal__header h2 { font-size: 1.05rem; }
+  .appointment-setup-icon { width: 2.25rem; height: 2.25rem; }
+  .new-appointment-setup-message .scheduler-modal__actions > * { flex: 1; }
+}
 
 /* Shared date of birth / estimated age entry (SPA-40). */
 .dob-field {

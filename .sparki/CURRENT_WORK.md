@@ -1,5 +1,27 @@
 # Current Work
 
+## Follow-up staging release — October 19
+
+Founder requested GitHub push and staging deployment of the appointment start timing, profile-photo upload and appointment setup popup changes. Release uses the documented SSH deployment; separate demo scripts and demo notes remain local. Existing focused checks passed; combined production build and deployed health are verified during release.
+
+## Start appointments outside their booked date/time — October 19
+
+Founder explicitly approved starting appointments regardless of the scheduled time or calendar date. Removed the historical-day gate only for arrival, keeping lifecycle/role/tenant checks and historical booking edits intact. Scheduler details now expose Begin Intake for existing clinical roles or Check In for reception/management, including past/future appointments. Original scheduledAt stays unchanged. Today combines active visits with visits attached to today's bookings or begun today; visits booked on a different day show actual visit creation time.
+
+Verification: 79 isolated appointment/Operations integration checks pass, including real arrival → visit creation → intake three days before/after the booked date, unchanged scheduledAt and dashboard inclusion. Three Chromium popup-action regressions pass with mocked API responses for veterinarian/technician/receptionist (destination workspace itself is outside that mock). API/web typechecks and focused lint pass with existing scheduler unused-variable warnings. An initial fixture cleanup FK failure and incomplete browser profile fixture were corrected and rerun. No schema change, commit, push or staging deployment.
+
+## Settings profile-photo upload fix — October 19
+
+Founder reported Settings profile-photo uploads not working. Confirmed the production static-file failure locally using the installed Next.js filesystem checker: an existing public file resolves, but a file written after initialization does not. Staging read-only inspection found uploaded files and no permission error; no photo was viewed or staging data changed.
+
+Local implementation moves new profile photos to existing attachment/object storage and an authenticated, current-avatar content endpoint. Content is private/no-store, checks current clinic/location visibility and stops serving replaced/removed URLs. Upload/removal only change avatarUrl; identity/contact drafts stay intact. Validate image signatures/size; recover from network/non-JSON errors and always release upload/save controls. Existing legacy public uploads remain untouched. No schema migration, commit, push or deployment. Verification results follow in the completion response.
+
+Verified: four isolated profile-avatar integration tests plus five existing patient-photo tests pass; real Chromium upload/retry/remove/reload/draft-preservation and existing header-profile scenarios pass. Production static-file failure reproduced with the installed Next.js checker. API/web typechecks, focused lint (existing image warning) and full production build pass. New image route appears in the production manifest. Staging upload/display acceptance remains pending deployment; read-only staging inspection changed no records or files.
+
+## Appointment setup popup visual refinement — October 19
+
+Founder requested Sparki styling for the empty-appointment-type popup from a staging screenshot. Local change uses a dedicated compact dialog, teal calendar accent and primary settings action, a short numbered setup guide, and responsive footer controls. Added links to the shared appointment dialog's keyboard focus loop so the Admin shortcut stays inside the modal. Setup visibility, permission checks and settings destination are unchanged. Desktop/mobile screenshots inspected; three isolated Chromium setup/permissions/retry scenarios, web typecheck and focused lint pass. No commit/push/deployment requested.
+
 ## SPA-44 testing feedback — October 19
 
 Founder requested phases and local remediation of Anna's seven findings. [Work plan and evidence](../docs/research/spa44-testing-feedback-2026-10-19.md): (1) failed booking/inventory saves and address selection; (2) hospital editor and phone display; (3) doctor selection and refill workflow. Founder subsequently approved veterinarian creation/rescheduling/confirmation/cancellation; implement and verify that bounded permission change. Preserve existing demo work. No deployment or staging changes.
@@ -9,6 +31,8 @@ Local increment: actionable booking errors, exact price-input normalization (rea
 Approved permission follow-up: veterinarians can create existing/new-patient appointments, reschedule, confirm/update confirmation status and cancel. Other appointment actions, scheduler configuration and Admin permissions retain their previous checks. Updated scheduling spec and DECISIONS. Verification: 23 focused authorization tests, 67 isolated appointment integration tests and the real-UI veterinarian booking/API management Chromium regression pass; API typecheck and focused lint pass. A Next Available click-before-load timing issue was observed and logged separately. No commit/push/deployment.
 
 Founder subsequently requested deploying these SPA-44 changes to staging. Release includes the ticket's application changes/tests/spec/decision/work record; separate demo seed scripts and demo testing notes remain local. Deployment follows agents/README.md; final deployed SHA and health are reported in the release response.
+
+Staging release completed: `20a821413473368817d0cef10b7d917df61bf1e7` committed/pushed to main and deployed via the documented SSH procedure. Local and VPS production builds passed (existing warnings); no pending migrations. Immediate post-restart probes were early; follow-up API readiness, web root and public staging login checks all passed with both services active. Demo scripts/notes remain uncommitted and preserved. Labels and the logged Next Available timing issue remain unfinished.
 
 Last updated: 2026-10-04
 

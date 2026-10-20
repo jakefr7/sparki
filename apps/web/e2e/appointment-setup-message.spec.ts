@@ -17,7 +17,17 @@ for (const admin of [true, false]) {
     await expect(dialog.getByText('Your clinic needs an active appointment type before you can book an appointment.')).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Schedule Appointment' })).toHaveCount(0);
     if (admin) {
+      expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(544);
+      await expect(dialog.getByRole('link', { name: 'Open Admin settings' })).toHaveCSS('background-color', 'rgb(31, 169, 160)');
+      await dialog.getByRole('link', { name: 'Open Admin settings' }).focus();
+      await page.keyboard.press('Tab');
+      await expect(dialog.getByRole('button', { name: 'Close dialog', exact: true })).toBeFocused();
       await page.screenshot({ path: '/tmp/sparki-appointment-setup-popup.png' });
+      await page.setViewportSize({ width: 375, height: 812 });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await expect(dialog.getByRole('link', { name: 'Open Admin settings' })).toBeVisible();
+      await page.screenshot({ path: '/tmp/sparki-appointment-setup-popup-mobile.png' });
+      await page.setViewportSize({ width: 1280, height: 720 });
       await dialog.getByRole('link', { name: 'Open Admin settings' }).click();
       await expect(page).toHaveURL(/\/settings\?tab=admin$/);
       await expect(page.getByRole('button', { name: 'Admin', exact: true })).toHaveAttribute('aria-current', 'page');

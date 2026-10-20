@@ -1,5 +1,7 @@
 'use client';
 
+import { StartAppointmentVisitButton } from './start-visit-actions';
+
 import { LiveUpdateStatus } from './live-update-status';
 
 import { AppointmentTextStatus } from './appointment-text-status';
@@ -1721,7 +1723,7 @@ export function AppointmentDetailPopover({
         <AppointmentTextStatus appointmentId={appointment.id} />
         {isPastAppointment ? (
           <div className="appointment-viewer__note appointment-viewer__note--read-only">
-            <div><span>Appointment note</span><small>Historical appointment · View only</small></div>
+            <div><span>Appointment note</span><small>Past booking · Note is read only</small></div>
             <p>{appointment.reason || 'No appointment note recorded.'}</p>
           </div>
         ) : (
@@ -1733,7 +1735,8 @@ export function AppointmentDetailPopover({
         )}
         {actionError ? <p className="scheduler-modal__error" role="alert">{actionError}</p> : null}
         <div className="appointment-viewer__actions">
-          {!isPastAppointment ? <button type="button" className="scheduler-primary-action" onClick={onReschedule}>Reschedule</button> : null}
+          {appointment.patient && ['Scheduled', 'PreVisitPending', 'Confirmed', 'Arrived'].includes(appointment.state) ? <StartAppointmentVisitButton appointmentId={appointment.id} appointmentState={appointment.state} startIntake="auto" className="scheduler-primary-action" /> : null}
+          {!isPastAppointment ? <button type="button" className="scheduler-secondary-action" onClick={onReschedule}>Reschedule</button> : null}
           {appointment.patient ? <Link href={`/patients/${appointment.patient.id}`} onClick={onClose}>Open Patient Profile</Link> : null}
           {!isPastAppointment ? <button type="button" className="appointment-viewer__cancel" onClick={() => setConfirmCancel(true)}>Cancel Appointment</button> : null}
         </div>

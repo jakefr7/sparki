@@ -667,3 +667,7 @@ Scheduling MVP Specification Approved for engineering planning.
 ### Future Work
 
 - TODO: Split follow-on specs for online booking, reminders, waitlist, recurring appointments, schedule templates, provider preferences, external calendar sync, and capacity analytics only when implementation needs them.
+
+## Appointment start timing (founder approved 2026-10-19)
+
+Staff with existing patient-flow authority may check in an eligible appointment before or after its scheduled time, including on a different day. Clinical staff with intake authority may begin intake from appointment details. Preserve the original scheduled date/time; arrival audit and visit creation record actual care timing. Terminal appointments and duplicate active visits remain blocked. Historical booking edits remain read only. Today’s patient flow includes visits begun today and active visits regardless of their appointment date.

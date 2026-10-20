@@ -9,6 +9,9 @@ import { DevelopmentAuthGuard } from './development-auth.guard';
 import { DevelopmentUserService } from './development-user.service';
 import { SubscriptionGuard } from './subscription.guard';
 import { TenantContextGuard } from './tenant-context.guard';
+import { ProfileAvatarController } from './profile-avatar.controller';
+import { ProfileAvatarService } from './profile-avatar.service';
+import { AttachmentStorageService } from '../messaging/attachment-storage.service';
 
 /**
  * Global: every route is behind a guard by default. Use @Public() to opt a
@@ -34,8 +37,10 @@ import { TenantContextGuard } from './tenant-context.guard';
 @Global()
 @Module({
   imports: [EmailModule],
-  controllers: [AuthController],
+  controllers: [AuthController, ProfileAvatarController],
   providers: [
+    ProfileAvatarService,
+    AttachmentStorageService,
     AuthService,
     DevelopmentUserService,
     {

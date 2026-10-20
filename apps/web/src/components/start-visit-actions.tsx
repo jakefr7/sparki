@@ -51,20 +51,24 @@ export function StartAppointmentVisitButton({
   disabled = false,
   className = 'button-secondary',
   label = 'Begin Intake',
+  startIntake = true,
 }: {
   appointmentId: string;
   appointmentState: string;
   disabled?: boolean;
   className?: string;
   label?: string;
+  startIntake?: boolean | 'auto';
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { user, loading } = useCurrentUser();
-  const canBeginIntake = user?.role === 'TECHNICIAN' || user?.role === 'ASSISTANT';
+  const canBeginIntake = !!user && ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user.role);
+  const canCheckIn = !!user && ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT', 'RECEPTIONIST', 'PRACTICE_MANAGER'].includes(user.role);
+  const shouldStartIntake = startIntake === 'auto' ? canBeginIntake : startIntake;
 
-  if (loading || !canBeginIntake) return null;
+  if (loading || !canCheckIn || (shouldStartIntake && !canBeginIntake)) return null;
 
   async function handleClick() {
     setSubmitting(true);
@@ -76,10 +80,12 @@ export function StartAppointmentVisitButton({
       }
       const visit = await createVisit({ appointmentId });
       if (visit.id) {
-        const startResponse = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
-        if (!startResponse.ok) {
-          const payload = (await startResponse.json()) as VisitResponse;
-          throw new Error(payload.message ?? 'Could not begin intake.');
+        if (shouldStartIntake) {
+          const startResponse = await fetch(`/api/visits/${visit.id}/start`, { method: 'POST' });
+          if (!startResponse.ok) {
+            const payload = (await startResponse.json()) as VisitResponse;
+            throw new Error(payload.message ?? 'Could not begin intake.');
+          }
         }
         router.push(`/visits/${visit.id}`);
         router.refresh();
@@ -107,8 +113,8 @@ export function StartAppointmentVisitButton({
         className={className}
         onClick={handleClick}
         disabled={disabled || submitting}
-    >
-        {submitting ? 'Starting…' : label}
+      >
+        {submitting ? 'Starting…' : startIntake === 'auto' && !shouldStartIntake ? 'Check In' : label}
       </button>
       {error && (
         <p className="form-error" role="alert">

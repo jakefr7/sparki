@@ -164,6 +164,7 @@ describe('Appointments (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prismaUnscoped.visit.deleteMany({ where: { patientId } });
     await prismaUnscoped.appointment.deleteMany({
       where: {
         OR: [{ patientId }, { organizationId: otherOrganizationId }],
@@ -871,6 +872,27 @@ describe('Appointments (e2e)', () => {
   });
 
   describe('POST /appointments/:id/arrive', () => {
+    it.each([-3, 3])('starts care %s days from the booked date without moving it', async (offset) => {
+      const appointment = await seedAppointment('Scheduled');
+      const scheduledAt = new Date();
+      scheduledAt.setDate(scheduledAt.getDate() + offset);
+      await prisma.appointment.update({ where: { id: appointment.id }, data: { scheduledAt } });
+      const arrived = await request(app.getHttpServer()).post(`/appointments/${appointment.id}/arrive`);
+      expect(arrived.status).toBe(201);
+      expect(arrived.body.scheduledAt).toBe(scheduledAt.toISOString());
+      const created = await request(app.getHttpServer()).post('/visits').send({ appointmentId: appointment.id });
+      expect(created.status).toBe(201);
+      const started = await request(app.getHttpServer()).post(`/visits/${created.body.id}/start`);
+      expect(started.status).toBe(201);
+      expect(started.body.state).toBe('IntakeInProgress');
+      const stored = await prisma.appointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(stored.scheduledAt).toEqual(scheduledAt);
+      const dashboard = await request(app.getHttpServer()).get('/operations/dashboard');
+      expect(dashboard.body.todaysVisits.some((visit: { id: string }) => visit.id === created.body.id)).toBe(true);
+      // Release this patient's active visit before the next case.
+      await prisma.visit.update({ where: { id: created.body.id }, data: { state: 'Cancelled' } });
+    });
+
     it.each(['Scheduled', 'PreVisitPending', 'Confirmed'] as const)(
       'marks arrived from %s',
       async (state) => {

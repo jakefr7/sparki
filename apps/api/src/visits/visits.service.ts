@@ -258,7 +258,7 @@ export class VisitsService {
   }
 
   /**
-   * All Visits attached to appointments scheduled today, including terminal
+   * All Visits attached to appointments scheduled today or begun today, including terminal
    * records. This is intentionally separate from the live-floor query above:
    * a completed visit belongs in the day's patient-flow history, but must not
    * be treated as an active patient elsewhere in Operations.
@@ -272,7 +272,10 @@ export class VisitsService {
       where: {
         organizationId,
         locationId,
-        appointment: { scheduledAt: { gte: start, lt: end } },
+        OR: [
+          { appointment: { scheduledAt: { gte: start, lt: end } } },
+          { createdAt: { gte: start, lt: end }, appointmentId: { not: null } },
+        ],
       },
       include: visitInclude,
       orderBy: { createdAt: 'asc' },

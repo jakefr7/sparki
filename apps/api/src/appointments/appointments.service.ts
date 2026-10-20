@@ -662,7 +662,8 @@ export class AppointmentsService {
     reason?: string,
   ) {
     const appointment = await this.findById(id, organizationId, locationId);
-    assertAppointmentNotHistorical(appointment);
+    // Care may begin on a different day without rewriting the booking.
+    if (targetState !== 'Arrived') assertAppointmentNotHistorical(appointment);
     const allowedPredecessors = ALLOWED_PREDECESSORS[targetState];
 
     if (!allowedPredecessors.includes(appointment.state)) {

@@ -143,11 +143,15 @@ function ModalFrame({
   subtitle,
   children,
   onClose,
+  className = '',
+  icon,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
+  className?: string;
+  icon?: ReactNode;
 }) {
   useLockBodyScroll(true);
   const dialogRef = useRef<HTMLElement>(null);
@@ -165,7 +169,7 @@ function ModalFrame({
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')];
+      const focusable = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')];
       if (focusable.length === 0) return;
       const first = focusable[0]!;
       const last = focusable[focusable.length - 1]!;
@@ -188,13 +192,14 @@ function ModalFrame({
     <div className="scheduler-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         ref={dialogRef}
-        className="scheduler-modal scheduler-modal--appointment"
+        className={`scheduler-modal scheduler-modal--appointment ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="scheduler-modal__header">
+          {icon}
           <div>
             <h2>{title}</h2>
             {subtitle ? <p>{subtitle}</p> : null}
@@ -819,11 +824,17 @@ export function NewAppointmentModal({
 
   if (setupStatus === 'ready' && activeAppointmentTypes.length === 0) {
     return (
-      <ModalFrame key="setup-needed" title="Let’s set up appointment types" onClose={onClose}>
+      <ModalFrame key="setup-needed" title="Let’s set up appointment types" onClose={onClose}
+        className="scheduler-modal--appointment-setup"
+        icon={<span className="appointment-setup-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 3v4M17 3v4M3 11h18M9 16h6M12 13v6" /></svg></span>}
+      >
         <div className="new-appointment-setup-message">
           <p>Your clinic needs an active appointment type before you can book an appointment.</p>
-          <p>Create an appointment type in <strong>Settings → Admin → Scheduling</strong>, then assign a provider and add their available hours.</p>
-          {!canManageSetup ? <p>Ask your clinic owner or someone with Admin settings access to finish this setup.</p> : null}
+          <div className="appointment-setup-guide">
+            <p className="appointment-setup-guide__label">Settings <span aria-hidden="true">›</span> Admin <span aria-hidden="true">›</span> Scheduling</p>
+            <ol><li>Create an appointment type</li><li>Assign a provider</li><li>Add their available hours</li></ol>
+          </div>
+          {!canManageSetup ? <p className="appointment-setup-help">Ask your clinic owner or someone with Admin settings access to finish this setup.</p> : null}
           <div className="scheduler-modal__actions">
             <button type="button" className="scheduler-secondary-action" onClick={onClose}>Close</button>
             {canManageSetup ? <a className="scheduler-primary-action" href="/settings?tab=admin">Open Admin settings</a> : null}

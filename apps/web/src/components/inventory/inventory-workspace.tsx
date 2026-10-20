@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLockBodyScroll } from '../../hooks/use-lock-body-scroll';
+import { retailPriceInput } from '../../lib/retail-price-input';
 
 type Item = {
   id: string;
@@ -3295,6 +3296,14 @@ function ItemEditor({
     setFormError('');
     const f = new FormData(e.currentTarget);
     const value = (name: string) => String(f.get(name) || '').trim() || null;
+    let retailPrice: string | null;
+    try {
+      retailPrice = retailPriceInput(String(f.get('retailPrice') ?? ''));
+    } catch (caught) {
+      setFormError((caught as Error).message);
+      e.currentTarget.querySelector<HTMLInputElement>('[name="retailPrice"]')?.focus();
+      return;
+    }
     const body = {
       name: value('name'),
       primaryType: type,
@@ -3326,7 +3335,7 @@ function ItemEditor({
       expirationTracking: stocked && f.get('expirationTracking') === 'on',
       controlledSubstance: type === 'MEDICATION' && f.get('controlled') === 'on',
       deaSchedule: value('deaSchedule'),
-      retailPrice: value('retailPrice'),
+      retailPrice,
       markupPercent: value('markupPercent'),
       minimumStock: value('minimumStock'),
       maximumStock: value('maximumStock'),
@@ -3497,7 +3506,7 @@ function ItemEditor({
         </label>
         <label>
           Retail price
-          <input name="retailPrice" inputMode="decimal" defaultValue={item?.retailPrice ?? ''} />
+          <input name="retailPrice" inputMode="decimal" defaultValue={item?.retailPrice ?? ''} placeholder="4.50" />
         </label>
         <label>
           Markup %

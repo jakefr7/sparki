@@ -14288,6 +14288,20 @@ button.settings-nav__sign-out:hover {
 .provider-fields fieldset, .records-email-draft fieldset { display: grid; gap: .65rem; min-width: 0; padding: .75rem; border: 1px solid #d8e5e4; border-radius: .6rem; }
 .provider-fields__selected { display: flex; flex-wrap: wrap; gap: .35rem; }
 .provider-fields__selected > span { padding: .3rem .5rem; border-radius: .4rem; background: #eef8f7; }
+.provider-fields__selected > span { display: inline-flex; align-items: center; gap: .5rem; margin: .35rem 0; border: 1px solid #d3e7e4; font-size: .9rem; }
+.provider-fields__selected button { display: inline-flex; align-items: center; justify-content: center; width: 1.65rem; height: 1.65rem; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.provider-fields__selected button:hover { background: #dcefeb; color: var(--text-primary); }
+.provider-fields__editor { margin: .75rem 0 0; background: #f7fbfa; }
+.provider-fields__editor legend { padding: 0 .3rem; font-size: .9rem; font-weight: 700; }
+.provider-fields__editor > button { justify-self: start; }
+.medication-prescriber-field { display: grid; gap: .35rem; min-width: 0; align-content: start; }
+.medication-prescriber-field select { width: 100%; min-width: 0; padding: .65rem .75rem; border: 1px solid #cbdcdd; border-radius: .45rem; background: white; color: var(--text-primary); font: inherit; }
+.patient-refill-review { padding: 1rem; border: 1px solid #d3e7e4; border-radius: .8rem; background: #f7fbfa; }
+.patient-refill-review h3 { margin-top: 0; }
+.patient-refill-review dl { display: grid; gap: .7rem; }
+.patient-refill-review dt { color: var(--text-secondary); font-size: .85rem; }
+.patient-refill-review dd { margin: .15rem 0 0; white-space: pre-wrap; }
+.patient-refill-review > p { color: var(--text-secondary); font-size: .85rem; }
 .provider-fields__results { display: grid; gap: .3rem; max-height: 16rem; overflow: auto; border: 1px solid #d8e5e4; border-radius: .5rem; padding: .5rem; }
 .provider-fields__results button { text-align: left; padding: .5rem; }
 .records-email-draft { margin: .65rem 0; font-size: .85rem; }

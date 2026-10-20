@@ -162,7 +162,7 @@ export function ProviderFields({
             placeholder="Search hospital or veterinarian"
             autoComplete="off"
           />
-          {search?.kind === kind ? (
+          {search?.kind === kind && !adding ? (
             <div className="provider-fields__results" aria-label={`${kind} hospital results`}>
               {loading ? (
                 <p role="status">Searching hospitals…</p>
@@ -195,35 +195,36 @@ export function ProviderFields({
               </button>
             </div>
           ) : null}
+          {adding && search?.kind === kind ? (
+            <fieldset disabled={busy} className="provider-fields__editor">
+              <legend>New hospital</legend>
+              {Object.entries({
+                hospitalName: 'Hospital name',
+                veterinarian: 'Veterinarian',
+                email: 'Hospital email',
+                phone: 'Hospital phone',
+                address: 'Hospital address',
+              }).map(([key, label]) => (
+                <label key={key}>
+                  {label}
+                  <input
+                    autoFocus={key === 'hospitalName'}
+                    value={draft[key as keyof typeof draft]}
+                    onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
+                    maxLength={key === 'address' ? 500 : key === 'phone' ? 50 : 200}
+                  />
+                </label>
+              ))}
+              <button type="button" className="button-primary" onClick={() => void add()}>
+                Save hospital and select
+              </button>
+              <button type="button" className="button-secondary" onClick={() => setAdding(false)}>
+                Cancel
+              </button>
+            </fieldset>
+          ) : null}
         </div>
       ))}
-      {adding ? (
-        <fieldset disabled={busy}>
-          <legend>New hospital</legend>
-          {Object.entries({
-            hospitalName: 'Hospital name',
-            veterinarian: 'Veterinarian',
-            email: 'Hospital email',
-            phone: 'Hospital phone',
-            address: 'Hospital address',
-          }).map(([key, label]) => (
-            <label key={key}>
-              {label}
-              <input
-                value={draft[key as keyof typeof draft]}
-                onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-                maxLength={key === 'address' ? 500 : key === 'phone' ? 50 : 200}
-              />
-            </label>
-          ))}
-          <button type="button" className="button-primary" onClick={() => void add()}>
-            Save hospital and select
-          </button>
-          <button type="button" onClick={() => setAdding(false)}>
-            Cancel
-          </button>
-        </fieldset>
-      ) : null}
       {error ? (
         <p className="form-error" role="alert">
           {error}

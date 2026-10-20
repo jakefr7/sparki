@@ -1,5 +1,15 @@
 # Current Work
 
+## SPA-44 testing feedback — October 19
+
+Founder requested phases and local remediation of Anna's seven findings. [Work plan and evidence](../docs/research/spa44-testing-feedback-2026-10-19.md): (1) failed booking/inventory saves and address selection; (2) hospital editor and phone display; (3) doctor selection and refill workflow. Founder subsequently approved veterinarian creation/rescheduling/confirmation/cancellation; implement and verify that bounded permission change. Preserve existing demo work. No deployment or staging changes.
+
+Local increment: actionable booking errors, exact price-input normalization (real veterinarian inventory creation verified), address-selection suppression/cancellation/retry, anchored hospital editor, shared directory/profile phone display, clinic-doctor selection with historical-name fallback, and review/edit before recording a profile refill. Ten focused isolated Chromium checks pass; 18 price/phone assertions, web typecheck and focused lint pass. Full prescription-aware dispensing, medication-only encounter billing and physical labels remain unfinished; physical labels explicitly deferred by founder until requirements are available. The first increment changed no API/schema or permissions; the approved veterinarian permission follow-up is recorded separately below. No commit/push/deployment.
+
+Approved permission follow-up: veterinarians can create existing/new-patient appointments, reschedule, confirm/update confirmation status and cancel. Other appointment actions, scheduler configuration and Admin permissions retain their previous checks. Updated scheduling spec and DECISIONS. Verification: 23 focused authorization tests, 67 isolated appointment integration tests and the real-UI veterinarian booking/API management Chromium regression pass; API typecheck and focused lint pass. A Next Available click-before-load timing issue was observed and logged separately. No commit/push/deployment.
+
+Founder subsequently requested deploying these SPA-44 changes to staging. Release includes the ticket's application changes/tests/spec/decision/work record; separate demo seed scripts and demo testing notes remain local. Deployment follows agents/README.md; final deployed SHA and health are reported in the release response.
+
 Last updated: 2026-10-04
 
 Sparki no longer uses active development phases. Work is driven by the user's current request, the Product Constitution, and the live product state.

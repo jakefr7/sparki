@@ -106,7 +106,7 @@ export class AppointmentsController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(linkAppointmentPatientSchema)) body: LinkAppointmentPatientInput,
   ) {
-    requireSchedulingOperator(user);
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
     return this.appointments.linkPatient(id, user.organizationId, user.locationId, body);
   }
 
@@ -154,7 +154,7 @@ export class AppointmentsController {
 
   @Post(':id/no-show')
   markNoShow(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    requireSchedulingOperator(user);
+    requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
     return this.appointments.markNoShow(id, user.organizationId, user.locationId, user.id);
   }
 
@@ -166,7 +166,9 @@ export class AppointmentsController {
 }
 
 function requireSchedulingOperator(user: AuthenticatedUser) {
-  requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST']);
+  // Founder-approved SPA-44 policy: veterinarians can manage appointments.
+  // Scheduler configuration and Admin settings retain their separate checks.
+  requireRole(user, ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST', 'VETERINARIAN']);
 }
 
 function requirePatientFlowOperator(user: AuthenticatedUser) {

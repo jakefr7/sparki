@@ -17,6 +17,7 @@ import { env } from '../../../lib/env';
 import { authenticatedServerFetch } from '../../../lib/server-api';
 import { formatDateOfBirth, patientAgeLabel } from '../../../lib/date-of-birth';
 import { visitStateLabel } from '../../../lib/format';
+import { formatPhone } from '../../../lib/phone-display';
 import {
   appointmentTypeLabel,
   clientDisplayName,
@@ -60,15 +61,6 @@ function doctorLabel(visit: RecentVisitSummary): string {
   return visit.primaryVeterinarian
     ? `Dr. ${visit.primaryVeterinarian.firstName} ${visit.primaryVeterinarian.lastName}`
     : 'Unassigned';
-}
-
-function formatPhone(value: string | null): string | null {
-  if (!value) return null;
-  const digits = value.replace(/\D/g, '');
-  const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
-  return local.length === 10
-    ? `${digits.length === 11 ? '+1 ' : ''}(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`
-    : value;
 }
 
 function displayValue(value: string | null | undefined): string | null {

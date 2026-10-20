@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canManageAdminSettings } from './permissions';
+import { canManageAdminSettings, canManageSchedulerSettings } from './permissions';
 
 describe('Admin settings permission', () => {
   it('gives Owners access even when their legacy stored grant is false', () => {
@@ -9,4 +9,8 @@ describe('Admin settings permission', () => {
     expect(canManageAdminSettings({ role, canManageAdminSettings: false })).toBe(false);
     expect(canManageAdminSettings({ role, canManageAdminSettings: true })).toBe(true);
   });
+});
+
+it('does not grant veterinarian scheduler configuration access with appointment management', () => {
+  expect(canManageSchedulerSettings({ role: 'VETERINARIAN' })).toBe(false);
 });

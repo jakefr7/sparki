@@ -13,6 +13,7 @@ import { useNewAppointmentModal } from '../hooks/use-new-appointment-modal';
 import type { PatientProfileData } from './patient-profile-modal';
 import { PetPhotoPlaceholder } from './pet-photo-placeholder';
 import { formatAge } from '../lib/format';
+import { formatPhone } from '../lib/phone-display';
 import { clientDisplayName, type PatientSearchResult } from '../lib/patient-types';
 
 const DEBOUNCE_MS = 150;
@@ -125,7 +126,7 @@ function PatientDirectoryCardBody({ patient }: { patient: DirectoryPatient }) {
         {details && <span className="patient-directory-card__details">{details}</span>}
         <span className="patient-directory-card__client">{patient.clientName}</span>
         {patient.clientContact && (
-          <span className="patient-directory-card__contact">{patient.clientContact}</span>
+          <span className="patient-directory-card__contact">{formatPhone(patient.clientPhone) ?? patient.clientContact}</span>
         )}
       </div>
     </>

@@ -1,5 +1,7 @@
 # Decisions
 
+- **2026-10-19 — SPA-44 veterinarian appointment management.** Founder explicitly approved veterinarians creating, rescheduling, confirming and cancelling appointments, even when they do not normally handle scheduling. This includes booking existing/new patients and recording confirmation status. Scheduler configuration, Admin grants, other appointment actions, tenant/location scope and clinical signoff authority remain separate. Founder deferred physical medication labels until printer, label size and field requirements are available.
+
 - **2026-08-13 — Repository-backed project memory.** `.sparki/` is the durable source for phase state and run artifacts; terminal history is not project memory.
 - **2026-08-13 — Local-first orchestration.** Node built-ins and installed CLIs are used. GitHub is optional and no deployment or merge is automated.
 - **2026-08-13 — Independent roles.** Codex implements approved work; Claude reviews read-only; the PM pass is read-only.

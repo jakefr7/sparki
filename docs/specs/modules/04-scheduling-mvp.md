@@ -359,10 +359,11 @@ Corrections to terminal states require audited amendment. Do not silently rewrit
 
 ### Veterinarian
 
+- Can create, reschedule, confirm, and cancel appointments (founder-approved SPA-44 policy, October 19, 2026).
 - Can view assigned schedule and patient context.
 - Can request appointment timing, type, urgency, or follow-up where clinically relevant.
 - Can update clinical preparation notes where permitted.
-- Does not normally own scheduling operations.
+- Can manage appointments when needed; routine scheduling ownership remains with front-desk staff. This does not grant scheduler configuration or Admin settings access.
 
 ### Practice Manager
 

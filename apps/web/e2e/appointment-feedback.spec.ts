@@ -21,7 +21,9 @@ test('Anna booking feedback: phone, address metadata, required notes and retry d
   const submissions: Array<{ client: Record<string, unknown>; appointment: Record<string, unknown> }> = [];
   await page.route('**/api/appointments/new-patient', async (route) => {
     submissions.push(route.request().postDataJSON());
-    await route.fulfill({ status: 500, json: {} });
+    await route.fulfill(submissions.length === 1
+      ? { status: 400, json: { message: { fieldErrors: { visitReason: ['Booking validation example'] }, formErrors: [] } } }
+      : { status: 403, json: { message: 'This action requires one of the following roles: OWNER, PRACTICE_MANAGER, RECEPTIONIST' } });
   });
   await page.goto('/scheduler');
   await page.getByRole('button', { name: 'Day', exact: true }).click();
@@ -58,10 +60,13 @@ test('Anna booking feedback: phone, address metadata, required notes and retry d
   expect(submissions[0]!.appointment).not.toHaveProperty('source');
   expect(submissions[0]!.client).toMatchObject({ phone: '3125550123', city: 'Chicago', addressPlaceId: 'feedback-place', addressLatitude: 41.88 });
   await expect(dialog.getByRole('alert')).toBeVisible();
+  await expect(dialog.getByRole('alert')).toContainText('Booking validation example');
   await expect(dialog.getByRole('textbox', { name: /^Visit Notes/ })).toHaveValue('Eye irritation');
   await dialog.getByLabel('City', { exact: true }).fill('Evanston');
   await dialog.getByRole('button', { name: 'Schedule Appointment', exact: true }).click();
   await expect.poll(() => submissions.length).toBe(2);
   expect(submissions[1]!.client).toMatchObject({ city: 'Evanston' });
   expect(submissions[1]!.client).not.toHaveProperty('addressPlaceId');
+  await expect(dialog.getByRole('alert')).toContainText('Your account does not have permission to manage appointments');
+  await expect(dialog.getByRole('textbox', { name: /^Visit Notes/ })).toHaveValue('Eye irritation');
 });

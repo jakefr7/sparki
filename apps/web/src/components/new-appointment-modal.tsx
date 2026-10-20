@@ -1,4 +1,5 @@
 'use client';
+import { appointmentError } from '../lib/appointment-error';
 import { ProviderFields, emptyProviders, providerPayload, type ProviderValue } from './provider-fields';
 import { BreedField } from './breed-field';
 
@@ -650,7 +651,7 @@ export function NewAppointmentModal({
       throw new Error('slot-conflict');
     }
     if (!response.ok) {
-      throw new Error('new-patient-appointment-create');
+      throw await appointmentError(response, 'We could not create this appointment. No new patient was saved. Please try again.');
     }
 
     return (await response.json()) as CreatedAppointmentWithNewPatientResponse;
@@ -683,7 +684,7 @@ export function NewAppointmentModal({
           setError('That time was just taken. Choose another available time.');
           return;
         }
-        if (!response.ok) throw new Error('appointment-update');
+        if (!response.ok) throw await appointmentError(response, 'Could not update this appointment. Your details are still here. Please try again.');
         const updated = (await response.json()) as CreatedAppointmentResponse;
         const selectedProvider = providers.find((provider) => provider.id === updated.providerId) ?? null;
         onCreated({
@@ -763,7 +764,7 @@ export function NewAppointmentModal({
         return;
       }
       if (!appointmentResponse.ok) {
-        throw new Error('appointment-create');
+        throw await appointmentError(appointmentResponse, 'We could not create this appointment. Your details are still here. Please try again.');
       }
 
       const created = (await appointmentResponse.json()) as CreatedAppointmentResponse;
@@ -807,7 +808,7 @@ export function NewAppointmentModal({
       setError(
         caught instanceof Error && caught.message === 'slot-conflict'
           ? 'That time was just taken. Your details are still here—choose another available time.'
-          : patientMode === 'new'
+          : caught instanceof Error ? caught.message : patientMode === 'new'
           ? 'We could not create this appointment. No new patient was saved. Please try again.'
           : 'We could not create this appointment. Please check the fields and try again.',
       );

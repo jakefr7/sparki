@@ -81,6 +81,13 @@ export function AddressAutocompleteField({
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<AddressSearchStatus>('idle');
+  const [query, setQuery] = useState<string | null>(null);
+  const [selection, setSelection] = useState<AddressSuggestion | null>(null);
+  const [detailsError, setDetailsError] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const searchController = useRef<AbortController | null>(null);
+  const detailsController = useRef<AbortController | null>(null);
   // One Mapbox session token covers every suggest call in a single search
   // interaction plus the retrieve call that closes it out — created once
   // per mount (not per keystroke), reused across all debounced suggest
@@ -90,7 +97,7 @@ export function AddressAutocompleteField({
   const sessionTokenRef = useRef(generateSessionToken());
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const trimmedValue = value.trim();
+  const trimmedValue = query?.trim() ?? '';
   const longEnough = trimmedValue.length >= MIN_QUERY_LENGTH;
   const showSuggestions = open && longEnough && suggestions.length > 0;
 
@@ -103,6 +110,7 @@ export function AddressAutocompleteField({
     }
 
     const controller = new AbortController();
+    searchController.current = controller;
     const timeout = setTimeout(() => {
       fetch(
         `/api/address/autocomplete?query=${encodeURIComponent(trimmedValue)}&sessionToken=${sessionTokenRef.current}`,
@@ -117,13 +125,15 @@ export function AddressAutocompleteField({
           return response.json() as Promise<unknown>;
         })
         .then((data) => {
+          if (controller.signal.aborted) return;
           if (!isAddressSuggestionArray(data)) throw new Error('Address search returned an unexpected response');
           setSuggestions(data);
-          setOpen(data.length > 0);
+          setHighlighted(0);
+          setOpen(data.length > 0 && Boolean(containerRef.current?.contains(document.activeElement)));
           if (data.length > 0) setStatus('idle');
         })
         .catch((caught: unknown) => {
-          if (!(caught instanceof DOMException && caught.name === 'AbortError')) {
+          if (!controller.signal.aborted && !(caught instanceof DOMException && caught.name === 'AbortError')) {
             setSuggestions([]);
             setOpen(false);
             setStatus('idle');
@@ -137,6 +147,8 @@ export function AddressAutocompleteField({
     };
   }, [trimmedValue, longEnough]);
 
+  useEffect(() => () => detailsController.current?.abort(), []);
+
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -148,16 +160,30 @@ export function AddressAutocompleteField({
   }, []);
 
   async function selectSuggestion(suggestion: AddressSuggestion) {
+    searchController.current?.abort();
+    detailsController.current?.abort();
+    const controller = new AbortController();
+    detailsController.current = controller;
+    setQuery(null);
+    setSelection(suggestion);
+    setDetailsError(false);
+    setDetailsLoading(true);
+    setSuggestions([]);
     setOpen(false);
     onChange(suggestion.label);
 
     try {
       const response = await fetch(
         `/api/address/details?placeId=${encodeURIComponent(suggestion.id)}&sessionToken=${sessionTokenRef.current}`,
+        { signal: controller.signal },
       );
-      if (!response.ok) return;
+      if (!response.ok) throw new Error('address-details');
       const details = (await response.json()) as AddressDetailsResponse | null;
-      if (!details) return;
+      if (controller.signal.aborted) return;
+      if (!details) throw new Error('address-details');
+      if (![details.city, details.state, details.postalCode, details.country].some(Boolean)) {
+        throw new Error('address-details');
+      }
 
       onAddressSelected({
         addressLine1: details.addressLine1 ?? '',
@@ -171,10 +197,12 @@ export function AddressAutocompleteField({
         longitude: details.longitude,
       });
     } catch {
-      // Details lookup failed — the address line is already filled in from
-      // the suggestion label, and the rest can still be typed manually.
+      if (!controller.signal.aborted) setDetailsError(true);
     } finally {
-      sessionTokenRef.current = generateSessionToken();
+      if (!controller.signal.aborted) {
+        setDetailsLoading(false);
+        sessionTokenRef.current = generateSessionToken();
+      }
     }
   }
 
@@ -194,10 +222,31 @@ export function AddressAutocompleteField({
           role="combobox"
           aria-expanded={showSuggestions}
           aria-controls={`${id}-suggestions`}
+          aria-activedescendant={showSuggestions ? `${id}-suggestion-${highlighted}` : undefined}
+          aria-describedby={detailsError ? `${id}-details-error` : undefined}
           placeholder={placeholder}
           onChange={(event) => {
+            searchController.current?.abort();
+            detailsController.current?.abort();
+            setDetailsLoading(false);
+            setDetailsError(false);
+            setSelection(null);
+            setQuery(event.target.value);
+            setSuggestions([]);
             onChange(event.target.value);
-            setOpen(suggestions.length > 0);
+            setOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') { setOpen(false); searchController.current?.abort(); }
+            if (!showSuggestions) return;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              setHighlighted(current => Math.max(0, Math.min(suggestions.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1))));
+            }
+            if (event.key === 'Enter' && suggestions[highlighted]) {
+              event.preventDefault();
+              void selectSuggestion(suggestions[highlighted]!);
+            }
           }}
           onFocus={() => {
             if (suggestions.length > 0) setOpen(true);
@@ -209,11 +258,12 @@ export function AddressAutocompleteField({
       </label>
       {showSuggestions && (
         <ul id={`${id}-suggestions`} role="listbox" className="front-desk-search-results">
-          {suggestions.map((suggestion) => (
+          {suggestions.map((suggestion, index) => (
             <li
               key={suggestion.id}
+              id={`${id}-suggestion-${index}`}
               role="option"
-              aria-selected={false}
+              aria-selected={index === highlighted}
               className="front-desk-search-result"
               onPointerDown={(event) => {
                 event.preventDefault();
@@ -225,6 +275,11 @@ export function AddressAutocompleteField({
           ))}
         </ul>
       )}
+      {detailsLoading ? <p role="status" className="front-desk-inline-hint">Filling address details…</p> : null}
+      {detailsError ? <div id={`${id}-details-error`} role="alert">
+        <p>Could not fill the address details. Try again or enter them manually.</p>
+        {selection ? <button type="button" className="button-secondary" onClick={() => void selectSuggestion(selection)}>Try address again</button> : null}
+      </div> : null}
       {status === 'provider-unavailable' && (
         <p className="front-desk-inline-hint">Address search needs provider setup; manual entry is available.</p>
       )}

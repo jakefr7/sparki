@@ -470,6 +470,8 @@ export interface VisitDetail {
     temperature: number | null;
     heartRate: number | null;
     respiratoryRate: number | null;
+    respiratoryPattern?: 'Pant' | null;
+    crtAssessment?: import('@sparki/config').CrtAssessment | null;
     crtSeconds: number | null;
     gumColor: string | null;
     appetite: string | null;

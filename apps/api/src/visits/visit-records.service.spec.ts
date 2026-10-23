@@ -23,6 +23,17 @@ describe('SPA-7 new SOAP draft context', () => {
     expect(draft.objective).not.toContain('Ears: Normal');
     expect(draft.status).toBe('Draft');
   });
+  it('carries nonnumeric observations into SOAP without fabricated measurements', async () => {
+    const tx = fixture();
+    const visit = await tx.visit.findFirst();
+    tx.visit.findFirst.mockResolvedValueOnce({ ...visit, intake: { ...visit.intake, respiratoryRate: null, respiratoryPattern: 'Pant', crtSeconds: null, crtAssessment: 'UnableToAssess' } } as never);
+    await new VisitRecordsService().ensureDraftForVisitTx(tx as unknown as Prisma.TransactionClient, 'visit', 'org', 'location', 'author');
+    const draft = tx.soapNote.create.mock.calls[0]![0].data;
+    expect(draft.objective).toContain('Respiratory rate: Pant');
+    expect(draft.objective).toContain('CRT: Unable to Assess');
+    expect(draft.objective).not.toContain('Pant rpm');
+    expect(draft.objective).not.toContain('Unable to Assess sec');
+  });
   it('returns an existing draft without overwriting clinical edits', async () => {
     const existing = { id: 'draft', subjective: 'Clinician-authored history', objective: 'Clinician-authored exam' };
     const tx = fixture(existing);

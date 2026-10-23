@@ -732,6 +732,33 @@ describe('Visits (e2e)', () => {
       return visit;
     }
 
+    it.each(['LessThanOneSecond', 'OneToTwoSeconds', 'MoreThanTwoSeconds', 'UnableToAssess', 'NotAssessed'])(
+      'persists Pant and %s and permits documented handoff', async (crtAssessment) => {
+        const visit = await createVisit(`Observation ${crtAssessment}`);
+        const saved = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({
+          historyNotes: 'Unable to measure safely; documented observation.', weight: 20, temperature: 101, heartRate: 90,
+          respiratoryPattern: 'Pant', crtAssessment, gumColor: 'Pink',
+        });
+        expect(saved.status).toBe(200);
+        const reloaded = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+        expect(reloaded.body.intake).toMatchObject({ respiratoryRate: null, respiratoryPattern: 'Pant', crtSeconds: null, crtAssessment });
+        const completed = await request(app.getHttpServer()).post(`/visits/${visit.id}/intake/complete`);
+        expect(completed.status).toBe(201);
+        expect(completed.body.state).toBe('VeterinarianExamReady');
+      },
+    );
+
+    it('rejects contradictory or unsupported vital observations without changing the existing measurement', async () => {
+      const visit = await createVisit('Observation validation');
+      await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send({ respiratoryRate: 24, crtSeconds: 1.5 });
+      for (const body of [{ respiratoryRate: 24, respiratoryPattern: 'Pant' }, { crtSeconds: 1.5, crtAssessment: 'NotAssessed' }, { respiratoryPattern: 'Other' }, { crtAssessment: 'Normal' }]) {
+        const response = await request(app.getHttpServer()).put(`/visits/${visit.id}/intake`).send(body);
+        expect(response.status).toBe(400);
+      }
+      const reloaded = await request(app.getHttpServer()).get(`/visits/${visit.id}`);
+      expect(reloaded.body.intake).toMatchObject({ respiratoryRate: 24, respiratoryPattern: null, crtSeconds: 1.5, crtAssessment: null });
+    });
+
     it('saves intake data with weight in LB and gum color, and returns it on the Visit payload', async () => {
       const visit = await createVisit('Save Intake Patient LB');
 

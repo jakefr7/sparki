@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CRT_ASSESSMENTS } from '@sparki/config';
 
 const optionalText = z.string().trim().max(4000).optional().nullable();
 
@@ -10,6 +11,8 @@ export const saveVisitIntakeSchema = z.object({
   temperature: z.number().positive().max(120).optional().nullable(),
   heartRate: z.number().int().positive().max(400).optional().nullable(),
   respiratoryRate: z.number().int().positive().max(200).optional().nullable(),
+  respiratoryPattern: z.literal('Pant').optional().nullable(),
+  crtAssessment: z.enum(CRT_ASSESSMENTS).optional().nullable(),
   crtSeconds: z.number().positive().max(30).optional().nullable(),
   gumColor: z.string().trim().max(50).optional().nullable(),
   appetite: z.string().trim().max(200).optional().nullable(),
@@ -30,6 +33,6 @@ export const saveVisitIntakeSchema = z.object({
   systemicConcerns: optionalText,
   painScore: z.number().min(0).max(10).optional().nullable(),
   painScale: z.string().trim().max(100).optional().nullable(),
-});
+}).refine(value => !(value.respiratoryPattern && value.respiratoryRate != null), { message: 'Choose a respiratory rate or Pant, not both.' }).refine(value => !(value.crtAssessment && value.crtSeconds != null), { message: 'Choose a capillary refill category or a measured time, not both.' });
 
 export type SaveVisitIntakeInput = z.infer<typeof saveVisitIntakeSchema>;

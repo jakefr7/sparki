@@ -55,7 +55,7 @@ test('FAS is asked with intake vitals, read and reassessed in the exam general a
   await page.locator('#temperature').fill('101');
   await page.locator('#heartRate').fill('90');
   await page.locator('#respiratoryRate').fill('20');
-  await page.locator('#crtSeconds').fill('1');
+  await page.locator('#crtSeconds').selectOption('OneToTwoSeconds');
   await page.locator('#gumColor').selectOption('Pink');
   await page.locator('#historyNotes').fill('Synthetic intake history.');
   await page.getByRole('button', { name: 'Ready for Veterinarian' }).click();

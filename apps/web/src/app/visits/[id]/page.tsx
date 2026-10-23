@@ -84,7 +84,7 @@ export default async function VisitWorkspacePage({
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
   const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
-  const showingCheckout = view === 'checkout' || (!['record', 'discharge'].includes(view ?? '') && ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state));
+  const showingCheckout = view === 'checkout' || (recordSigned && !['record', 'discharge'].includes(view ?? '') && ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state));
   const openClinicalWork = visit.workItems.some((item) => {
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
     return ['Pending', 'InProgress'].includes(item.status);

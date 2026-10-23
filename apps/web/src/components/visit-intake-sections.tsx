@@ -1,5 +1,7 @@
 'use client';
 
+import { VitalObservationFields } from './vital-observation-fields';
+
 import { forwardRef, type ReactNode } from 'react';
 import type { PatientAlertSummary, PatientMedicationSummary } from '../lib/patient-types';
 import {
@@ -318,37 +320,7 @@ export function VitalsTriageSection({
             <span className="intake-unit-input__suffix">bpm</span>
           </span>
         </FieldLabel>
-        <FieldLabel label="Respiratory rate" htmlFor="respiratoryRate">
-          <span className="intake-unit-input">
-            <input
-              id="respiratoryRate"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              value={payload.respiratoryRate ?? ''}
-              onChange={(event) =>
-                onChange({ respiratoryRate: event.target.value === '' ? null : Number(event.target.value) })
-              }
-            />
-            <span className="intake-unit-input__suffix">rpm</span>
-          </span>
-        </FieldLabel>
-        <FieldLabel label="Capillary refill" htmlFor="crtSeconds">
-          <span className="intake-unit-input">
-            <input
-              id="crtSeconds"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="0"
-              value={payload.crtSeconds ?? ''}
-              onChange={(event) =>
-                onChange({ crtSeconds: event.target.value === '' ? null : Number(event.target.value) })
-              }
-            />
-            <span className="intake-unit-input__suffix">sec</span>
-          </span>
-        </FieldLabel>
+        <VitalObservationFields payload={payload} onChange={onChange} />
         <FieldLabel label="Gum color" htmlFor="gumColor">
           <select
             id="gumColor"

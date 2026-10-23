@@ -1,8 +1,34 @@
 # Current Work
 
+## SPA-41 review and combined release — October 22
+
+Founder requested reviewing SPA-41 before pushing the pending work to GitHub and updating staging. SPA-41's screenshots show active types with zero assigned providers; the deployed compact popup already addresses visual polish, but its wording still treated not-bookable types as missing types. Preserve provider/availability requirements and give configured active types a distinct Finish appointment setup message with provider/available-hours actions. Empty configuration retains the existing setup guide; bookable types open normal booking. Shared Linear agent-context retrieval was unavailable (tool not found); issue, images, comment and repository code reviewed directly.
+
+Combined release includes SPA-41 messaging, SPA-45 fixes and the uppercase-initial fallback. Preserve separate demo scripts/evidence and demo memory. No edits to existing staging appointments or profile data are part of deployment. One additive migration stores Pant/CRT observations. Browser checks, local production build, GitHub push and documented staging deployment are being verified for this release.
+
+## SPA-45 additional findings 4–6 — October 19
+
+Founder requested implementing added Pant respiratory observation, five categorical CRT choices, and Today layout/progression fixes. Founder explicitly confirmed inability/non-assessment must not block progress: both Unable to Assess and Not Assessed satisfy documented intake handoff, while blank still requires a choice. Add separate nullable observation columns with allowed-value/mutual-exclusion checks; preserve old numeric data rather than converting to estimates. API validates exclusive numeric/observation input; read/save, handoff summary and new SOAP drafts preserve observations. Existing numeric CRT remains visible until deliberately replaced. No signed draft rewrite.
+
+Today rows use a responsive grid constrained to the main card and expose Open Visit directly and from status menus, providing a route into governed discharge/record/checkout actions. The workspace previously chose checkout by state even for unsigned clinical records; default checkout now requires a signed record, so Today → Discharge resumes clinical work. Explicit checkout routes remain available with their existing readiness guards. No lifecycle, clinical signoff or billing safeguards bypassed. Additive migration only tested in disposable databases. Verification: 64 isolated visit integration tests, 381 API unit tests (including SOAP observation display) and 29 shared-config unit tests pass. Three Chromium scenarios pass: numeric CRT preservation → Pant/Not Assessed save/reload → handoff, Today main/rail layout at 1440/1280/1024px with discharge resume, and the full real UI Exam → Treatment → Discharge → record signoff → checkout path. Tablet screenshot visually inspected. Initial browser cache/fixture/locator issues were corrected and rerun; separate first-load invoice creation race on a directly seeded checkout fixture is recorded in KNOWN_GAPS. Focused lint, API typecheck and full production build (including web type validation) pass with existing warnings. A concurrent standalone web typecheck initially raced transient generated e2e route files; the final stopped-server production build passed type validation. No push/deployment requested.
+
+## SPA-45 Buggy Wuggys 10/19 — local remediation
+
+Founder requested reviewing and addressing the three supplied findings in [SPA-45](https://linear.app/sparki/issue/SPA-45/feat-buggy-wuggys-1019). Profile upload/storage was already fixed in staging release 42d96db; this increment adds a safe uppercase-initial fallback for old/broken profile image URLs in Settings/header while keeping replacement/removal available. Existing profile-name data is unchanged.
+
+Reproduced medication reaction typing exactly in Chromium: typing `love` produced `evol`. The nested MedicationList component was recreated on parent state updates, remounting and auto-focusing the textarea on each key. Render its markup inline to retain the DOM node, focus and cursor for reaction/discontinuation drafts.
+
+Schedule configuration intentionally creates one weekly record per selected weekday (existing SPA-42 behavior). The screenshot alone does not establish unwanted duplication: different weekdays and a separate Monday time/style appear. Added explicit count/day explanation before save and count in confirmation. Verified exact one-day/five-day creates, single-record edits and persistence; unwanted extra records were not reproduced. No existing blocks removed or recurrence policy changed. Verification: three new isolated Chromium regressions pass (real typing/save/API persistence; exact weekly block creation/edit/reload; broken-image uppercase fallback). Existing profile-photo upload/retry/remove/reload regression also passes. Web typecheck, focused lint and diff checks pass. Baseline typing failure was reproduced before the fix; new test URL/default-expanded-state mistakes were corrected and rerun. Old lost image files are not recovered; the user can upload a replacement. No commit/push/deployment requested for this increment.
+
+## Profile fallback initials — October 19
+
+Founder requested uppercase default initials in Settings (JF rather than jf). Uppercase the derived fallback to match the header; stored names and uploaded images stay unchanged. Local change only.
+
 ## Follow-up staging release — October 19
 
 Founder requested GitHub push and staging deployment of the appointment start timing, profile-photo upload and appointment setup popup changes. Release uses the documented SSH deployment; separate demo scripts and demo notes remain local. Existing focused checks passed; combined production build and deployed health are verified during release.
+
+Release completed: `42d96db8d30cb93cb1396b7b5e3e353c4b143afe` pushed to GitHub main and deployed to staging via the documented SSH sequence. Local and VPS production builds passed with existing warnings; no pending migrations. Immediate restart probes were early; follow-up confirmed both services active, API readiness, web root and public staging login healthy. This release did not perform authenticated staging workflow mutations. Separate demo work remains local.
 
 ## Start appointments outside their booked date/time — October 19
 

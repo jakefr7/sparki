@@ -249,6 +249,7 @@ export function NewAppointmentModal({
   const { user } = useCurrentUser();
   const canManageSetup = Boolean(user?.permissions.includes(MANAGE_ADMIN_SETTINGS));
   const settings = useMemo(() => appointmentTypes ?? [], [appointmentTypes]);
+  const hasConfiguredActiveTypes = settings.some((setting) => setting.isActive);
   const activeAppointmentTypes = useMemo(
     () =>
       settings
@@ -824,15 +825,15 @@ export function NewAppointmentModal({
 
   if (setupStatus === 'ready' && activeAppointmentTypes.length === 0) {
     return (
-      <ModalFrame key="setup-needed" title="Let’s set up appointment types" onClose={onClose}
+      <ModalFrame key="setup-needed" title={hasConfiguredActiveTypes ? 'Finish appointment setup' : 'Let’s set up appointment types'} onClose={onClose}
         className="scheduler-modal--appointment-setup"
         icon={<span className="appointment-setup-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 3v4M17 3v4M3 11h18M9 16h6M12 13v6" /></svg></span>}
       >
         <div className="new-appointment-setup-message">
-          <p>Your clinic needs an active appointment type before you can book an appointment.</p>
+          <p>{hasConfiguredActiveTypes ? 'Your appointment types are active, but none have a provider assigned for booking.' : 'Your clinic needs an active appointment type before you can book an appointment.'}</p>
           <div className="appointment-setup-guide">
             <p className="appointment-setup-guide__label">Settings <span aria-hidden="true">›</span> Admin <span aria-hidden="true">›</span> Scheduling</p>
-            <ol><li>Create an appointment type</li><li>Assign a provider</li><li>Add their available hours</li></ol>
+            <ol>{!hasConfiguredActiveTypes ? <li>Create an appointment type</li> : null}<li>Assign a provider</li><li>Add their available hours</li></ol>
           </div>
           {!canManageSetup ? <p className="appointment-setup-help">Ask your clinic owner or someone with Admin settings access to finish this setup.</p> : null}
           <div className="scheduler-modal__actions">

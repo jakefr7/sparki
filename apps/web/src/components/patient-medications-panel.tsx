@@ -83,7 +83,8 @@ export function PatientMedicationsPanel({ patientId, medications }: { patientId:
     finally { setSaving(false); }
   }
 
-  function MedicationList({ items, empty, discontinued = false }: { items: PatientMedicationSummary[]; empty: string; discontinued?: boolean }) {
+  // Render inline so typing does not recreate a component type and remount its textarea.
+  function renderMedicationList({ items, empty, discontinued = false }: { items: PatientMedicationSummary[]; empty: string; discontinued?: boolean }) {
     if (!items.length) return <p className="empty-state">{empty}</p>;
     return <div className={`patient-medication-list${discontinued ? ' patient-medication-list--discontinued' : ''}`}>{items.map((medication) => (
       <article key={medication.id} className={`patient-medication-card${medication.status === 'Discontinued' ? ' patient-medication-card--discontinued' : ''}`}>
@@ -128,6 +129,6 @@ export function PatientMedicationsPanel({ patientId, medications }: { patientId:
         <button type="button" className="button-primary" disabled={saving || refillReview.status !== 'Active'} onClick={async () => { if (await perform(`/api/patients/${patientId}/medications/${refillReview.id}/refill`)) setRefillReview(null); }}>{saving ? 'Recording…' : 'Record refill'}</button>
       </div>
     </section> : null}
-    {!editingId && !refillReview ? medications.items.length === 0 && !medications.legacyNotes ? <div className="profile-compact-empty profile-compact-empty--roomy"><strong>No active medications on file</strong><span>Recorded medications and their history will appear here.</span></div> : <div className="patient-medications-sections"><section><h3>Active medications</h3><MedicationList items={activeMedications} empty="No active medications." /></section><section className="patient-medications-discontinued"><h3>Discontinued medications</h3><MedicationList items={pastMedications} empty="No discontinued medications." discontinued /></section>{medications.legacyNotes ? <aside className="patient-medication-legacy"><strong>Legacy medication / allergy note</strong><p>{medications.legacyNotes.notes}</p><Link href={`/visits/${medications.legacyNotes.visitId}`}>Updated {dateLine(medications.legacyNotes.recordedAt)}</Link></aside> : null}</div> : null}
+    {!editingId && !refillReview ? medications.items.length === 0 && !medications.legacyNotes ? <div className="profile-compact-empty profile-compact-empty--roomy"><strong>No active medications on file</strong><span>Recorded medications and their history will appear here.</span></div> : <div className="patient-medications-sections"><section><h3>Active medications</h3>{renderMedicationList({ items: activeMedications, empty: 'No active medications.' })}</section><section className="patient-medications-discontinued"><h3>Discontinued medications</h3>{renderMedicationList({ items: pastMedications, empty: 'No discontinued medications.', discontinued: true })}</section>{medications.legacyNotes ? <aside className="patient-medication-legacy"><strong>Legacy medication / allergy note</strong><p>{medications.legacyNotes.notes}</p><Link href={`/visits/${medications.legacyNotes.visitId}`}>Updated {dateLine(medications.legacyNotes.recordedAt)}</Link></aside> : null}</div> : null}
   </section>;
 }

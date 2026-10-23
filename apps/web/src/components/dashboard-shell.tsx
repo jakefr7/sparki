@@ -153,6 +153,7 @@ export function DashboardHeader({
   // The server's clock and time zone are not the browser's, so the date and
   // time stay empty in server HTML and are filled in before the first paint.
   const [now, setNow] = useState<Date | null>(null);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [weather, setWeather] = useState<HeaderWeather | null>(() => cachedHeaderWeather ?? initialWeather ?? null);
   const todayLabel = useMemo(
     () =>
@@ -220,7 +221,7 @@ export function DashboardHeader({
             <strong>{todayLabel}</strong><span>{timeLabel}</span>
           </div>
           <div className="dashboard-header__user">
-            <span className="dashboard-header__avatar-frame" aria-hidden="true">{avatarUrl ? <img className="dashboard-header__avatar" src={avatarUrl} alt="" /> : <span>{avatarFallback ?? userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>}</span>
+            <span className="dashboard-header__avatar-frame" aria-hidden="true">{avatarUrl && avatarUrl !== failedAvatarUrl ? <img className="dashboard-header__avatar" src={avatarUrl} alt="" onError={() => setFailedAvatarUrl(avatarUrl)} /> : <span>{avatarFallback ?? userName.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>}</span>
             <span className="dashboard-header__user-copy"><strong>{userName}</strong></span>
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { respiratoryLabel, crtLabel } from '@sparki/config';
 import { createHash } from 'node:crypto';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type Prisma, type UserRole } from '@sparki/db';
@@ -330,13 +331,13 @@ function hashSoap(value: { subjective?: string | null | undefined; objective?: s
     .digest('hex');
 }
 
-function intakeVitals(intake: { weight: unknown; weightUnit: string; temperature: unknown; heartRate: unknown; respiratoryRate: unknown; crtSeconds: unknown; gumColor: string | null; painScore: unknown; painScale: string | null }) {
+function intakeVitals(intake: { weight: unknown; weightUnit: string; temperature: unknown; heartRate: unknown; respiratoryRate: number | null; respiratoryPattern?: string | null; crtSeconds: number | null; crtAssessment?: string | null; gumColor: string | null; painScore: unknown; painScale: string | null }) {
   const lines = [
     intake.weight != null ? `Weight: ${intake.weight} ${intake.weightUnit === 'KG' ? 'kg' : 'lb'}` : null,
     intake.temperature != null ? `Temperature: ${intake.temperature} F` : null,
     intake.heartRate != null ? `Heart rate: ${intake.heartRate} bpm` : null,
-    intake.respiratoryRate != null ? `Respiratory rate: ${intake.respiratoryRate} rpm` : null,
-    intake.crtSeconds != null ? `CRT: ${intake.crtSeconds} sec` : null,
+    respiratoryLabel(intake.respiratoryRate, intake.respiratoryPattern) ? `Respiratory rate: ${respiratoryLabel(intake.respiratoryRate, intake.respiratoryPattern)}` : null,
+    crtLabel(intake.crtSeconds, intake.crtAssessment) ? `CRT: ${crtLabel(intake.crtSeconds, intake.crtAssessment)}` : null,
     intake.gumColor ? `Gum color: ${intake.gumColor}` : null,
     intake.painScore != null ? `Pain score: ${intake.painScore}${intake.painScale ? ` (${intake.painScale})` : ''}` : null,
   ].filter(Boolean);

@@ -1,0 +1,84 @@
+import { expect, test } from '@playwright/test';
+
+const API_URL = process.env.API_URL ?? 'http://127.0.0.1:4000';
+
+test('medication reaction and discontinuation text keep focus, cursor and typed order', async ({ page, request }) => {
+  const client = await (await request.post(`${API_URL}/clients`, { data: { firstName: 'SPA45', lastName: 'Medication' } })).json();
+  const patientResponse = await request.post(`${API_URL}/patients`, { data: { name: 'SPA45 typing', species: 'Dog', clients: [{ clientId: client.id, isPrimary: true }] } });
+  expect(patientResponse.ok()).toBe(true);
+  const patient = await patientResponse.json();
+  const catalog = await (await request.get(`${API_URL}/inventory/items?search=Gabapentin`)).json();
+  const medicationResponse = await request.post(`${API_URL}/patients/${patient.id}/medications`, { data: { catalogItemId: catalog[0].id, medicationName: catalog[0].name, dose: 'Test dose' } });
+  expect(medicationResponse.ok()).toBe(true);
+  const medication = await medicationResponse.json();
+  await page.goto(`/patients/${patient.id}`);
+  await page.getByRole('tab', { name: 'Medications', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Medications', exact: true });
+  await panel.getByRole('button', { name: 'Flag reaction', exact: true }).click();
+  const reaction = panel.getByLabel('Describe the reaction');
+  await reaction.pressSequentially('love', { delay: 60 });
+  await expect(reaction).toHaveValue('love');
+  await reaction.press('Home');
+  await reaction.pressSequentially('No ', { delay: 60 });
+  await expect(reaction).toHaveValue('No love');
+  await reaction.press('ControlOrMeta+A');
+  await reaction.pressSequentially('Mild itching after dose', { delay: 30 });
+  await expect(reaction).toBeFocused();
+  await expect(reaction).toHaveValue('Mild itching after dose');
+  await panel.locator('form.patient-medication-action').getByRole('button', { name: 'Flag reaction', exact: true }).click();
+  await expect(panel).toContainText('Reaction: Mild itching after dose');
+  await panel.getByRole('button', { name: 'Discontinue', exact: true }).click();
+  const reason = panel.getByLabel('Reason for discontinuation');
+  await reason.pressSequentially('Stopped due to itching', { delay: 30 });
+  await expect(reason).toHaveValue('Stopped due to itching');
+  await panel.getByRole('button', { name: 'Discontinue medication', exact: true }).click();
+  await expect(panel.locator('.patient-medication-card--discontinued')).toContainText('Stopped due to itching');
+  const saved = await (await request.get(`${API_URL}/patients/${patient.id}/workspace`)).json();
+  const item = saved.sections.medications.items.find((entry: { id: string }) => entry.id === medication.id);
+  expect(item.reactionNotes).toBe('Mild itching after dose');
+  expect(item.discontinueReason).toBe('Stopped due to itching');
+});
+
+test('schedule block save creates exactly the selected weekdays and edits one existing row', async ({ page, request }) => {
+  await page.goto('/settings?tab=admin');
+  await page.getByRole('button', { name: 'Add schedule block', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add schedule block', exact: true });
+  await dialog.getByLabel('Label', { exact: true }).fill('SPA45 single');
+  await expect(dialog.getByRole('status')).toContainText('This creates 1 weekly block');
+  await dialog.getByRole('button', { name: 'Save schedule block', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.schedule-block-row').filter({ hasText: 'SPA45 single' })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Add schedule block', exact: true }).click();
+  await dialog.getByLabel('Label', { exact: true }).fill('SPA45 repeat');
+  await dialog.getByRole('button', { name: 'Weekdays', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('This creates 5 weekly blocks');
+  await dialog.getByRole('button', { name: 'Save schedule block', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.schedule-blocks-feedback')).toContainText('5 weekly blocks created');
+  const rows = page.locator('.schedule-block-row').filter({ hasText: 'SPA45 repeat' });
+  await expect(rows).toHaveCount(5);
+  await rows.first().getByRole('button', { name: 'Edit SPA45 repeat', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit schedule block', exact: true });
+  await editor.getByLabel('End time', { exact: true }).fill('11:15');
+  await editor.getByRole('button', { name: 'Save schedule block', exact: true }).click();
+  await expect(editor).toBeHidden();
+  await page.reload();
+  await expect(rows).toHaveCount(5);
+  const config = await (await request.get(`${API_URL}/scheduler-config`)).json();
+  const saved = config.slotTemplates.filter((block: { label: string }) => block.label === 'SPA45 repeat');
+  expect(saved).toHaveLength(5);
+  expect(saved.map((block: { dayOfWeek: number }) => block.dayOfWeek).sort()).toEqual([1, 2, 3, 4, 5]);
+  expect(saved.filter((block: { endTime: string }) => block.endTime === '11:15')).toHaveLength(1);
+});
+
+test('broken legacy profile photos show uppercase initials in Settings and the header', async ({ page }) => {
+  await page.route('**/api/auth/profile', route => route.fulfill({ json: { id: 'legacy-profile', firstName: 'jay', lastName: 'founder', displayName: 'jay', email: 'test@example.com', role: 'OWNER', phone: null, avatarUrl: '/uploads/profiles/missing-spa45.png' } }));
+  await page.route('**/uploads/profiles/missing-spa45.png', route => route.fulfill({ status: 404 }));
+  await page.goto('/settings');
+  await expect(page.locator('.profile-photo')).toHaveText('JF');
+  await expect(page.locator('.dashboard-header__avatar-frame')).toHaveText('JF');
+  await expect(page.locator('.profile-photo img')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Change profile image', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Upload image', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Remove image', exact: true })).toBeEnabled();
+});

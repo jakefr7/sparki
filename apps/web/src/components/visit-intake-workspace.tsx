@@ -1,5 +1,7 @@
 'use client';
 
+import { respiratoryLabel, crtLabel } from '@sparki/config';
+import { VitalObservationFields } from './vital-observation-fields';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { useCurrentUser } from '../lib/use-current-user';
@@ -28,6 +30,8 @@ function buildIntakeRequestBody(payload: IntakePayload) {
     temperature: payload.temperature ?? null,
     heartRate: payload.heartRate ?? null,
     respiratoryRate: payload.respiratoryRate ?? null,
+    respiratoryPattern: payload.respiratoryPattern ?? null,
+    crtAssessment: payload.crtAssessment ?? null,
     crtSeconds: payload.crtSeconds ?? null,
     gumColor: payload.gumColor ?? null,
     appetite: payload.appetite ?? null,
@@ -56,8 +60,8 @@ function IntakeReadOnlySummary({ intake, onEdit }: { intake: NonNullable<VisitDe
     intake.weight ? `${intake.weight} ${weightUnitLabel(intake.weightUnit)}` : null,
     intake.temperature ? `${intake.temperature}°F` : null,
     intake.heartRate ? `${intake.heartRate} bpm` : null,
-    intake.respiratoryRate ? `${intake.respiratoryRate} rpm` : null,
-    intake.crtSeconds ? `CRT ${intake.crtSeconds}s` : null,
+    respiratoryLabel(intake.respiratoryRate, intake.respiratoryPattern),
+    crtLabel(intake.crtSeconds, intake.crtAssessment) ? `CRT ${crtLabel(intake.crtSeconds, intake.crtAssessment)}` : null,
     intake.gumColor ? `Gums: ${intake.gumColor}` : null,
   ].filter(Boolean);
 
@@ -341,8 +345,7 @@ export function VisitIntakeWorkspace({
                 <label><span>Weight</span><div className="intake-simple-unit"><input id="weight" type="number" min="0" step="0.1" value={payload.weight ?? ''} onChange={(e) => updateField({ weight: numberValue(e), weightUnit: payload.weightUnit ?? 'KG' })}/><select aria-label="Weight unit" value={payload.weightUnit ?? 'KG'} onChange={(e) => updateField({ weightUnit: e.target.value })}>{WEIGHT_UNIT_OPTIONS.map((unit) => <option key={unit.value} value={unit.value}>{unit.label}</option>)}</select></div></label>
                 <label><span>Temperature</span><div className="intake-simple-unit"><input id="temperature" type="number" min={temperatureUnit === 'F' ? 80 : 26.7} max={temperatureUnit === 'F' ? 115 : 46.1} step="0.1" value={displayedTemperature()} onChange={updateTemperature}/><select aria-label="Temperature unit" value={temperatureUnit} onChange={(e) => setTemperatureUnit(e.target.value as 'F' | 'C')}><option value="F">°F</option><option value="C">°C</option></select></div></label>
                 <label><span>Heart rate</span><div className="intake-simple-unit"><input id="heartRate" type="number" min="1" max="400" value={payload.heartRate ?? ''} onChange={(e) => updateField({ heartRate: numberValue(e) })}/><span>bpm</span></div></label>
-                <label><span>Respiratory rate</span><div className="intake-simple-unit"><input id="respiratoryRate" type="number" min="1" max="200" value={payload.respiratoryRate ?? ''} onChange={(e) => updateField({ respiratoryRate: numberValue(e) })}/><span>rpm</span></div></label>
-                <label><span>Capillary refill</span><div className="intake-simple-unit"><input id="crtSeconds" type="number" min="0" max="20" step="0.1" value={payload.crtSeconds ?? ''} onChange={(e) => updateField({ crtSeconds: numberValue(e) })}/><span>sec</span></div></label>
+                <VitalObservationFields payload={payload} onChange={updateField} />
                 <label><span>Gum color</span><select id="gumColor" value={payload.gumColor ?? ''} onChange={(e) => updateField({ gumColor: e.target.value || null })}><option value="">Select color</option>{GUM_COLOR_OPTIONS.map((color) => <option key={color}>{color}</option>)}</select></label>
               </div>
               {handlingAssessment}

@@ -2,6 +2,7 @@
 
 import { allowedConfiguredTransitions, type ConfiguredDashboardStatus } from '@sparki/config';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 
 function statusStyle(color: string): CSSProperties {
@@ -111,6 +112,7 @@ export function ConfiguredStatusMenu({ row, statuses, onChanged }: {
     {open ? createPortal(<div ref={menuRef} className="configured-status-menu__popover" role="dialog" aria-label={`Change ${row.status.name} status`} style={position ? { top: position.top, left: position.left } : { top: -9999, left: -9999, visibility: 'hidden' }}>
       <div className="configured-status-menu__heading"><div className="configured-status-menu__heading-copy"><strong>Change status</strong><small>{row.status.name}</small></div></div>
       {transitions.length ? transitions.map((target) => <button key={target.status} type="button" disabled={pending} onClick={() => void update(target)}><span className="configured-status-menu__action-label">Move to</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h13m-4-4 4 4-4 4" /></svg><span className="configured-status-menu__target" style={statusStyle(target.color)}>{pending ? 'Updating…' : target.name}</span></button>) : <div className="configured-status-menu__empty"><span aria-hidden="true">✓</span><strong>No next steps available</strong></div>}
+      {row.kind === 'visit' ? <Link className="button-secondary" href={`/visits/${row.id}`}>Open Visit</Link> : null}
       {error ? <p role="alert">{error}</p> : null}
     </div>, document.body) : null}
   </div>;

@@ -7383,9 +7383,7 @@ img.pet-photo-placeholder {
 
 .today-appointment-row {
   display: grid;
-  grid-template-columns:
-    4.35rem minmax(10rem, 1.2fr) minmax(7.5rem, 0.7fr) 11rem
-    minmax(5.6rem, 0.55fr) minmax(6.2rem, 0.62fr);
+  grid-template-columns: 4.35rem minmax(0, 1fr) minmax(0, 0.8fr) max-content;
   gap: 0.55rem;
   align-items: center;
   min-height: 3.7rem;
@@ -14442,3 +14440,27 @@ button.settings-nav__sign-out:hover {
 .scheduler-week__body .scheduler-appointment-card--brief > strong { width: auto; max-width: 50%; flex: 0 1 auto; }
 .scheduler-week__body .scheduler-appointment-card--brief .scheduler-appointment-card__type { width: auto; min-width: 0; flex: 1; }
 .scheduler-week__body .scheduler-appointment-card__drag { display: none; }
+
+/* Patient flow rows adapt to their card, including alongside the overview rail. */
+.today-main-card { container-type: inline-size; }
+.today-status-group, .today-appointment-list, .today-rail { min-width: 0; }
+.today-appointment-row > * { min-width: 0; }
+.today-appointment-row .patient-client-cell__text { min-width: 0; overflow-wrap: anywhere; }
+.today-appointment-row__meta:nth-of-type(3) { grid-column: 2; }
+.today-visit-link { grid-column: 4; justify-self: start; font-size: .8rem; font-weight: 700; color: var(--teal); }
+@container (max-width: 36rem) {
+  .today-appointment-row { grid-template-columns: 4.35rem minmax(0, 1fr); }
+  .today-appointment-row__type { grid-column: 1 / -1; }
+  .today-appointment-row .configured-status-menu { grid-column: 1 / -1; }
+  .today-appointment-row__meta:nth-of-type(3) { grid-column: 1; }
+  .today-visit-link { grid-column: 1 / -1; }
+}
+.today-rail > * { min-width: 0; }
+.today-summary-list { grid-template-columns: minmax(0, 1fr); }
+.today-summary-list > div { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; min-width: 0; }
+.today-summary-list .patient-client-cell { width: 100%; }
+@media (max-width: 1180px) {
+  .today-operations-layout { grid-template-columns: minmax(0, 1fr); }
+  .today-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) { .today-rail { grid-template-columns: minmax(0, 1fr); } }

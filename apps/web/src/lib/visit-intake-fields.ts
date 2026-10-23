@@ -124,6 +124,8 @@ export interface IntakePayload {
   temperature?: number | null;
   heartRate?: number | null;
   respiratoryRate?: number | null;
+  respiratoryPattern?: 'Pant' | null;
+  crtAssessment?: import('@sparki/config').CrtAssessment | null;
   crtSeconds?: number | null;
   gumColor?: string | null;
   appetite?: string | null;
@@ -170,12 +172,18 @@ function isFilled(value: IntakePayload[keyof IntakePayload]): boolean {
   return value !== null && value !== undefined && value !== '';
 }
 
+function fieldFilled(payload: IntakePayload, field: keyof IntakePayload): boolean {
+  if (field === 'respiratoryRate') return isFilled(payload.respiratoryPattern) || isFilled(payload.respiratoryRate);
+  if (field === 'crtSeconds') return isFilled(payload.crtAssessment) || isFilled(payload.crtSeconds);
+  return isFilled(payload[field]);
+}
+
 export function completedRequiredFields(payload: IntakePayload): number {
-  return REQUIRED_INTAKE_FIELDS.filter((field) => isFilled(payload[field])).length;
+  return REQUIRED_INTAKE_FIELDS.filter((field) => fieldFilled(payload, field)).length;
 }
 
 export function missingRequiredFields(payload: IntakePayload): RequiredIntakeField[] {
-  return REQUIRED_INTAKE_FIELDS.filter((field) => !isFilled(payload[field]));
+  return REQUIRED_INTAKE_FIELDS.filter((field) => !fieldFilled(payload, field));
 }
 
 export function completedSections(payload: IntakePayload): Set<IntakeSectionId> {
@@ -183,7 +191,7 @@ export function completedSections(payload: IntakePayload): Set<IntakeSectionId> 
     INTAKE_SECTIONS.filter((section) =>
       section.optional
         ? BACKGROUND_FIELDS.some((field) => isFilled(payload[field as keyof IntakePayload]))
-        : section.fields.every((field) => isFilled(payload[field])),
+        : section.fields.every((field) => fieldFilled(payload, field)),
     ).map((section) => section.id),
   );
 }

@@ -384,7 +384,7 @@ export function SchedulerSettingsSection() {
         setBlockModalOpen(false);
         setBlockFormError(null);
         setDraftTemplate(EMPTY_TEMPLATE);
-        showBlockFeedback('Schedule block saved.', 'success');
+        showBlockFeedback(id ? 'Schedule block updated.' : `${saved.length} weekly block${saved.length === 1 ? '' : 's'} created — one per selected weekday.`, 'success');
       } else {
         const body = (await response.json().catch(() => null)) as { message?: string } | null;
         setBlockFormError(body?.message ?? 'Could not save schedule block.');
@@ -1194,6 +1194,9 @@ export function SchedulerSettingsSection() {
                     <button type="button" className="button-secondary" onClick={() => setSelectedDays([0,6])}>Weekends</button>
                     <button type="button" className="button-secondary" onClick={() => setSelectedDays([0,1,2,3,4,5,6])}>Every day</button>
                   </div>
+                  <p role="status">
+                    {selectedDays.length === 0 ? 'Choose at least one weekday.' : `This creates ${selectedDays.length} weekly block${selectedDays.length === 1 ? '' : 's'} — one for ${selectedDays.map(shortDay).join(', ')}. Each weekday appears separately in the list.`}
+                  </p>
                 </fieldset>}
                 <div className="schedule-block-modal__form-row">
                   <label>

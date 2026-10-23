@@ -26,7 +26,7 @@ test('SPA-7 UI handoff, reviewed discharge persistence, record resume and checko
   await page.locator('#temperature').fill('101');
   await page.locator('#heartRate').fill('90');
   await page.locator('#respiratoryRate').fill('20');
-  await page.locator('#crtSeconds').fill('1');
+  await page.locator('#crtSeconds').selectOption('OneToTwoSeconds');
   await page.locator('#gumColor').selectOption('Pink');
   await page.locator('#historyNotes').fill('Synthetic intake history for record context.');
   await page.getByRole('button', { name: 'Ready for Veterinarian' }).click();
@@ -51,6 +51,16 @@ test('SPA-7 UI handoff, reviewed discharge persistence, record resume and checko
   await page.getByRole('button', { name: 'Continue to discharge →' }).click();
   await expect(page.locator('textarea[name="instructions"]')).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Continue to review →' })).toBeDisabled();
+  await page.goto('/today');
+  const todayRow = page.locator('.today-appointment-row').filter({ hasText: 'SPA7 Synthetic Patient' });
+  await todayRow.locator('.configured-status-chip').click();
+  await page.getByRole('dialog', { name: /Change .* status/ }).getByRole('button', { name: /Move to.*Treatment/ }).click();
+  await expect(todayRow.locator('.configured-status-chip')).toContainText('Treatment');
+  await todayRow.locator('.configured-status-chip').click();
+  await page.getByRole('dialog', { name: /Change .* status/ }).getByRole('button', { name: /Move to.*Discharge/ }).click();
+  await expect(todayRow.locator('.configured-status-chip')).toContainText('Discharge');
+  await todayRow.getByRole('link', { name: 'Open Visit', exact: true }).click();
+  await expect(page.locator('textarea[name="instructions"]')).toBeVisible();
   await page.locator('.visit-discharge-guidance summary').click();
   await page.locator('textarea[name="visitSummary"]').fill('CLIENT_SUMMARY: synthetic reviewed visit summary.');
   await page.locator('textarea[name="diet"]').fill('CLIENT_DIET: synthetic feeding instructions.');

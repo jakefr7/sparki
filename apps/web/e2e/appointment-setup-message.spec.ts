@@ -54,3 +54,25 @@ test('a setup request failure retains the retry action instead of claiming types
   await dialog.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Let’s set up appointment types' })).toBeVisible();
 });
+
+for (const isBookable of [false, true]) {
+  test(`configured active types ${isBookable ? 'open booking' : 'explain the missing provider'}`, async ({ page }) => {
+    await page.route('**/api/scheduler-config', route => route.fulfill({ json: {
+      settings: { slotIntervalMinutes: 30 }, appointmentTypes: [{ id: 'configured-type', appointmentType: 'Recheck', name: '3 month recheck IOP', defaultDurationMinutes: 15, color: '#a287b6', isActive: true, isBookable, sortOrder: 0, providers: isBookable ? [{ id: 'dev-user', displayName: 'Test Doctor', role: 'VETERINARIAN', isActive: true }] : [] }], slotTemplates: [], canManage: true,
+    } }));
+    await page.goto('/scheduler');
+    await page.getByRole('button', { name: 'Day', exact: true }).click();
+    await page.getByRole('button', { name: /New appointment at/ }).first().click();
+    await expect(page.getByRole('dialog', { name: 'Let’s set up appointment types' })).toHaveCount(0);
+    if (isBookable) {
+      await expect(page.getByRole('dialog', { name: 'New Appointment', exact: true })).toBeVisible();
+      await expect(page.getByRole('dialog', { name: 'Finish appointment setup' })).toHaveCount(0);
+    } else {
+      const dialog = page.getByRole('dialog', { name: 'Finish appointment setup' });
+      await expect(dialog).toContainText('Your appointment types are active, but none have a provider assigned for booking.');
+      await expect(dialog).toContainText('Assign a provider');
+      await expect(dialog.getByText('Create an appointment type', { exact: true })).toHaveCount(0);
+      await expect(dialog.getByRole('link', { name: 'Open Admin settings' })).toBeVisible();
+    }
+  });
+}

@@ -1046,3 +1046,7 @@ Do not start broad workflow infrastructure beyond what this module requires.
 ### Future Work
 
 - TODO: Split follow-on specs for Scheduling, Medical Record, Estimate/Approval, Diagnostics, Treatment, Communication, Billing, and Record Completion only when implementation needs them.
+
+## Vital observations (founder approved 2026-10-19, SPA-45)
+
+Respiratory rate accepts either a measured rpm value or Pant. Capillary refill offers <1 second, 1–2 seconds (Normal), >2 seconds, Unable to Assess and Not Assessed. These are explicit observations, never numeric substitutes. All five CRT choices satisfy intake documentation; an empty field remains incomplete. Preserve old numeric measurements on read/save unless staff explicitly replace them. SOAP drafts must display the recorded observation accurately.

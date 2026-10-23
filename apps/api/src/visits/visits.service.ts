@@ -675,6 +675,8 @@ function normalizeIntakeInput(input: SaveVisitIntakeInput) {
     temperature: input.temperature ?? null,
     heartRate: input.heartRate ?? null,
     respiratoryRate: input.respiratoryRate ?? null,
+    respiratoryPattern: input.respiratoryPattern ?? null,
+    crtAssessment: input.crtAssessment ?? null,
     crtSeconds: input.crtSeconds ?? null,
     gumColor: input.gumColor ?? null,
     appetite: input.appetite ?? null,
@@ -704,6 +706,8 @@ function assertIntakeReadyForCompletion(intake: {
   temperature: number | null;
   heartRate: number | null;
   respiratoryRate: number | null;
+  respiratoryPattern: string | null;
+  crtAssessment: string | null;
   crtSeconds: number | null;
   gumColor: string | null;
 } | null) {
@@ -712,8 +716,8 @@ function assertIntakeReadyForCompletion(intake: {
     ['weight', intake?.weight],
     ['temperature', intake?.temperature],
     ['heart rate', intake?.heartRate],
-    ['respiratory rate', intake?.respiratoryRate],
-    ['capillary refill time', intake?.crtSeconds],
+    ['respiratory rate', intake?.respiratoryPattern ?? intake?.respiratoryRate],
+    ['capillary refill time', intake?.crtAssessment ?? intake?.crtSeconds],
     ['gum color', intake?.gumColor],
   ].filter(([, value]) => value === null || value === undefined || value === '');
   if (missing.length) {

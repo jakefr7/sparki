@@ -1,5 +1,7 @@
 # Known Gaps
 
+- SPA-45 local browser verification (2026-10-19): first checkout load on a directly seeded CheckoutReady visit exposed concurrent invoice creation (`VisitBillingService` read-then-create, unique visitId conflict). Separate from the Today clinical-resume fix; not repaired in this increment. Complete real clinical flow is verified independently.
+
 - SPA-44 local follow-up (2026-10-19): clicking Next Available before the availability response arrives selected a date beyond the loaded week and left no visible slots, while the date strip showed other days with availability. Permission verification waits for an actual available date; this timing behavior is not fixed by the veterinarian permission change. See the SPA-44 work record.
 
 - Server-local calendar days (2026-10-01): staging runs in UTC, so API code that computes "today" with `setHours(0, 0, 0, 0)` rolls over at 7 PM Central. The availability date window is fixed; still affected are `dayBoundsFor` and `assertAppointmentNotHistorical` in `appointments.service.ts` (same-day appointments become read-only and "today" queries shift from 7 PM clinic time), plus day bounds in `visits.service.ts` and `inventory/usage.service.ts`. These need the clinic time zone; not yet changed or tested.

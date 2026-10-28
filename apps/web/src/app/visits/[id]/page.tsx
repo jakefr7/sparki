@@ -132,7 +132,7 @@ export default async function VisitWorkspacePage({
         />
 
         {visit.state === 'VeterinarianExamReady' ? <VisitExamHandoff visitId={visit.id} clinician={personLabel(visit.primaryVeterinarian)} /> : null}
-        {view === 'record' && !examComplete ? <p role="status">Complete the exam to prepare the medical record. Intake and exam remain available here.</p> : null}
+        {view === 'record' && !clinicalHandoffComplete ? <p role="status">Complete the exam to prepare the medical record. Intake and exam remain available here.</p> : null}
         {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} handlingAssessment={handlingAssessment} /> : null}
 
         {showingCheckout ? <VisitCheckoutWorkspace visitId={visit.id} /> : null}

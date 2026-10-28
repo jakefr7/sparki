@@ -82,5 +82,10 @@ test(`Today fits desktop/tablet cards and continues ${visitType} discharge towar
   await expect(page.locator('textarea[name="instructions"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue to review →' })).toBeDisabled();
   expect(statusChanges).toEqual([]);
+  const record = await prisma.medicalRecord.upsert({ where: { patientId: patient.id }, create: { patientId: patient.id }, update: {} });
+  await prisma.soapNote.create({ data: { medicalRecordId: record.id, visitId: visit.id, authorId: 'dev-user', subjective: 'Synthetic review fixture' } });
+  await page.goto(`/visits/${visit.id}?view=record`);
+  await expect(page.getByRole('heading', { name: 'Review visit', exact: true })).toBeVisible();
+  await expect(page.getByText('Complete the exam to prepare the medical record.', { exact: false })).toHaveCount(0);
 });
 }

@@ -78,7 +78,10 @@ export default async function VisitWorkspacePage({
   // and implies downstream work should be ordered before the exam is done.
   const examComplete = Boolean(visit.examFindings?.completedAt);
   const reviewingExam = examComplete && view === 'exam';
-  const showClinicalWork = examComplete && !reviewingExam;
+  // Technician appointments use completed intake as their clinical handoff;
+  // their existing lifecycle does not require a veterinarian exam.
+  const clinicalHandoffComplete = examComplete || (visit.visitType === 'TechnicianAppointment' && Boolean(visit.intake?.completedAt));
+  const showClinicalWork = clinicalHandoffComplete && !reviewingExam;
 
   const visitHref = `/visits/${encodeURIComponent(visit.id)}`;
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
@@ -98,8 +101,8 @@ export default async function VisitWorkspacePage({
       title={visit.patient.name}
       workspace
     >
-      <div className={`visit-workspace${examComplete ? ' visit-workspace--post-exam' : ''}`}>
-        {!examComplete ? <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} /> : null}
+      <div className={`visit-workspace${clinicalHandoffComplete ? ' visit-workspace--post-exam' : ''}`}>
+        {!clinicalHandoffComplete ? <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} /> : null}
         <VisitIntakeWorkspace
           visitId={visit.id}
           visitType={visit.visitType}
@@ -124,7 +127,7 @@ export default async function VisitWorkspacePage({
           reason={visit.reason}
           backHref={backHref}
           examStatusNote={examStatus?.label ?? null}
-          headerOnly={Boolean(visit.examFindings?.completedAt)}
+          headerOnly={clinicalHandoffComplete}
           handlingAssessment={handlingAssessment}
         />
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { respiratoryLabel, crtLabel } from '@sparki/config';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { VisitDetail } from '../lib/patient-types';
 import type { AutosaveState } from './patient-context-bar';
@@ -125,12 +126,15 @@ function IntakeRecap({ intake }: { intake: Intake }) {
   const [open, setOpen] = useState(true);
   if (!intake) return null;
 
+  const respiratory = respiratoryLabel(intake.respiratoryRate, intake.respiratoryPattern);
+  const crt = crtLabel(intake.crtSeconds, intake.crtAssessment);
+
   const vitals: Array<[string, string]> = [
     intake.weight != null ? ['Weight', `${intake.weight} ${intake.weightUnit === 'KG' ? 'kg' : 'lb'}`] as [string, string] : null,
     intake.temperature != null ? ['Temperature', `${intake.temperature}°F`] as [string, string] : null,
     intake.heartRate != null ? ['Heart rate', `${intake.heartRate} bpm`] as [string, string] : null,
-    intake.respiratoryRate != null ? ['Respiratory rate', `${intake.respiratoryRate} rpm`] as [string, string] : null,
-    intake.crtSeconds != null ? ['CRT', `${intake.crtSeconds} sec`] as [string, string] : null,
+    respiratory ? ['Respiratory rate', respiratory] as [string, string] : null,
+    crt ? ['CRT', crt] as [string, string] : null,
     intake.gumColor ? ['Gum color', intake.gumColor] as [string, string] : null,
     intake.painScore != null ? ['Pain score', `${intake.painScore}${intake.painScale ? ` (${intake.painScale})` : ''}`] as [string, string] : null,
   ].filter((entry): entry is [string, string] => entry != null);

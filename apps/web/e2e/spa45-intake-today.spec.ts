@@ -37,14 +37,21 @@ test('intake preserves old numeric CRT, saves Pant and explicit Not Assessed, an
   await expect(page.getByRole('button', { name: 'Start exam', exact: true })).toBeVisible();
   await expect(page.locator('.intake-readonly-summary')).toContainText('Pant');
   await expect(page.locator('.intake-readonly-summary')).toContainText('CRT Not Assessed');
+  await page.getByRole('button', { name: 'Start exam', exact: true }).click();
+  await expect(page.locator('.exam-intake-drawer')).toContainText('Pant');
+  await expect(page.locator('.exam-intake-drawer')).toContainText('Not Assessed');
+  await page.reload();
+  await expect(page.locator('.exam-intake-drawer')).toContainText('Pant');
+  await expect(page.locator('.exam-intake-drawer')).toContainText('Not Assessed');
 });
 
-test('Today fits desktop/tablet cards and opens the discharge visit workspace', async ({ page, request }) => {
-  const { visit, patient } = await fixture(request, 'SPA45 patient with a long name to check layout');
+for (const visitType of ['Scheduled', 'TechnicianAppointment'] as const) {
+test(`Today fits desktop/tablet cards and continues ${visitType} discharge toward checkout`, async ({ page, request }) => {
+  const { visit, patient } = await fixture(request, `SPA45 ${visitType} patient with a long name to check layout`);
   // Disposable fixture represents the reported state; production transitions remain guarded.
-  await prisma.visit.update({ where: { id: visit.id }, data: { state: 'CheckoutReady', phase: 'Discharge' } });
+  await prisma.visit.update({ where: { id: visit.id }, data: { visitType, state: 'CheckoutReady', phase: 'Discharge' } });
   await prisma.visitIntake.create({ data: { visitId: visit.id, historyNotes: 'Recorded intake', completedAt: new Date() } });
-  await prisma.visitExamFindings.create({ data: { visitId: visit.id, assessment: 'Fixture exam', completedAt: new Date() } });
+  if (visitType === 'Scheduled') await prisma.visitExamFindings.create({ data: { visitId: visit.id, assessment: 'Fixture exam', completedAt: new Date() } });
   await request.get(`${API_URL}/dashboard-status-colors`);
   await page.goto('/today');
   const row = page.locator('.today-appointment-row').filter({ hasText: patient.name });
@@ -64,9 +71,16 @@ test('Today fits desktop/tablet cards and opens the discharge visit workspace', 
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
   await page.screenshot({ path: '/tmp/sparki-spa45-today-tablet.png', fullPage: true });
-  await row.getByRole('link', { name: 'Open Visit', exact: true }).click();
+  const statusChanges: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(`/visits/${visit.id}/dashboard-status`)) statusChanges.push(request.url());
+  });
+  await row.getByRole('button', { name: 'Discharge', exact: true }).click();
+  await page.getByRole('link', { name: 'Continue to Checkout', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/visits/${visit.id}$`));
   await expect(page.getByText(patient.name, { exact: true }).first()).toBeVisible();
   await expect(page.locator('textarea[name="instructions"]')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue to review →' })).toBeDisabled();
+  expect(statusChanges).toEqual([]);
 });
+}

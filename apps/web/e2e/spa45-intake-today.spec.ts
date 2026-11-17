@@ -76,7 +76,13 @@ test(`Today fits desktop/tablet cards and continues ${visitType} discharge towar
     if (request.method() === 'POST' && request.url().endsWith(`/visits/${visit.id}/dashboard-status`)) statusChanges.push(request.url());
   });
   await row.getByRole('button', { name: 'Discharge', exact: true }).click();
-  await page.getByRole('link', { name: 'Continue to Checkout', exact: true }).click();
+  const menu = page.getByRole('dialog', { name: 'Change Discharge status' });
+  const continueLink = menu.getByRole('link', { name: 'Continue to Checkout', exact: true });
+  await expect(continueLink).toHaveCSS('background-color', 'rgb(251, 253, 253)');
+  await expect(continueLink).toHaveCSS('display', 'grid');
+  await expect(menu.getByRole('link', { name: 'Open Visit', exact: true })).toHaveCSS('background-color', 'rgb(251, 253, 253)');
+  await menu.screenshot({ path: '/tmp/sparki-discharge-menu.png' });
+  await continueLink.click();
   await expect(page).toHaveURL(new RegExp(`/visits/${visit.id}$`));
   await expect(page.getByText(patient.name, { exact: true }).first()).toBeVisible();
   await expect(page.locator('textarea[name="instructions"]')).toBeVisible();

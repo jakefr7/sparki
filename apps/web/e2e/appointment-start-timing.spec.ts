@@ -29,6 +29,17 @@ for (const [offset, role, action] of [[-3, 'VETERINARIAN', 'Begin Intake'], [3, 
     await page.locator('.scheduler-appointment-card').first().click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText('Timing Patient');
+    if (offset === 3) {
+      const footer = dialog.locator('.appointment-viewer__actions');
+      for (const width of [1440, 1024]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await expect.poll(() => footer.evaluate(element => {
+          const actions = [...element.querySelectorAll('button, a')].map(action => action.getBoundingClientRect());
+          return actions.length === 4 && actions.every(box => Math.abs(box.height - actions[0]!.height) < 1 && Math.abs(box.width - actions[0]!.width) < 1) && Math.abs(actions[0]!.top - actions[1]!.top) < 1 && Math.abs(actions[2]!.top - actions[3]!.top) < 1 && element.scrollWidth <= element.clientWidth;
+        })).toBe(true);
+        await footer.screenshot({ path: `/tmp/sparki-popup-actions-${width}.png` });
+      }
+    }
     await dialog.getByRole('button', { name: action, exact: true }).click();
     await expect(page).toHaveURL(/\/visits\/timing-visit$/);
     expect(calls).toEqual(['/api/appointments/timing-appointment/arrive', '/api/visits', ...(role === 'RECEPTIONIST' ? [] : ['/api/visits/timing-visit/start'])]);

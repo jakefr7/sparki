@@ -37,7 +37,7 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const readOnly = Boolean(visit.checkout) || ['Archived', 'ArchivedWithExceptions', 'Cancelled', 'NoShow'].includes(visit.state);
+  const readOnly = visit.soapNotes.some(note => note.status === 'Locked') || Boolean(visit.checkout) || ['Archived', 'ArchivedWithExceptions', 'Cancelled', 'NoShow'].includes(visit.state);
   const canDischarge = !readOnly && ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? '');
   const canCheckout = ['OWNER', 'PRACTICE_MANAGER', 'RECEPTIONIST'].includes(user?.role ?? '');
   // Refreshes hydrate canonical content without erasing an in-progress edit.
@@ -117,7 +117,7 @@ export function VisitDischargePanel({ visit }: { visit: VisitDetail }) {
         </fieldset>
       </form> : null}
       {canDischarge ? <div className="visit-discharge-save-status"><p className={`autosave-indicator autosave-indicator--${saving || dirty ? 'saving' : error ? 'error' : saved ? 'saved' : 'saving'}`} role="status"><span className="autosave-indicator__dot" aria-hidden="true" />{saving ? 'Saving…' : error ? 'Changes not saved' : dirty ? 'Unsaved changes' : saved ? 'Saved' : 'Required fields marked *'}</p>{error ? <p className="visit-discharge-validation" role="alert">{error}</p> : null}</div> : null}
-      {readOnly ? <p>{visit.checkout ? 'Checkout is complete.' : 'This visit is closed.'} Saved discharge instructions are read-only.</p> : null}
+      {readOnly ? <p>{visit.soapNotes.some(note => note.status === 'Locked') ? 'The medical record is finalized.' : visit.checkout ? 'Checkout is complete.' : 'This visit is closed.'} Saved discharge instructions are read-only.</p> : null}
       {canCheckout && saved && !readOnly && !dirty ? <div className="visit-discharge-form visit-discharge-reception-handoff"><div><h3>Ready for reception</h3><p>Discharge is prepared. Review charges, collect payment, and finish the visit in Checkout.</p></div><Link className="button-primary" href={`/visits/${encodeURIComponent(visit.id)}?view=checkout`}>Open checkout</Link></div> : null}
     </section>
     {(step || canDischarge) ? <footer className="visit-discharge-final-actions">

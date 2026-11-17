@@ -111,6 +111,9 @@ export function VisitIntakeWorkspace({
   backHref,
   examStatusNote: _examStatusNote,
   headerOnly = false,
+  readOnly = false,
+  editCompleted = false,
+  returnHref,
   handlingAssessment,
 }: {
   visitId: string;
@@ -137,6 +140,9 @@ export function VisitIntakeWorkspace({
   backHref: string;
   examStatusNote?: string | null;
   headerOnly?: boolean;
+  readOnly?: boolean;
+  editCompleted?: boolean;
+  returnHref?: string;
   handlingAssessment?: ReactNode;
 }) {
   const router = useRouter();
@@ -149,15 +155,15 @@ export function VisitIntakeWorkspace({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [pendingFocusField, setPendingFocusField] = useState<RequiredIntakeField | null>(null);
   const [attemptedHandoff, setAttemptedHandoff] = useState(false);
-  const [editingCompletedIntake, setEditingCompletedIntake] = useState(false);
+  const [editingCompletedIntake, setEditingCompletedIntake] = useState(editCompleted);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
 
   const canManageIntake = ['OWNER', 'VETERINARIAN', 'TECHNICIAN', 'ASSISTANT'].includes(user?.role ?? '');
   const canDeferEmergency = visitType === 'Emergency' && canManageIntake;
   const isDeferredEmergencyIntake = visitType === 'Emergency' && state === 'TreatmentPending' && !intake?.completedAt;
-  const canEditCompletedIntake = canManageIntake && state === 'VeterinarianExamReady';
-  const canEditIntake = canManageIntake && (state === 'IntakeInProgress' || isDeferredEmergencyIntake || editingCompletedIntake);
+  const canEditCompletedIntake = canManageIntake && !readOnly && Boolean(intake?.completedAt);
+  const canEditIntake = canManageIntake && !readOnly && (state === 'IntakeInProgress' || isDeferredEmergencyIntake || editingCompletedIntake);
   const isStartable = STARTABLE_STATES.has(state);
 
   // Claim legacy in-progress intakes when a technician opens them directly.
@@ -318,7 +324,7 @@ export function VisitIntakeWorkspace({
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     const saved = await persist(payload);
     setSubmitting(false);
-    if (saved) setEditingCompletedIntake(false);
+    if (saved) { setEditingCompletedIntake(false); if (returnHref && editCompleted) router.push(returnHref); router.refresh(); }
   }
 
   return (

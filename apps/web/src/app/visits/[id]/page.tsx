@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { TechnicianVisitNotes } from '../../../components/technician-visit-notes';
 import { VisitFasAssessment } from '../../../components/patient-fas-panel';
 import { VisitExamHandoff } from '../../../components/visit-exam-handoff';
 import { VisitCareSections } from '../../../components/visit-care-sections';
@@ -77,16 +79,18 @@ export default async function VisitWorkspacePage({
   // exam. Showing it during ExamInProgress competes with exam documentation
   // and implies downstream work should be ordered before the exam is done.
   const examComplete = Boolean(visit.examFindings?.completedAt);
-  const reviewingExam = examComplete && view === 'exam';
+  const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
+  const technicianVisit = visit.visitType === 'TechnicianAppointment';
+  const reviewingExam = (examComplete || technicianVisit) && view === 'exam' && !recordSigned;
+  const reviewingIntake = view === 'intake' && Boolean(visit.intake?.completedAt) && !recordSigned;
   // Technician appointments use completed intake as their clinical handoff;
   // their existing lifecycle does not require a veterinarian exam.
   const clinicalHandoffComplete = examComplete || (visit.visitType === 'TechnicianAppointment' && Boolean(visit.intake?.completedAt));
-  const showClinicalWork = clinicalHandoffComplete && !reviewingExam;
+  const showClinicalWork = clinicalHandoffComplete && !reviewingExam && !reviewingIntake;
 
   const visitHref = `/visits/${encodeURIComponent(visit.id)}`;
   const originQuery = openedFromCommandCenter ? '&from=command-center' : '';
   const projectedSection = visit.phase === 'RecordClosure' ? 'visit-record' : visit.phase === 'Discharge' ? 'visit-discharge' : 'visit-care-plan';
-  const recordSigned = visit.soapNotes.some((note) => note.status === 'Locked');
   const showingCheckout = view === 'checkout' || (recordSigned && !['record', 'discharge'].includes(view ?? '') && ['CheckoutReady', 'CheckoutInProgress', 'PaymentPending', 'PaymentComplete'].includes(visit.state));
   const openClinicalWork = visit.workItems.some((item) => {
     if (!['Diagnostic', 'Treatment', 'Medication'].includes(item.type)) return false;
@@ -104,6 +108,7 @@ export default async function VisitWorkspacePage({
       <div className={`visit-workspace${clinicalHandoffComplete ? ' visit-workspace--post-exam' : ''}`}>
         {!clinicalHandoffComplete ? <VisitResumeLocation visitId={visit.id} projectedSection={projectedSection} /> : null}
         <VisitIntakeWorkspace
+          key={reviewingIntake ? 'edit-intake' : 'intake'}
           visitId={visit.id}
           visitType={visit.visitType}
           state={visit.state}
@@ -127,16 +132,22 @@ export default async function VisitWorkspacePage({
           reason={visit.reason}
           backHref={backHref}
           examStatusNote={examStatus?.label ?? null}
-          headerOnly={clinicalHandoffComplete}
+          headerOnly={clinicalHandoffComplete && !reviewingIntake}
+          readOnly={recordSigned}
+          editCompleted={reviewingIntake}
+          returnHref={`${visitHref}?view=plan${originQuery}`}
           handlingAssessment={handlingAssessment}
         />
 
+        {!recordSigned && visit.intake?.completedAt ? <nav className="visit-step-actions" aria-label="Edit visit documentation"><Link className="visit-stage-navigation__link" href={`${visitHref}?view=intake${originQuery}`}>Edit history &amp; vitals</Link><Link className="visit-stage-navigation__link" href={`${visitHref}?view=exam${originQuery}`}>{technicianVisit ? 'Edit visit notes' : 'Back to exam'}</Link></nav> : null}
+        {reviewingExam && technicianVisit ? <TechnicianVisitNotes visit={visit} returnHref={`${visitHref}?view=plan${originQuery}`} /> : null}
         {visit.state === 'VeterinarianExamReady' ? <VisitExamHandoff visitId={visit.id} clinician={personLabel(visit.primaryVeterinarian)} /> : null}
         {view === 'record' && !clinicalHandoffComplete ? <p role="status">Complete the exam to prepare the medical record. Intake and exam remain available here.</p> : null}
-        {visit.state === 'VeterinarianExamInProgress' || reviewingExam ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} handlingAssessment={handlingAssessment} /> : null}
+        {!recordSigned && (visit.state === 'VeterinarianExamInProgress' || (reviewingExam && !technicianVisit)) ? <ExamFindingsPanel returnToCarePlan={reviewingExam && !recordSigned && !visit.checkout ? `${visitHref}?view=plan${originQuery}` : undefined} visitId={visit.id} state={visit.state} examFindings={visit.examFindings} intake={visit.intake} handlingAssessment={handlingAssessment} /> : null}
 
         {showingCheckout ? <VisitCheckoutWorkspace visitId={visit.id} /> : null}
         {showClinicalWork && !recordSigned && !showingCheckout ? <VisitCareSections
+          examLabel={technicianVisit ? 'visit notes' : 'exam'}
           examHref={`${visitHref}?view=exam${originQuery}`}
           canContinueToDischarge={!openClinicalWork}
           initialSection={view === 'plan' ? 0 : view === 'care' ? 1 : view === 'discharge' ? 2 : view === 'record' ? 3 : visit.phase === 'RecordClosure' ? 3 : visit.phase === 'Discharge' ? 2 : 0}

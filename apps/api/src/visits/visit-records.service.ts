@@ -1,3 +1,4 @@
+import { assertClinicalRecordEditable } from './clinical-record-editability';
 import { respiratoryLabel, crtLabel } from '@sparki/config';
 import { createHash } from 'node:crypto';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -124,22 +125,25 @@ export class VisitRecordsService {
     input: SaveVisitRecordDraftInput,
   ) {
     await this.assertCanWorkOnRecord(visitId, organizationId, locationId, userId);
-    const note = await this.ensureDraftForVisit(visitId, organizationId, locationId, userId);
-    if (!OPEN_RECORD_STATUSES.includes(note.status as (typeof OPEN_RECORD_STATUSES)[number])) {
-      throw new ConflictException('Finalized medical records cannot be edited. Create an amendment instead.');
-    }
-    const changed = await prisma.soapNote.updateMany({
-      where: { id: note.id, version: input.version, status: { in: [...OPEN_RECORD_STATUSES] } },
-      data: {
-        subjective: input.subjective ?? null,
-        objective: input.objective ?? null,
-        assessment: input.assessment ?? null,
-        plan: input.plan ?? null,
-        version: { increment: 1 },
-      },
+    return prisma.$transaction(async (tx) => {
+      await assertClinicalRecordEditable(tx, visitId, organizationId, locationId);
+      const note = await this.ensureDraftForVisitTx(tx, visitId, organizationId, locationId, userId);
+      if (!OPEN_RECORD_STATUSES.includes(note.status as (typeof OPEN_RECORD_STATUSES)[number])) {
+        throw new ConflictException('Finalized medical records cannot be edited. Create an amendment instead.');
+      }
+      const changed = await tx.soapNote.updateMany({
+        where: { id: note.id, version: input.version, status: { in: [...OPEN_RECORD_STATUSES] } },
+        data: {
+          subjective: input.subjective ?? null,
+          objective: input.objective ?? null,
+          assessment: input.assessment ?? null,
+          plan: input.plan ?? null,
+          version: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) throw new ConflictException('This record changed elsewhere. Refresh before saving again.');
+      return tx.soapNote.findUniqueOrThrow({ where: { id: note.id } });
     });
-    if (changed.count !== 1) throw new ConflictException('This record changed elsewhere. Refresh before saving again.');
-    return prisma.soapNote.findUniqueOrThrow({ where: { id: note.id } });
   }
 
   async delegate(
@@ -229,6 +233,7 @@ export class VisitRecordsService {
     const nextState = canClose ? 'Archived' : visit.checkout ? 'RecordComplete' : 'CheckoutReady';
     const nextPhase = canClose ? 'Closed' : 'RecordClosure';
     return prisma.$transaction(async (tx) => {
+      await assertClinicalRecordEditable(tx, visitId, organizationId, locationId);
       const changed = await tx.soapNote.updateMany({
         where: { id: note.id, version: note.version, status: { in: [...OPEN_RECORD_STATUSES] } },
         data: {

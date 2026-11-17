@@ -95,7 +95,7 @@ function VisitOverview({ visit }: { visit: VisitDetail }) {
       <div className="post-exam-review__summary-grid">
         <article><span>Intake</span><p>{note?.subjective || visit.intake?.chiefComplaint || visit.intake?.historyNotes || visit.reason}</p></article>
         <article className="post-exam-review__findings"><span>Exam findings</span>{objective.normalHeadline ? <p>{objective.normalHeadline}</p> : objective.notable.length ? <ul>{objective.notable.map((line, index) => <li key={index}>{line}</li>)}</ul> : <p>{objective.full || 'No exam findings documented.'}</p>}{objective.normalCount > 0 && !objective.normalHeadline ? <p>{objective.normalCount} other {objective.normalCount === 1 ? 'system' : 'systems'} normal</p> : null}{objective.full && objective.normalCount > 0 ? <details><summary>View full exam</summary><p style={{ whiteSpace: 'pre-line' }}>{objective.full}</p></details> : null}</article>
-        <article><span>Diagnosis</span><p>{note?.assessment || visit.examFindings?.assessment || 'No diagnosis documented.'}</p></article>
+        <article><span>{visit.visitType === 'TechnicianAppointment' ? 'Assessment / care notes' : 'Diagnosis'}</span><p>{note?.assessment || visit.examFindings?.assessment || (visit.visitType === 'TechnicianAppointment' ? 'No assessment / care notes documented.' : 'No diagnosis documented.')}</p></article>
         <article><span>Treatment plan</span><p>{treatmentPlan || 'No treatment plan documented.'}</p></article>
         <article><span>What&apos;s next</span><p>{whatsNext || visit.discharge?.followUpPlan || 'No follow-up recommendation documented.'}</p></article>
         <article><span>Home-care instructions</span><p>{visit.discharge?.instructions || 'Discharge instructions have not been saved.'}</p></article>
@@ -116,6 +116,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
   const isDelegate = visit.signoffDelegates.some((entry) => entry.delegateId === user?.id);
   const canFinalize = Boolean(user && (isAssignedDoctor || isUnassignedClinicalCompleter || isAssignedTechnician || isDelegate) && note && ['Draft', 'ReadyForReview'].includes(note.status));
   const signed = note?.status === 'Locked';
+  const missingTechnicianNotes = visit.visitType === 'TechnicianAppointment' ? [!note?.assessment?.trim() && 'assessment / care notes', !note?.plan?.trim() && 'care plan'].filter(Boolean) : [];
   const signedOn = note?.lockedAt ?? note?.signedAt ?? null;
   const signingVet = visit.primaryVeterinarian;
   const signerName = note?.veterinarianId && signingVet?.id === note.veterinarianId
@@ -135,7 +136,7 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
     try {
       const response = await fetch(`/api/visits/${visit.id}/record/finalize`, { method: 'POST' });
       const payload = (await response.json()) as { message?: string };
-      if (!response.ok) throw new Error(payload.message === 'Complete all SOAP sections before finalizing the medical record.' ? 'Document the history, exam findings, diagnosis, and treatment plan before finalizing the visit.' : payload.message ?? 'Could not sign the record.');
+      if (!response.ok) throw new Error(payload.message === 'Complete all SOAP sections before finalizing the medical record.' ? (visit.visitType === 'TechnicianAppointment' ? 'Complete the assessment / care notes and care plan in Edit visit notes before finalizing.' : 'Document the history, exam findings, diagnosis, and treatment plan before finalizing the visit.') : payload.message ?? 'Could not sign the record.');
       router.push('/');
       router.refresh();
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not sign the record.'); }
@@ -221,13 +222,14 @@ export function VisitRecordPanel({ visit, attachments }: { visit: VisitDetail; a
         </p>
       ) : null}
     </section> : null}
+    {!signed && missingTechnicianNotes.length ? <p className="form-error" role="status">Complete {missingTechnicianNotes.join(' and ')} using Edit visit notes before finalizing.</p> : null}
     {!signed && !canFinalize ? <p role="status">Only the assigned clinician or a recorded signoff delegate can finalize this visit.</p> : null}
     {!signed && (!visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))) ? <p role="status">Complete care and save discharge instructions before finalizing the visit.</p> : null}
     {!signed && error ? <p className="form-error" role="alert">{error}</p> : null}
     {step || canFinalize ? (
       <footer className="visit-step-actions visit-record-footer">
         {step ? <button type="button" className="visit-stage-navigation__link" disabled={saving} onClick={step.back}>← Back to discharge</button> : <span />}
-          {canFinalize ? <button type="button" className="button-primary" disabled={saving || !visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))} onClick={() => void finalize()}>{saving ? 'Finalizing…' : 'Finalize visit'}</button> : null}
+          {canFinalize ? <button type="button" className="button-primary" disabled={saving || missingTechnicianNotes.length > 0 || !visit.discharge || visit.workItems.some((item) => ['Diagnostic', 'Treatment', 'Medication'].includes(item.type) && ['Pending', 'InProgress'].includes(item.status))} onClick={() => void finalize()}>{saving ? 'Finalizing…' : 'Finalize visit'}</button> : null}
       </footer>
     ) : null}
     </>

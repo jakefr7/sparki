@@ -7381,10 +7381,11 @@ img.pet-photo-placeholder {
 .configured-status-menu__heading-copy { display: grid; gap: 0.13rem; min-width: 0; }
 .configured-status-menu__heading-copy > strong { color: #172633; font-size: 0.86rem; line-height: 1.2; }
 .configured-status-menu__heading-copy > small { overflow: hidden; color: #718290; font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
-.configured-status-menu__popover > button { display: grid; grid-template-columns: minmax(4.2rem, 1fr) 1rem auto; align-items: center; gap: 0.45rem; min-height: 2.35rem; padding: 0.42rem 0.45rem; border: 1px solid #e2ecee; border-radius: 0.55rem; background: #fbfdfd; color: #172633; font: inherit; font-weight: 700; cursor: pointer; text-align: left; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
-.configured-status-menu__popover > button:hover { border-color: #b7dedd; background: #f1f9f8; transform: translateY(-1px); }
-.configured-status-menu__popover > button:focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
-.configured-status-menu__popover > button > svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: #667586; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.configured-status-menu__popover > :is(button, a) { display: grid; grid-template-columns: minmax(4.2rem, 1fr) 1rem auto; align-items: center; gap: 0.45rem; min-height: 2.35rem; padding: 0.42rem 0.45rem; border: 1px solid #e2ecee; border-radius: 0.55rem; background: #fbfdfd; color: #172633; font: inherit; font-weight: 700; cursor: pointer; text-align: left; text-decoration: none; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.configured-status-menu__popover > :is(button, a):hover { border-color: #b7dedd; background: #f1f9f8; transform: translateY(-1px); }
+.configured-status-menu__popover > :is(button, a):focus-visible { outline: 2px solid #1fa9a0; outline-offset: 2px; }
+.configured-status-menu__popover > :is(button, a) > svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: #667586; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.configured-status-menu__popover > .configured-status-menu__link--open { display: flex; justify-content: space-between; font-size: .78rem; color: #13766f; }
 .configured-status-menu__action-label { color: #667586; font-size: .78rem; font-weight: 720; }
 .configured-status-menu__target { max-width: 9rem; padding: .25rem .48rem; overflow: hidden; border-radius: .38rem; background: var(--configured-status); color: var(--configured-status-text); font-size: .72rem; font-weight: 850; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 1px rgba(255,255,255,.15); }
 .configured-status-menu__empty { display: flex; align-items: center; gap: .5rem; margin-top: .05rem; padding: .55rem .5rem; border-radius: .55rem; background: #f7fafb; }
@@ -10121,13 +10122,15 @@ img.pet-photo-placeholder {
 .appointment-viewer__note--read-only { grid-template-columns: 1fr; }
 .appointment-viewer__note--read-only > div > span { color: #263a47; font-size: .88rem; font-weight: 850; letter-spacing: -.01em; }
 .appointment-viewer__note--read-only p { margin: .35rem 0 0; padding: .7rem .75rem; border: 1px solid #dbe5e7; border-radius: .55rem; background: rgba(255, 255, 255, .65); color: #536673; font-size: .86rem; line-height: 1.45; }
-.appointment-viewer__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-top: .25rem; padding-top: 1rem; border-top: 1px solid #e2ecee; }
+.appointment-viewer__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: .65rem; margin-top: .25rem; padding-top: 1rem; border-top: 1px solid #e2ecee; }
+.appointment-viewer__actions .visit-action { min-width: 0; margin-top: 0; }
 .appointment-viewer__actions > button,
-.appointment-viewer__actions > a { min-height: 2.75rem; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .6rem; font: inherit; font-size: .8rem; font-weight: 750; line-height: 1.25; white-space: nowrap; text-decoration: none; }
+.appointment-viewer__actions > a,
+.appointment-viewer__actions .visit-action > button { box-sizing: border-box; width: 100%; height: 2.75rem; min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .6rem; font: inherit; font-size: .8rem; font-weight: 750; line-height: 1.25; white-space: nowrap; text-decoration: none; }
 .appointment-viewer__actions a { border: 1px solid #cfe0e2; background: #fff; color: #25404c; }
 .appointment-viewer__actions a:hover { border-color: #92bfbc; background: #f2f9f8; }
 .appointment-viewer__actions > :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.appointment-viewer__cancel { margin-left: auto; border: 1px solid #dcaeae; background: #fff8f8; color: #a33f3f; cursor: pointer; }
+.appointment-viewer__cancel { margin-left: 0; border: 1px solid #dcaeae; background: #fff8f8; color: #a33f3f; cursor: pointer; }
 .appointment-viewer__cancel:hover { border-color: #c98080; background: #fff0f0; }
 .appointment-cancel-confirmation { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(23, 39, 48, .34); backdrop-filter: blur(2px); }
 .appointment-cancel-confirmation__panel { display: grid; justify-items: center; width: min(100%, 25rem); gap: .55rem; padding: 1.4rem; border: 1px solid #ead5d5; border-radius: .85rem; background: #fff; box-shadow: 0 18px 50px rgba(21, 39, 48, .25); text-align: center; }
@@ -10174,9 +10177,7 @@ img.pet-photo-placeholder {
   .appointment-viewer__facts div:nth-child(odd),
   .appointment-viewer__facts div:nth-last-child(-n + 2) { border-right: 0; border-bottom: 1px solid #e5edef; }
   .appointment-viewer__facts div:last-child { border-bottom: 0; }
-  .appointment-viewer__actions { flex-wrap: wrap; }
-  .appointment-viewer__actions > button, .appointment-viewer__actions > a { flex: 1 1 auto; }
-  .appointment-viewer__cancel { margin-left: 0; }
+  .appointment-viewer__actions { gap: .5rem; }
 }
 
 .profile-quick-actions__button {

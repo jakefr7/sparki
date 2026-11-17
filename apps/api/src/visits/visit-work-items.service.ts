@@ -1,3 +1,4 @@
+import { assertClinicalRecordEditable } from './clinical-record-editability';
 import {
   ConflictException,
   ForbiddenException,
@@ -54,6 +55,7 @@ export class VisitWorkItemsService {
         throw new ConflictException('The selected assignee does not have access to this location.');
     }
     return prisma.$transaction(async (tx) => {
+      if (isVisitBoundWork(input.type)) await assertClinicalRecordEditable(tx, visitId, organizationId, locationId);
       const visit = await tx.visit.findFirst({
         where: { id: visitId, organizationId, locationId },
       });
@@ -109,6 +111,7 @@ export class VisitWorkItemsService {
           include: { visit: true },
         });
         if (!item) throw new NotFoundException('Visit work item not found.');
+        if (isVisitBoundWork(item.type)) await assertClinicalRecordEditable(tx, visitId, organizationId, locationId);
         if (TERMINAL_VISIT_STATES.includes(item.visit.state) && isVisitBoundWork(item.type)) {
           throw new ConflictException('Clinical work on a closed visit cannot be changed.');
         }

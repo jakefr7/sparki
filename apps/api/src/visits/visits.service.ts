@@ -1,3 +1,4 @@
+import { assertClinicalRecordEditable } from './clinical-record-editability';
 import {
   BadRequestException,
   ConflictException,
@@ -342,20 +343,12 @@ export class VisitsService {
     input: SaveVisitIntakeInput,
   ) {
     await this.findById(id, organizationId, locationId);
-
-    await prisma.visitIntake.upsert({
-      where: { visitId: id },
-      create: {
-        visitId: id,
-        ...normalizeIntakeInput(input),
-      },
-      update: normalizeIntakeInput(input),
-    });
-
-    return prisma.visit.update({
-      where: { id },
-      data: { lastUpdatedById },
-      include: visitInclude,
+    return prisma.$transaction(async (tx) => {
+      await assertClinicalRecordEditable(tx, id, organizationId, locationId);
+      const previous = await tx.visit.findFirstOrThrow({ where: { id, organizationId, locationId }, include: { examFindings: true, intake: true } });
+      await tx.visitIntake.upsert({ where: { visitId: id }, create: { visitId: id, ...normalizeIntakeInput(input) }, update: normalizeIntakeInput(input) });
+      await this.records.syncExamDraftTx(tx, id, organizationId, locationId, previous);
+      return tx.visit.update({ where: { id }, data: { lastUpdatedById }, include: visitInclude });
     });
   }
 
@@ -488,6 +481,7 @@ export class VisitsService {
   ) {
     await this.findById(id, organizationId, locationId);
     return prisma.$transaction(async (tx) => {
+      await assertClinicalRecordEditable(tx, id, organizationId, locationId);
       // Serialize exam saves before reading the previous generated source.
       await tx.visit.update({ where: { id }, data: { lastUpdatedById } });
       const previous = await tx.visit.findFirstOrThrow({ where: { id, organizationId, locationId }, include: { examFindings: true, intake: true } });

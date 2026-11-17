@@ -1088,7 +1088,7 @@ describe('Visits (e2e)', () => {
       expect(finalized.status).toBe(201);
       expect(finalized.body).toMatchObject({ status: 'Locked', assessment: 'Revised diagnosis', plan: 'Revised plan' });
       saved = await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } });
-      expect((await save('Later exam diagnosis', 'Later exam plan')).status).toBe(200);
+      expect((await save('Later exam diagnosis', 'Later exam plan')).status).toBe(409);
       expect(await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({ status: 'Locked', assessment: 'Revised diagnosis', plan: 'Revised plan', version: saved.version });
     });
 

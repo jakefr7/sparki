@@ -975,8 +975,9 @@ export function OperationsCommandCenter({
 }) {
   const { user: currentUser } = useCurrentUser();
   const displayName = currentUser?.name?.trim() || undefined;
+  const firstName = displayName?.split(/\s+/)[0];
   const [selectedRole, setSelectedRole] = useState<DashboardRole>(DEFAULT_DASHBOARD_ROLE);
-  const greeting = useMemo(() => greetingForDate(new Date(), displayName), [displayName]);
+  const greeting = useMemo(() => greetingForDate(new Date(), firstName), [firstName]);
 
   useEffect(() => {
     const actualRole = dashboardRoleForUserRole(currentUser?.role);

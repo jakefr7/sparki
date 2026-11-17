@@ -1,3 +1,4 @@
+import { assertClinicalRecordEditable } from './clinical-record-editability';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, type UserRole } from '@sparki/db';
 import type { CompleteVisitCheckoutInput, SaveVisitDischargeInput, UpdateVisitBalanceInput } from './dto/visit-discharge.schema';
@@ -20,6 +21,7 @@ export class VisitDischargeService {
     input: SaveVisitDischargeInput,
   ) {
     return prisma.$transaction(async (tx) => {
+      await assertClinicalRecordEditable(tx, visitId, organizationId, locationId);
       const visit = await tx.visit.findFirst({
         where: { id: visitId, organizationId, locationId },
         include: {

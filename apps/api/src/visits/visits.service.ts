@@ -487,20 +487,17 @@ export class VisitsService {
     input: SaveExamFindingsInput,
   ) {
     await this.findById(id, organizationId, locationId);
-
-    await prisma.visitExamFindings.upsert({
-      where: { visitId: id },
-      create: {
-        visitId: id,
-        ...normalizeExamFindingsInput(input),
-      },
-      update: normalizeExamFindingsInput(input),
-    });
-
-    return prisma.visit.update({
-      where: { id },
-      data: { lastUpdatedById },
-      include: visitInclude,
+    return prisma.$transaction(async (tx) => {
+      // Serialize exam saves before reading the previous generated source.
+      await tx.visit.update({ where: { id }, data: { lastUpdatedById } });
+      const previous = await tx.visit.findFirstOrThrow({ where: { id, organizationId, locationId }, include: { examFindings: true, intake: true } });
+      await tx.visitExamFindings.upsert({
+        where: { visitId: id },
+        create: { visitId: id, ...normalizeExamFindingsInput(input) },
+        update: normalizeExamFindingsInput(input),
+      });
+      await this.records.syncExamDraftTx(tx, id, organizationId, locationId, previous);
+      return tx.visit.findUniqueOrThrow({ where: { id }, include: visitInclude });
     });
   }
 

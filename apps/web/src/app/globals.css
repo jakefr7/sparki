@@ -7284,7 +7284,7 @@ img.pet-photo-placeholder {
   gap: 0.42rem;
   padding: 0.55rem;
   border: 1px solid color-mix(in srgb, var(--configured-status) 22%, #d9e5e7);
-  border-left: 4px solid var(--configured-status);
+  border-left: 3px solid var(--configured-status);
   border-radius: 0.72rem;
   background: color-mix(in srgb, var(--configured-status) 4%, white);
 }
@@ -7308,7 +7308,18 @@ img.pet-photo-placeholder {
 }
 
 .today-status-group h3 { margin: 0; font-size: 0.9rem; }
-.today-status-group header strong { margin-left: auto; font-size: 0.8rem; }
+.today-status-group header strong {
+  display: grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin-left: auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--configured-status) 10%, white);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
 
 .today-status-filter { position: relative; }
 .today-status-filter > summary {
@@ -7383,7 +7394,7 @@ img.pet-photo-placeholder {
 
 .today-appointment-row {
   display: grid;
-  grid-template-columns: 4.35rem minmax(0, 1fr) minmax(0, 0.8fr) max-content;
+  grid-template-columns: 4.5rem minmax(0, 1fr) minmax(0, 1.15fr) max-content;
   gap: 0.55rem;
   align-items: center;
   min-height: 3.7rem;
@@ -7399,8 +7410,7 @@ img.pet-photo-placeholder {
   background: #fbfefd;
 }
 
-.today-appointment-row__type,
-.today-appointment-row__meta {
+.today-appointment-row__type {
   min-width: 0;
   color: var(--text-secondary);
   font-size: 0.8rem;
@@ -7408,9 +7418,16 @@ img.pet-photo-placeholder {
   overflow-wrap: anywhere;
 }
 
-.today-appointment-row .reception-status-chip {
-  justify-self: start;
-}
+.today-appointment-row__details { display: grid; gap: 0.45rem; }
+.today-appointment-row__team { display: grid; gap: 0.22rem; margin: 0; }
+.today-appointment-row__team > div { display: flex; flex-wrap: wrap; gap: 0.15rem 0.4rem; font-size: 0.72rem; line-height: 1.4; }
+.today-appointment-row__team dt { color: var(--text-secondary); }
+.today-appointment-row__team dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.today-appointment-row__actions { display: grid; justify-items: end; align-content: center; gap: 0.4rem; }
+.today-appointment-row__actions .configured-status-menu { justify-self: end; }
+.today-appointment-row .schedule-row__time { align-self: start; padding-top: 0.35rem; white-space: nowrap; font-size: 0.8rem; }
+.today-appointment-row .patient-client-cell { align-self: start; padding-top: 0.15rem; }
+.today-appointment-row .patient-avatar { width: 2.35rem; height: 2.35rem; flex-shrink: 0; }
 
 .today-appointment-row__type {
   color: var(--text-primary);
@@ -10104,10 +10121,12 @@ img.pet-photo-placeholder {
 .appointment-viewer__note--read-only { grid-template-columns: 1fr; }
 .appointment-viewer__note--read-only > div > span { color: #263a47; font-size: .88rem; font-weight: 850; letter-spacing: -.01em; }
 .appointment-viewer__note--read-only p { margin: .35rem 0 0; padding: .7rem .75rem; border: 1px solid #dbe5e7; border-radius: .55rem; background: rgba(255, 255, 255, .65); color: #536673; font-size: .86rem; line-height: 1.45; }
-.appointment-viewer__actions { display: flex; align-items: center; gap: .6rem; padding-top: .2rem; }
+.appointment-viewer__actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-top: .25rem; padding-top: 1rem; border-top: 1px solid #e2ecee; }
 .appointment-viewer__actions > button,
-.appointment-viewer__actions > a { min-height: 2.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 .85rem; border-radius: .55rem; font: inherit; font-size: .82rem; font-weight: 850; line-height: 1; text-decoration: none; }
-.appointment-viewer__actions a { border: 1px solid #cfe0e2; color: #25404c; }
+.appointment-viewer__actions > a { min-height: 2.75rem; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: .65rem 1rem; border-radius: .6rem; font: inherit; font-size: .8rem; font-weight: 750; line-height: 1.25; white-space: nowrap; text-decoration: none; }
+.appointment-viewer__actions a { border: 1px solid #cfe0e2; background: #fff; color: #25404c; }
+.appointment-viewer__actions a:hover { border-color: #92bfbc; background: #f2f9f8; }
+.appointment-viewer__actions > :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
 .appointment-viewer__cancel { margin-left: auto; border: 1px solid #dcaeae; background: #fff8f8; color: #a33f3f; cursor: pointer; }
 .appointment-viewer__cancel:hover { border-color: #c98080; background: #fff0f0; }
 .appointment-cancel-confirmation { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(23, 39, 48, .34); backdrop-filter: blur(2px); }
@@ -10156,7 +10175,8 @@ img.pet-photo-placeholder {
   .appointment-viewer__facts div:nth-last-child(-n + 2) { border-right: 0; border-bottom: 1px solid #e5edef; }
   .appointment-viewer__facts div:last-child { border-bottom: 0; }
   .appointment-viewer__actions { flex-wrap: wrap; }
-  .appointment-viewer__cancel { width: 100%; margin-left: 0; text-align: left; }
+  .appointment-viewer__actions > button, .appointment-viewer__actions > a { flex: 1 1 auto; }
+  .appointment-viewer__cancel { margin-left: 0; }
 }
 
 .profile-quick-actions__button {
@@ -14446,14 +14466,31 @@ button.settings-nav__sign-out:hover {
 .today-status-group, .today-appointment-list, .today-rail { min-width: 0; }
 .today-appointment-row > * { min-width: 0; }
 .today-appointment-row .patient-client-cell__text { min-width: 0; overflow-wrap: anywhere; }
-.today-appointment-row__meta:nth-of-type(3) { grid-column: 2; }
-.today-visit-link { grid-column: 4; justify-self: start; font-size: .8rem; font-weight: 700; color: var(--teal); }
-@container (max-width: 36rem) {
-  .today-appointment-row { grid-template-columns: 4.35rem minmax(0, 1fr); }
-  .today-appointment-row__type { grid-column: 1 / -1; }
-  .today-appointment-row .configured-status-menu { grid-column: 1 / -1; }
-  .today-appointment-row__meta:nth-of-type(3) { grid-column: 1; }
-  .today-visit-link { grid-column: 1 / -1; }
+.today-visit-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.4rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #13766f;
+  text-decoration: none;
+}
+.today-visit-link:hover { background: #eaf6f4; }
+.today-visit-link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+@container (max-width: 44rem) {
+  .today-appointment-row { grid-template-columns: 4.5rem minmax(0, 1fr) max-content; gap: 0.5rem 0.7rem; }
+  .today-appointment-row__details { grid-column: 2; grid-row: 2; }
+  .today-appointment-row__actions { grid-column: 3; grid-row: 1 / 3; align-self: stretch; }
+}
+@container (max-width: 28rem) {
+  .today-appointment-row { grid-template-columns: minmax(0, 1fr) max-content; }
+  .today-appointment-row .schedule-row__time { grid-column: 1 / -1; padding-top: 0; }
+  .today-appointment-row__details { grid-column: 1; grid-row: 3; }
+  .today-appointment-row__actions { grid-column: 2; grid-row: 2 / 4; }
 }
 .today-rail > * { min-width: 0; }
 .today-summary-list { grid-template-columns: minmax(0, 1fr); }
@@ -14464,3 +14501,16 @@ button.settings-nav__sign-out:hover {
   .today-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 700px) { .today-rail { grid-template-columns: minmax(0, 1fr); } }
+
+/* Visit closeout: keep clinical text readable without the generic review grid. */
+.visit-final-overview .visit-record-panel__header { padding-bottom: 1rem; border-bottom: 1px solid #e2ecee; }
+.visit-final-overview .visit-record-panel__header p:last-child { margin: .4rem 0 0; color: var(--text-secondary); font-size: .85rem; line-height: 1.5; }
+.visit-final-overview .post-exam-review__summary-grid { grid-template-columns: minmax(0, 1fr); margin-top: .25rem; }
+.visit-final-overview .post-exam-review__summary-grid article { min-height: 0; padding: 1rem 0; border: 0; border-bottom: 1px solid #e2ecee; }
+.visit-final-overview .post-exam-review__summary-grid article:last-child { border-bottom: 0; padding-bottom: 0; }
+.visit-final-overview .post-exam-review__findings li { display: block; color: #263744; line-height: 1.5; overflow-wrap: anywhere; }
+.visit-final-overview .post-exam-review__findings li > span { margin-left: .5rem; color: var(--text-secondary); }
+.visit-final-overview details { margin-top: .75rem; border: 1px solid #dce7e9; border-radius: .6rem; background: #f8fbfb; }
+.visit-final-overview details summary { padding: .65rem .8rem; color: #13766f; font-size: .8rem; font-weight: 700; cursor: pointer; }
+.visit-final-overview details summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: .6rem; }
+.visit-final-overview details > p { margin: 0; padding: .25rem .8rem .8rem; font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere; }

@@ -15,7 +15,7 @@ import { useOperationsDashboard } from '../lib/use-operations-dashboard';
 type TodayRow = {
   id: string; kind: 'appointment' | 'visit'; state: string; status: ConfiguredDashboardStatus;
   time: string; patientName: string; species?: string | undefined; imageUrl?: string | null | undefined; clientName: string; appointmentType: string;
-  location?: string | undefined; doctor?: string | undefined; href: string;
+  visitOwner?: string | undefined; doctor?: string | undefined; href: string;
   appointment?: SchedulerAppointment | undefined;
 };
 
@@ -36,7 +36,7 @@ export function buildTodayRows(appointments: DashboardAppointmentSummary[], visi
     const status = resolveConfiguredStatus(statuses, 'visit', visit.state);
     if (!status?.isEnabled) return [];
     const linked = appointments.find((appointment) => appointment.id === visit.appointment?.id);
-    return [{ id: visit.id, kind: 'visit' as const, state: visit.state, status, time: time(visit.appointment && new Date(visit.appointment.scheduledAt).toDateString() === new Date(visit.createdAt).toDateString() ? visit.appointment.scheduledAt : visit.createdAt), patientName: visit.patient.name, species: visit.patient.species, imageUrl: visit.patient.imageUrl, clientName: clientName(visit.client), appointmentType: appointmentTypeLabel(visit.appointment?.type ?? visit.visitType), location: visit.currentOwner?.displayName, doctor: visit.primaryVeterinarian?.displayName, href: `/visits/${visit.id}`, appointment: linked ? { ...linked, room: null } : undefined }];
+    return [{ id: visit.id, kind: 'visit' as const, state: visit.state, status, time: time(visit.appointment && new Date(visit.appointment.scheduledAt).toDateString() === new Date(visit.createdAt).toDateString() ? visit.appointment.scheduledAt : visit.createdAt), patientName: visit.patient.name, species: visit.patient.species, imageUrl: visit.patient.imageUrl, clientName: clientName(visit.client), appointmentType: appointmentTypeLabel(visit.appointment?.type ?? visit.visitType), visitOwner: visit.currentOwner?.displayName, doctor: visit.primaryVeterinarian?.displayName, href: `/visits/${visit.id}`, appointment: linked ? { ...linked, room: null } : undefined }];
   });
   return [...appointmentRows, ...visitRows].sort((a, b) => a.time.localeCompare(b.time));
 }
@@ -57,7 +57,23 @@ function StatusFilter({ statuses, selected, onChange }: { statuses: ConfiguredDa
 }
 
 function PatientCell({ row, onQuickView }: { row: TodayRow; onQuickView: (row: TodayRow) => void }) { const content = <><PetPhotoPlaceholder name={row.patientName} species={row.species} imageUrl={row.imageUrl} className="pet-photo-placeholder patient-avatar"/><span className="patient-client-cell__text"><strong>{row.patientName}</strong><span>{row.clientName}</span></span></>; return row.appointment ? <button type="button" className="patient-client-cell patient-client-cell--button" onClick={() => onQuickView(row)}>{content}</button> : <Link href={row.href} className="patient-client-cell">{content}</Link>; }
-function TodayRowView({ row, statuses, refresh, onQuickView }: { row: TodayRow; statuses: ConfiguredDashboardStatus[]; refresh: () => void; onQuickView: (row: TodayRow) => void }) { return <div className="today-appointment-row" style={{ '--configured-status': row.status.color } as CSSProperties}><span className="schedule-row__time">{row.time}</span><PatientCell row={row} onQuickView={onQuickView}/><span className="today-appointment-row__type">{row.appointmentType}</span><ConfiguredStatusMenu row={row} statuses={statuses} onChanged={refresh}/><span className="today-appointment-row__meta">{row.location ?? 'Unassigned'}</span><span className="today-appointment-row__meta">{row.doctor ?? 'Unassigned'}</span>{row.kind === 'visit' ? <Link className="today-visit-link" href={row.href}>Open Visit</Link> : null}</div>; }
+function TodayRowView({ row, statuses, refresh, onQuickView }: { row: TodayRow; statuses: ConfiguredDashboardStatus[]; refresh: () => void; onQuickView: (row: TodayRow) => void }) {
+  return <div className="today-appointment-row" style={{ '--configured-status': row.status.color } as CSSProperties}>
+    <span className="schedule-row__time">{row.time}</span>
+    <PatientCell row={row} onQuickView={onQuickView}/>
+    <div className="today-appointment-row__details">
+      <span className="today-appointment-row__type">{row.appointmentType}</span>
+      <dl className="today-appointment-row__team">
+        {row.kind === 'visit' ? <div><dt>Visit owner</dt><dd>{row.visitOwner ?? 'Unassigned'}</dd></div> : null}
+        <div><dt>Veterinarian</dt><dd>{row.doctor ?? 'Unassigned'}</dd></div>
+      </dl>
+    </div>
+    <div className="today-appointment-row__actions">
+      <ConfiguredStatusMenu row={row} statuses={statuses} onChanged={refresh}/>
+      {row.kind === 'visit' ? <Link className="today-visit-link" href={row.href}>Open Visit <span aria-hidden="true">→</span></Link> : null}
+    </div>
+  </div>;
+}
 
 function ClinicSummary({ rows, statuses, refresh, onQuickView }: { rows: TodayRow[]; statuses: ConfiguredDashboardStatus[]; refresh: () => void; onQuickView: (row: TodayRow) => void }) { const clinic = rows.filter(isCurrentlyInClinic).slice(0, 6); return <DashboardCard aria-labelledby="today-clinic-summary-heading"><div className="home-widget__header"><div><h2 id="today-clinic-summary-heading">Currently in Clinic</h2><p className="today-overview__intro">Patients physically here now.</p></div><strong className="today-clinic-count">{clinic.length}</strong></div><div className="today-summary-list">{clinic.length ? clinic.map((row) => <div key={`${row.kind}-${row.id}`}><PatientCell row={row} onQuickView={onQuickView}/><ConfiguredStatusMenu row={row} statuses={statuses} onChanged={refresh}/></div>) : <EmptyQueue label="No patients are currently in clinic."/>}</div></DashboardCard>; }
 

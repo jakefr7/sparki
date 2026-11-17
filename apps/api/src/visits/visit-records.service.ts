@@ -44,13 +44,28 @@ export class VisitRecordsService {
           visitId,
           authorId,
           veterinarianId: visit.primaryVeterinarianId,
-          subjective: visit.examFindings?.subjective || [visit.intake?.chiefComplaint && `Presenting concern: ${visit.intake.chiefComplaint}`, visit.intake?.historyNotes && `Intake history: ${visit.intake.historyNotes}`].filter(Boolean).join('\n') || null,
-          objective: visit.intake ? [readableExam(visit.examFindings?.objective ?? null), intakeVitals(visit.intake)].filter(Boolean).join('\n\n') || null : visit.examFindings?.objective ?? null,
-          assessment: visit.examFindings?.assessment ?? null,
-          plan: visit.examFindings?.plan ?? null,
+          ...draftContent(visit),
           status: 'Draft',
         },
       });
+  }
+
+  async syncExamDraftTx(tx: Prisma.TransactionClient, visitId: string, organizationId: string, locationId: string, previous?: DraftSource) {
+    const visit = await tx.visit.findFirst({ where: { id: visitId, organizationId, locationId }, include: { examFindings: true, intake: true } });
+    if (!visit) throw new NotFoundException(`Visit ${visitId} not found`);
+    const note = await tx.soapNote.findFirst({ where: { visitId, status: { in: [...OPEN_RECORD_STATUSES] } }, orderBy: { createdAt: 'desc' } });
+    if (!note) return;
+    const next = draftContent(visit);
+    const before = previous ? draftContent(previous) : null;
+    const data: Prisma.SoapNoteUpdateManyMutationInput = {};
+    for (const field of ['subjective', 'objective', 'assessment', 'plan'] as const) {
+      // Preserve separately authored draft content. Only replace generated content
+      // that still matches its source, or repair a previously empty section.
+      if ((!note[field]?.trim() || (before && note[field] === before[field])) && note[field] !== next[field]) data[field] = next[field];
+    }
+    if (!Object.keys(data).length) return;
+    const changed = await tx.soapNote.updateMany({ where: { id: note.id, version: note.version, status: { in: [...OPEN_RECORD_STATUSES] } }, data: { ...data, version: { increment: 1 } } });
+    if (changed.count !== 1) throw new ConflictException('This record changed elsewhere. Refresh before saving again.');
   }
 
   async listOpenForUser(organizationId: string, locationId: string, userId: string) {
@@ -197,7 +212,9 @@ export class VisitRecordsService {
     if (!signer || (visit.primaryVeterinarianId !== signerId && !unassignedClinicalCompleterMaySign && !assignedTechnicianMaySign && !(delegated && signer.canFinalizeRecordsForOthers))) {
       throw new ForbiddenException('You are not assigned or delegated to finalize this medical record.');
     }
-    const note = visit.soapNotes.find((entry) => OPEN_RECORD_STATUSES.includes(entry.status as (typeof OPEN_RECORD_STATUSES)[number]));
+    // Repair missing generated sections on older open drafts as well.
+    await prisma.$transaction((tx) => this.syncExamDraftTx(tx, visitId, organizationId, locationId));
+    const note = await prisma.soapNote.findFirst({ where: { visitId, status: { in: [...OPEN_RECORD_STATUSES] } }, orderBy: { createdAt: 'desc' } });
     if (!note) throw new ConflictException('There is no open medical record to finalize.');
     const missing = [note.subjective, note.objective, note.assessment, note.plan].filter((value) => !value?.trim()).length;
     if (missing) throw new ConflictException('Complete all SOAP sections before finalizing the medical record.');
@@ -342,4 +359,14 @@ function intakeVitals(intake: { weight: unknown; weightUnit: string; temperature
     intake.painScore != null ? `Pain score: ${intake.painScore}${intake.painScale ? ` (${intake.painScale})` : ''}` : null,
   ].filter(Boolean);
   return lines.length ? `Intake vitals (staff recorded)\n${lines.join('\n')}` : '';
+}
+
+type DraftSource = Prisma.VisitGetPayload<{ include: { examFindings: true; intake: true } }>;
+function draftContent(visit: DraftSource) {
+  return {
+    subjective: visit.examFindings?.subjective || [visit.intake?.chiefComplaint && `Presenting concern: ${visit.intake.chiefComplaint}`, visit.intake?.historyNotes && `Intake history: ${visit.intake.historyNotes}`].filter(Boolean).join('\n') || null,
+    objective: visit.intake ? [readableExam(visit.examFindings?.objective ?? null), intakeVitals(visit.intake)].filter(Boolean).join('\n\n') || null : visit.examFindings?.objective ?? null,
+    assessment: visit.examFindings?.assessment ?? null,
+    plan: visit.examFindings?.plan ?? null,
+  };
 }

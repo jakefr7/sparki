@@ -1071,6 +1071,27 @@ describe('Visits (e2e)', () => {
       expect(saved.assessment).toBe('Suspected gastroenteritis.');
     });
 
+    it('synchronizes late diagnosis/plan edits into the existing open record and preserves signed records', async () => {
+      const visit = await createVisit('SPA47 late exam edits');
+      const record = await prisma.medicalRecord.create({ data: { patientId: visit.patientId } });
+      const draft = await prisma.soapNote.create({ data: { medicalRecordId: record.id, visitId: visit.id, authorId: DEV_USER_ID, subjective: 'Authored history', objective: 'Authored exam' } });
+      const save = (assessment: string, plan: string) => request(app.getHttpServer()).put(`/visits/${visit.id}/exam-findings`).send({ assessment, plan });
+      expect((await save('Initial diagnosis', 'Initial plan')).status).toBe(200);
+      let saved = await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(saved).toMatchObject({ assessment: 'Initial diagnosis', plan: 'Initial plan', subjective: 'Authored history', objective: 'Authored exam', version: draft.version + 1 });
+      expect((await save('Revised diagnosis', 'Revised plan')).status).toBe(200);
+      saved = await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(saved).toMatchObject({ assessment: 'Revised diagnosis', plan: 'Revised plan', version: draft.version + 2 });
+      // Reproduce an older stale draft, then verify the real finalize endpoint repairs it.
+      await prisma.soapNote.update({ where: { id: draft.id }, data: { assessment: null, plan: null } });
+      const finalized = await request(app.getHttpServer()).post(`/visits/${visit.id}/record/finalize`);
+      expect(finalized.status).toBe(201);
+      expect(finalized.body).toMatchObject({ status: 'Locked', assessment: 'Revised diagnosis', plan: 'Revised plan' });
+      saved = await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } });
+      expect((await save('Later exam diagnosis', 'Later exam plan')).status).toBe(200);
+      expect(await prisma.soapNote.findUniqueOrThrow({ where: { id: draft.id } })).toMatchObject({ status: 'Locked', assessment: 'Revised diagnosis', plan: 'Revised plan', version: saved.version });
+    });
+
     it('overwrites previously saved exam findings on update', async () => {
       const visit = await createVisit('Update Exam Findings Patient');
 
